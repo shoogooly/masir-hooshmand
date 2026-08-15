@@ -1,0 +1,24 @@
+services:
+  api:
+    build: ./backend
+    environment:
+      MASIR_ENV: development
+      MASIR_SECRET_KEY: docker-development-secret
+      MASIR_DATABASE_URL: sqlite:////data/masir_hooshmand.db
+      MASIR_FRONTEND_ORIGIN: http://localhost:5173
+    volumes:
+      - masir-data:/data
+      - masir-uploads:/app/uploads
+    ports:
+      - "8000:8000"
+  web:
+    build: ./frontend
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+volumes:
+  masir-data:
+  masir-uploads:
