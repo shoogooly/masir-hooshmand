@@ -84,6 +84,8 @@ class Activity(Base, TimeMixin):
     day: Mapped[str] = mapped_column(String(20))
     subject: Mapped[str] = mapped_column(String(80))
     title: Mapped[str] = mapped_column(String(180))
+    start_time: Mapped[str] = mapped_column(String(5), default="08:00")
+    end_time: Mapped[str] = mapped_column(String(5), default="09:00")
     planned_minutes: Mapped[int] = mapped_column(Integer, default=60)
     actual_minutes: Mapped[int] = mapped_column(Integer, default=0)
     test_count: Mapped[int] = mapped_column(Integer, default=0)

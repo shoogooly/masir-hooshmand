@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core.security import create_token, current_user, hash_token, new_csrf, new_refresh_token, roles, verify_totp
 from app.db.session import get_db
 from app.models import Activity, AdvisorAssignment, AuditLog, Exam, ExamAnswer, ExamSession, Insight, Message, Order, Question, RefreshToken, StudentProfile, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
-from app.schemas import ActivityUpdate, AnswerUpdate, ExamCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PaymentCallback, PlanCreate, QuestionCreate
+from app.schemas import ActivityUpdate, AnswerUpdate, ExamCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PaymentCallback, PlanCreate, ProfileUpdate, QuestionCreate
 from app.services import ai_provider, audit, otp_provider, payment_provider
 
 
@@ -20,6 +20,48 @@ def ok(data=None, meta=None):
 
 def user_dict(user: User):
     return {"id": user.id, "phone": user.phone, "full_name": user.full_name, "role": user.role, "status": user.status}
+
+
+def activity_dict(item: Activity):
+    return {"id": item.id, "day": item.day, "subject": item.subject, "title": item.title,
+            "start_time": item.start_time, "end_time": item.end_time, "planned_minutes": item.planned_minutes,
+            "actual_minutes": item.actual_minutes, "test_count": item.test_count, "status": item.status, "note": item.note}
+
+
+def assignment_for(db: Session, advisor_id: str, student_id: str):
+    return db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == advisor_id,
+        AdvisorAssignment.student_id == student_id, AdvisorAssignment.active.is_(True)))
+
+
+def can_communicate(db: Session, sender: User, recipient: User):
+    if sender.role == "student" and recipient.role == "advisor":
+        return bool(assignment_for(db, recipient.id, sender.id))
+    if sender.role == "advisor" and recipient.role == "student":
+        return bool(assignment_for(db, sender.id, recipient.id))
+    return False
+
+
+def report_data(db: Session, student_id: str):
+    plans = db.scalars(select(WeeklyPlan).where(WeeklyPlan.student_id == student_id).order_by(WeeklyPlan.created_at.desc())).all()
+    plan_ids = [p.id for p in plans]
+    activities = db.scalars(select(Activity).where(Activity.plan_id.in_(plan_ids)).order_by(Activity.created_at)).all() if plan_ids else []
+    sessions = db.scalars(select(ExamSession).where(ExamSession.student_id == student_id, ExamSession.status == "submitted").order_by(ExamSession.submitted_at.desc())).all()
+    exam_ids = [s.exam_id for s in sessions]
+    exams = {x.id: x for x in db.scalars(select(Exam).where(Exam.id.in_(exam_ids))).all()} if exam_ids else {}
+    completed = sum(a.status == "completed" for a in activities)
+    by_subject: dict[str, dict] = {}
+    for a in activities:
+        item = by_subject.setdefault(a.subject, {"subject": a.subject, "planned_minutes": 0, "actual_minutes": 0, "tests": 0, "completed": 0, "total": 0})
+        item["planned_minutes"] += a.planned_minutes; item["actual_minutes"] += a.actual_minutes
+        item["tests"] += a.test_count; item["completed"] += a.status == "completed"; item["total"] += 1
+    insights = db.scalars(select(Insight).where(Insight.student_id == student_id, Insight.status == "approved").order_by(Insight.created_at.desc())).all()
+    return {"summary": {"progress": round(completed / len(activities) * 100) if activities else 0,
+        "planned_minutes": sum(a.planned_minutes for a in activities), "actual_minutes": sum(a.actual_minutes for a in activities),
+        "test_count": sum(a.test_count for a in activities), "completed": completed, "total": len(activities)},
+        "subjects": list(by_subject.values()), "activities": [activity_dict(a) for a in activities[-50:]],
+        "results": [{"id": s.id, "exam_id": s.exam_id, "title": exams[s.exam_id].title if s.exam_id in exams else "آزمون", "score": s.score,
+            "correct": s.correct_count, "wrong": s.wrong_count, "unanswered": s.unanswered_count, "submitted_at": s.submitted_at} for s in sessions],
+        "insights": [{"id": i.id, "title": i.title, "recommendation": i.recommendation, "confidence": i.confidence} for i in insights]}
 
 
 @router.post("/auth/request-otp")
@@ -112,7 +154,7 @@ def student_dashboard(user: User = Depends(roles("student")), db: Session = Depe
         "profile": {"grade": profile.grade, "major": profile.major, "goal": profile.goal} if profile else {},
         "progress": progress,
         "study_minutes": sum(item.actual_minutes for item in activities),
-        "activities": [{"id": x.id, "day": x.day, "subject": x.subject, "title": x.title, "planned_minutes": x.planned_minutes, "actual_minutes": x.actual_minutes, "status": x.status} for x in activities],
+        "activities": [activity_dict(x) for x in activities],
         "exams": [{"id": x.id, "title": x.title, "duration_minutes": x.duration_minutes} for x in exams],
         "insights": [{"id": x.id, "kind": x.kind, "title": x.title, "evidence": x.evidence, "recommendation": x.recommendation, "confidence": x.confidence, "status": x.status} for x in insights if x.status == "approved"],
     })
@@ -124,7 +166,59 @@ def advisor_dashboard(user: User = Depends(roles("advisor", "super_admin")), db:
     student_ids = [a.student_id for a in assignments]
     students = db.scalars(select(User).where(User.id.in_(student_ids))).all() if student_ids else []
     pending = db.scalar(select(func.count(Insight.id)).where(Insight.student_id.in_(student_ids), Insight.status == "pending_review")) if student_ids else 0
-    return ok({"user": user_dict(user), "students": [user_dict(x) | {"risk": "بالا" if i == 0 else "عادی", "progress": 68 + i * 9} for i, x in enumerate(students)], "pending_insights": pending or 0, "alerts": 3, "weekly_plans": len(student_ids)})
+    student_rows = []
+    for x in students:
+        report = report_data(db, x.id)
+        last_activity = report["activities"][-1] if report["activities"] else None
+        last_message = db.scalar(select(Message).where(or_(Message.sender_id == x.id, Message.recipient_id == x.id)).order_by(Message.created_at.desc()))
+        progress = report["summary"]["progress"]
+        student_rows.append(user_dict(x) | {"risk": "بالا" if progress < 50 else "عادی", "progress": progress,
+            "last_activity": last_activity["title"] if last_activity else None,
+            "last_message": last_message.body if last_message else None, "last_message_at": last_message.created_at if last_message else None})
+    return ok({"user": user_dict(user), "students": student_rows, "pending_insights": pending or 0,
+        "alerts": sum(x["risk"] == "بالا" for x in student_rows), "weekly_plans": len(student_ids)})
+
+
+@router.get("/profile")
+def get_profile(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id)) if user.role == "student" else None
+    return ok(user_dict(user) | ({"grade": profile.grade, "major": profile.major, "school": profile.school, "goal": profile.goal} if profile else {}))
+
+
+@router.patch("/profile")
+def update_profile(payload: ProfileUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    user.full_name = payload.full_name
+    if user.role == "student":
+        profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
+        if not profile:
+            profile = StudentProfile(user_id=user.id); db.add(profile)
+        for field in ("grade", "major", "school", "goal"):
+            value = getattr(payload, field)
+            if value is not None: setattr(profile, field, value)
+    audit(db, user.id, "profile.updated", "user", user.id); db.commit()
+    return ok({"updated": True})
+
+
+@router.get("/students/advisor")
+def my_advisor(user: User = Depends(roles("student")), db: Session = Depends(get_db)):
+    assignment = db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.student_id == user.id, AdvisorAssignment.active.is_(True)))
+    advisor = db.get(User, assignment.advisor_id) if assignment else None
+    return ok(user_dict(advisor) if advisor else None)
+
+
+@router.get("/students/report")
+def my_report(user: User = Depends(roles("student")), db: Session = Depends(get_db)):
+    return ok(report_data(db, user.id))
+
+
+@router.get("/advisors/students/{student_id}/report")
+def advisor_student_report(student_id: str, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
+    if user.role == "advisor" and not assignment_for(db, user.id, student_id):
+        raise HTTPException(403, "دانش‌آموز به شما تخصیص داده نشده است")
+    student = db.get(User, student_id)
+    if not student or student.role != "student": raise HTTPException(404, "دانش‌آموز یافت نشد")
+    profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student_id))
+    return ok({"student": user_dict(student), "profile": {"grade": profile.grade, "major": profile.major, "goal": profile.goal} if profile else {}, **report_data(db, student_id)})
 
 
 @router.get("/advisors/{advisor_id}/students")
@@ -139,21 +233,35 @@ def advisor_students(advisor_id: str, user: User = Depends(current_user), db: Se
 @router.get("/plans")
 def list_plans(user: User = Depends(current_user), db: Session = Depends(get_db)):
     stmt = select(WeeklyPlan).order_by(WeeklyPlan.created_at.desc())
-    if user.role == "student": stmt = stmt.where(WeeklyPlan.student_id == user.id)
+    if user.role == "student": stmt = stmt.where(WeeklyPlan.student_id == user.id, WeeklyPlan.status == "published")
     elif user.role == "advisor": stmt = stmt.where(WeeklyPlan.advisor_id == user.id)
     plans = db.scalars(stmt).all()
-    return ok([{"id": x.id, "student_id": x.student_id, "title": x.title, "week_label": x.week_label, "version": x.version, "status": x.status} for x in plans])
+    return ok([{"id": x.id, "student_id": x.student_id, "title": x.title, "week_label": x.week_label, "version": x.version,
+        "status": x.status, "published_at": x.published_at, "activities": [activity_dict(a) for a in x.activities]} for x in plans])
+
+
+@router.get("/plans/{plan_id}")
+def get_plan(plan_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    plan = db.get(WeeklyPlan, plan_id)
+    if not plan: raise HTTPException(404, "برنامه یافت نشد")
+    allowed = (user.role == "student" and plan.student_id == user.id and plan.status == "published") or (user.role == "advisor" and plan.advisor_id == user.id) or user.role == "super_admin"
+    if not allowed: raise HTTPException(403, "دسترسی به برنامه مجاز نیست")
+    return ok({"id": plan.id, "student_id": plan.student_id, "title": plan.title, "week_label": plan.week_label,
+        "version": plan.version, "status": plan.status, "activities": [activity_dict(a) for a in plan.activities]})
 
 
 @router.post("/plans")
 def create_plan(payload: PlanCreate, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
-    if user.role == "advisor" and not db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == user.id, AdvisorAssignment.student_id == payload.student_id)):
+    if user.role == "advisor" and not db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == user.id, AdvisorAssignment.student_id == payload.student_id, AdvisorAssignment.active.is_(True))):
         raise HTTPException(403, "دانش‌آموز به شما تخصیص داده نشده است")
     previous = db.scalar(select(WeeklyPlan).where(WeeklyPlan.student_id == payload.student_id).order_by(WeeklyPlan.version.desc()))
     plan = WeeklyPlan(student_id=payload.student_id, advisor_id=user.id, title=payload.title, week_label=payload.week_label, version=(previous.version + 1 if previous else 1))
     db.add(plan); db.flush()
     for item in payload.activities:
-        db.add(Activity(plan_id=plan.id, day=item.get("day", "شنبه"), subject=item.get("subject", "عمومی"), title=item.get("title", "فعالیت"), planned_minutes=item.get("planned_minutes", 60)))
+        start, end = item.get("start_time", "08:00"), item.get("end_time", "09:00")
+        sh, sm = map(int, start.split(":")); eh, em = map(int, end.split(":"))
+        db.add(Activity(plan_id=plan.id, day=item.get("day", "شنبه"), subject=item.get("subject", "عمومی"), title=item.get("title", "فعالیت"),
+            start_time=start, end_time=end, planned_minutes=(eh * 60 + em) - (sh * 60 + sm)))
     audit(db, user.id, "plan.created", "weekly_plan", plan.id, after={"version": plan.version})
     db.commit()
     return ok({"id": plan.id, "version": plan.version, "status": plan.status})
@@ -181,15 +289,38 @@ def update_activity(activity_id: str, payload: ActivityUpdate, user: User = Depe
 
 
 @router.get("/messages")
-def list_messages(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    items = db.scalars(select(Message).where(or_(Message.sender_id == user.id, Message.recipient_id == user.id), Message.internal_note.is_(False)).order_by(Message.created_at.desc()).limit(50)).all()
-    return ok([{"id": x.id, "sender_id": x.sender_id, "recipient_id": x.recipient_id, "body": x.body, "created_at": x.created_at} for x in items])
+def list_messages(counterpart_id: str, before: str | None = None, limit: int = 50, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    counterpart = db.get(User, counterpart_id)
+    if not counterpart or not can_communicate(db, user, counterpart):
+        raise HTTPException(403, "این گفت‌وگو مجاز نیست")
+    stmt = select(Message).where(or_(
+        (Message.sender_id == user.id) & (Message.recipient_id == counterpart_id),
+        (Message.sender_id == counterpart_id) & (Message.recipient_id == user.id)), Message.internal_note.is_(False))
+    if before:
+        cursor = db.get(Message, before)
+        if cursor: stmt = stmt.where(Message.created_at < cursor.created_at)
+    items = list(reversed(db.scalars(stmt.order_by(Message.created_at.desc()).limit(min(max(limit, 1), 100))).all()))
+    return ok([{"id": x.id, "sender_id": x.sender_id, "recipient_id": x.recipient_id, "body": x.body,
+        "created_at": x.created_at, "read_at": x.read_at} for x in items], {"has_more": len(items) == min(max(limit, 1), 100)})
 
 
 @router.post("/messages")
 def send_message(payload: MessageCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    recipient = db.get(User, payload.recipient_id)
+    if not recipient or not can_communicate(db, user, recipient):
+        raise HTTPException(403, "ارسال پیام به این کاربر مجاز نیست")
     msg = Message(sender_id=user.id, recipient_id=payload.recipient_id, body=payload.body, internal_note=payload.internal_note and user.role == "advisor")
-    db.add(msg); db.commit(); return ok({"id": msg.id, "sent": True})
+    db.add(msg); db.commit(); return ok({"id": msg.id, "sent": True, "created_at": msg.created_at})
+
+
+@router.post("/messages/{counterpart_id}/read")
+def read_messages(counterpart_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    counterpart = db.get(User, counterpart_id)
+    if not counterpart or not can_communicate(db, user, counterpart): raise HTTPException(403, "این گفت‌وگو مجاز نیست")
+    items = db.scalars(select(Message).where(Message.sender_id == counterpart_id, Message.recipient_id == user.id, Message.read_at.is_(None))).all()
+    now = utcnow()
+    for item in items: item.read_at = now
+    db.commit(); return ok({"read": len(items)})
 
 
 @router.get("/questions")
@@ -215,7 +346,12 @@ def approve_question(question_id: str, user: User = Depends(roles("reviewer", "s
 @router.get("/exams")
 def list_exams(user: User = Depends(current_user), db: Session = Depends(get_db)):
     exams = db.scalars(select(Exam).where(Exam.status == "published").order_by(Exam.created_at.desc())).all()
-    return ok([{"id": x.id, "title": x.title, "duration_minutes": x.duration_minutes, "version": x.version, "question_count": len(json.loads(x.question_ids_json))} for x in exams])
+    if user.role == "student": exams = [x for x in exams if not json.loads(x.audience_json) or user.id in json.loads(x.audience_json)]
+    sessions = db.scalars(select(ExamSession).where(ExamSession.student_id == user.id)).all() if user.role == "student" else []
+    session_by_exam = {s.exam_id: s for s in sessions}
+    return ok([{"id": x.id, "title": x.title, "duration_minutes": x.duration_minutes, "version": x.version,
+        "question_count": len(json.loads(x.question_ids_json)), "session": ({"id": session_by_exam[x.id].id,
+        "status": session_by_exam[x.id].status, "score": session_by_exam[x.id].score} if x.id in session_by_exam else None)} for x in exams])
 
 
 @router.post("/exams")
@@ -230,6 +366,8 @@ def create_exam(payload: ExamCreate, user: User = Depends(roles("exam_designer",
 def start_exam(exam_id: str, user: User = Depends(roles("student")), db: Session = Depends(get_db)):
     exam = db.get(Exam, exam_id)
     if not exam or exam.status != "published": raise HTTPException(404, "آزمون فعال نیست")
+    audience = json.loads(exam.audience_json)
+    if audience and user.id not in audience: raise HTTPException(403, "این آزمون برای شما تعریف نشده است")
     session = db.scalar(select(ExamSession).where(ExamSession.exam_id == exam_id, ExamSession.student_id == user.id, ExamSession.status == "active"))
     if not session: db.add(session := ExamSession(exam_id=exam_id, student_id=user.id)); db.commit()
     questions = db.scalars(select(Question).where(Question.id.in_(json.loads(exam.question_ids_json)))).all()

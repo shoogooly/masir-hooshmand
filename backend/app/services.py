@@ -79,9 +79,9 @@ def seed_database(db: Session):
     db.add(plan)
     db.flush()
     db.add_all([
-        Activity(plan_id=plan.id, day="شنبه", subject="زیست‌شناسی", title="فصل گردش مواد + ۳۰ تست", planned_minutes=90, actual_minutes=85, test_count=30, status="completed"),
-        Activity(plan_id=plan.id, day="یکشنبه", subject="شیمی", title="استوکیومتری و مرور نکات", planned_minutes=75, status="in_progress"),
-        Activity(plan_id=plan.id, day="دوشنبه", subject="فیزیک", title="حرکت‌شناسی + آزمونک", planned_minutes=60, status="pending"),
+        Activity(plan_id=plan.id, day="شنبه", subject="زیست‌شناسی", title="فصل گردش مواد + ۳۰ تست", start_time="08:00", end_time="09:30", planned_minutes=90, actual_minutes=85, test_count=30, status="completed"),
+        Activity(plan_id=plan.id, day="یکشنبه", subject="شیمی", title="استوکیومتری و مرور نکات", start_time="16:00", end_time="17:15", planned_minutes=75, status="in_progress"),
+        Activity(plan_id=plan.id, day="دوشنبه", subject="فیزیک", title="حرکت‌شناسی + آزمونک", start_time="18:00", end_time="19:00", planned_minutes=60, status="pending"),
     ])
     q1 = Question(author_id=editor.id, text="کدام گزینه درباره گردش خون صحیح است؟", subject="زیست‌شناسی", topic="گردش مواد", options_json=json.dumps(["الف", "ب", "ج", "د"], ensure_ascii=False), correct_index=2, explanation="گزینه ج با ساختار گردش خون سازگار است.", status="approved")
     q2 = Question(author_id=editor.id, text="حاصل واکنش موازنه‌شده کدام است؟", subject="شیمی", topic="استوکیومتری", options_json=json.dumps(["۱", "۲", "۳", "۴"], ensure_ascii=False), correct_index=1, status="approved")

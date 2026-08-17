@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from app.api.router import router
 from app.core.config import settings
 from app.core.security import csrf_guard
@@ -53,7 +54,8 @@ async def http_error(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
-    return JSONResponse(status_code=422, content={"success": False, "error": {"code": "VALIDATION_ERROR", "message": "اطلاعات ورودی معتبر نیست", "details": exc.errors()}, "request_id": request.headers.get("X-Request-ID")})
+    details = jsonable_encoder(exc.errors(), custom_encoder={ValueError: str})
+    return JSONResponse(status_code=422, content={"success": False, "error": {"code": "VALIDATION_ERROR", "message": "اطلاعات ورودی معتبر نیست", "details": details}, "request_id": request.headers.get("X-Request-ID")})
 
 
 @app.get("/health")
