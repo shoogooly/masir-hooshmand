@@ -1,5 +1,5 @@
 from typing import Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class OTPRequest(BaseModel):
@@ -12,30 +12,61 @@ class OTPVerify(OTPRequest):
     mfa_code: str | None = None
 
 
+def time_minutes(value: str) -> int:
+    if not isinstance(value, str) or len(value) != 5 or value[2] != ":":
+        raise ValueError("فرمت ساعت معتبر نیست")
+    hour_text, minute_text = value.split(":")
+    if not hour_text.isdigit() or not minute_text.isdigit():
+        raise ValueError("فرمت ساعت معتبر نیست")
+    hour, minute = int(hour_text), int(minute_text)
+    if hour == 24 and minute == 0:
+        return 24 * 60
+    if hour > 23 or minute > 59:
+        raise ValueError("ساعت واردشده معتبر نیست")
+    return hour * 60 + minute
+
 class PlanCreate(BaseModel):
     student_id: str
-    title: str
-    week_label: str
-    activities: list[dict[str, Any]] = []
+    title: str = Field(min_length=2, max_length=160)
+    week_label: str = Field(min_length=2, max_length=60)
+    days: list[dict[str, Any]] = Field(default_factory=list, min_length=1, max_length=14)
+    time_slots: list[dict[str, Any]] = Field(default_factory=list, max_length=64)
+    day_start_time: str = "08:00"
+    day_end_time: str = "24:00"
+    weekly_mission: str = Field(default="", max_length=2000)
+    activities: list[dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("activities")
     @classmethod
     def validate_activities(cls, items: list[dict[str, Any]]):
-        occupied: dict[str, list[tuple[str, str]]] = {}
+        occupied: dict[str, list[tuple[int, int]]] = {}
         for item in items:
             start, end = item.get("start_time", "08:00"), item.get("end_time", "09:00")
-            if not isinstance(start, str) or not isinstance(end, str) or len(start) != 5 or len(end) != 5 or start >= end:
+            start_minute, end_minute = time_minutes(start), time_minutes(end)
+            if start_minute >= end_minute:
                 raise ValueError("بازه زمانی فعالیت معتبر نیست")
-            if any(not part.isdigit() for part in start.split(":") + end.split(":")):
-                raise ValueError("فرمت ساعت معتبر نیست")
-            sh, sm = map(int, start.split(":")); eh, em = map(int, end.split(":"))
-            if sh > 23 or eh > 23 or sm > 59 or em > 59 or sm % 15 or em % 15:
-                raise ValueError("ساعت باید در بازه‌های ۱۵ دقیقه‌ای باشد")
-            day = item.get("day", "شنبه")
-            if any(start < other_end and end > other_start for other_start, other_end in occupied.setdefault(day, [])):
+            day = str(item.get("day", "")).strip()
+            if any(start_minute < other_end and end_minute > other_start for other_start, other_end in occupied.setdefault(day, [])):
                 raise ValueError("بازه‌های برنامه هم‌پوشانی دارند")
-            occupied[day].append((start, end))
+            occupied[day].append((start_minute, end_minute))
         return items
+
+    @model_validator(mode="after")
+    def validate_table(self):
+        day_labels = [str(day.get("label", "")).strip() for day in self.days]
+        if any(not label for label in day_labels) or len(day_labels) != len(set(day_labels)):
+            raise ValueError("نام روزهای جدول باید کامل و یکتا باشد")
+        range_start, range_end = time_minutes(self.day_start_time), time_minutes(self.day_end_time)
+        if range_start >= range_end:
+            raise ValueError("بازه کلی روز معتبر نیست")
+        for item in self.activities:
+            if str(item.get("day", "")).strip() not in day_labels:
+                raise ValueError("روز فعالیت در جدول وجود ندارد")
+            start, end = time_minutes(item.get("start_time", "")), time_minutes(item.get("end_time", ""))
+            if start < range_start or end > range_end:
+                raise ValueError("فعالیت خارج از بازه کلی روز است")
+        return self
+
 
 
 class ActivityUpdate(BaseModel):

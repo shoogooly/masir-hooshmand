@@ -53,12 +53,22 @@ def test_profile_report_and_timed_plan():
         csrf = login(client, "09120000002")
         dashboard = client.get("/api/v1/advisors/dashboard").json()["data"]
         student_id = dashboard["students"][0]["id"]
-        plan = client.post("/api/v1/plans", headers={"X-CSRF-Token": csrf}, json={"student_id": student_id, "title": "برنامه تست", "week_label": "هفته تست", "activities": [{"day": "شنبه", "subject": "ریاضی", "title": "تمرین", "start_time": "10:00", "end_time": "11:15"}]})
+        plan = client.post("/api/v1/plans", headers={"X-CSRF-Token": csrf}, json={"student_id": student_id, "title": "برنامه تست", "week_label": "هفته تست", "weekly_mission": "جمع‌بندی مباحث هفته", "days": [{"label": "شنبه", "date": "1405-05-27"}], "time_slots": [{"start": "10:00", "end": "11:15"}], "activities": [{"day": "شنبه", "subject": "ریاضی", "title": "تمرین", "start_time": "10:00", "end_time": "11:15"}]})
         assert plan.status_code == 200
         published = client.post(f"/api/v1/plans/{plan.json()['data']['id']}/publish", headers={"X-CSRF-Token": csrf})
         assert published.json()["data"]["status"] == "published"
-        overlap = client.post("/api/v1/plans", headers={"X-CSRF-Token": csrf}, json={"student_id": student_id, "title": "بد", "week_label": "هفته", "activities": [{"day": "شنبه", "subject": "الف", "title": "الف", "start_time": "10:00", "end_time": "11:00"}, {"day": "شنبه", "subject": "ب", "title": "ب", "start_time": "10:45", "end_time": "11:30"}]})
+        detail = client.get(f"/api/v1/plans/{plan.json()['data']['id']}").json()["data"]
+        assert detail["days"] == [{"label": "شنبه", "date": "1405-05-27"}]
+        assert detail["time_slots"] == [{"start": "10:00", "end": "11:15"}]
+        assert detail["weekly_mission"] == "جمع‌بندی مباحث هفته"
+        assert detail["activities"][0]["title"] == "تمرین"
+        overlap = client.post("/api/v1/plans", headers={"X-CSRF-Token": csrf}, json={"student_id": student_id, "title": "بد", "week_label": "هفته", "days": [{"label": "شنبه", "date": ""}], "time_slots": [{"start": "10:00", "end": "11:00"}, {"start": "10:45", "end": "11:30"}], "activities": [{"day": "شنبه", "subject": "الف", "title": "الف", "start_time": "10:00", "end_time": "11:00"}, {"day": "شنبه", "subject": "ب", "title": "ب", "start_time": "10:45", "end_time": "11:30"}]})
         assert overlap.status_code == 422
+
+    with TestClient(app) as student_client:
+        login(student_client, "09120000001")
+        history = student_client.get("/api/v1/plans").json()["data"]
+        assert len(history) >= 2 and history[0]["week_label"] == "هفته تست"
 
 
 def test_assigned_chat_and_read_receipt():
@@ -75,3 +85,39 @@ def test_assigned_chat_and_read_receipt():
         student_id = advisor_client.get("/api/v1/advisors/dashboard").json()["data"]["students"][0]["id"]
         read = advisor_client.post(f"/api/v1/messages/{student_id}/read", headers={"X-CSRF-Token": csrf})
         assert read.status_code == 200 and read.json()["data"]["read"] >= 1
+
+def test_plan_timeline_range_validation():
+    from pydantic import ValidationError
+    from app.schemas import PlanCreate
+
+    base = {
+        "student_id": "student",
+        "title": "برنامه خط زمانی",
+        "week_label": "هفته تست",
+        "days": [{"label": "شنبه", "date": "۱۴۰۵/۰۵/۲۷"}, {"label": "یکشنبه", "date": "۱۴۰۵/۰۵/۲۸"}],
+        "time_slots": [],
+        "day_start_time": "07:00",
+        "day_end_time": "24:00",
+    }
+    valid = PlanCreate(**base, activities=[
+        {"day": "شنبه", "title": "شروع زودتر", "start_time": "07:00", "end_time": "08:00"},
+        {"day": "یکشنبه", "title": "شروع دیرتر", "start_time": "08:00", "end_time": "09:06"},
+    ])
+    assert valid.day_end_time == "24:00"
+
+    try:
+        PlanCreate(**base, activities=[
+            {"day": "شنبه", "title": "اول", "start_time": "07:00", "end_time": "08:00"},
+            {"day": "شنبه", "title": "همپوشان", "start_time": "07:30", "end_time": "08:30"},
+        ])
+        assert False, "overlapping ranges must be rejected"
+    except ValidationError:
+        pass
+
+    try:
+        PlanCreate(**base, activities=[
+            {"day": "یکشنبه", "title": "خارج محدوده", "start_time": "06:45", "end_time": "08:00"},
+        ])
+        assert False, "out-of-range activity must be rejected"
+    except ValidationError:
+        pass

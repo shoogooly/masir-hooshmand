@@ -27,6 +27,28 @@ def activity_dict(item: Activity):
             "start_time": item.start_time, "end_time": item.end_time, "planned_minutes": item.planned_minutes,
             "actual_minutes": item.actual_minutes, "test_count": item.test_count, "status": item.status, "note": item.note}
 
+DEFAULT_PLAN_DAYS = [{"label": day, "date": ""} for day in ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]]
+DEFAULT_TIME_SLOTS = [{"start": start, "end": end} for start, end in [("08:00", "10:00"), ("10:00", "12:00"), ("12:00", "14:00"), ("14:00", "16:00"), ("16:00", "18:00"), ("18:00", "20:00")]]
+
+
+def plan_dict(plan: WeeklyPlan):
+    days = json.loads(plan.schedule_days_json or "[]")
+    slots = json.loads(plan.time_slots_json or "[]")
+    if not days:
+        known = {activity.day for activity in plan.activities}
+        days = [item.copy() for item in DEFAULT_PLAN_DAYS]
+        days.extend({"label": day, "date": ""} for day in known if day not in {item["label"] for item in days})
+    if not slots:
+        activity_slots = {(activity.start_time, activity.end_time) for activity in plan.activities}
+        slots = [{"start": start, "end": end} for start, end in sorted(activity_slots)] or [item.copy() for item in DEFAULT_TIME_SLOTS]
+    return {"id": plan.id, "student_id": plan.student_id, "title": plan.title, "week_label": plan.week_label,
+        "version": plan.version, "status": plan.status, "published_at": plan.published_at,
+        "day_start_time": plan.day_start_time, "day_end_time": plan.day_end_time,
+        "weekly_mission": plan.weekly_mission,
+        "days": days, "time_slots": slots, "activities": [activity_dict(activity) for activity in plan.activities]}
+
+
+
 
 def assignment_for(db: Session, advisor_id: str, student_id: str):
     return db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == advisor_id,
@@ -236,8 +258,7 @@ def list_plans(user: User = Depends(current_user), db: Session = Depends(get_db)
     if user.role == "student": stmt = stmt.where(WeeklyPlan.student_id == user.id, WeeklyPlan.status == "published")
     elif user.role == "advisor": stmt = stmt.where(WeeklyPlan.advisor_id == user.id)
     plans = db.scalars(stmt).all()
-    return ok([{"id": x.id, "student_id": x.student_id, "title": x.title, "week_label": x.week_label, "version": x.version,
-        "status": x.status, "published_at": x.published_at, "activities": [activity_dict(a) for a in x.activities]} for x in plans])
+    return ok([plan_dict(plan) for plan in plans])
 
 
 @router.get("/plans/{plan_id}")
@@ -246,8 +267,7 @@ def get_plan(plan_id: str, user: User = Depends(current_user), db: Session = Dep
     if not plan: raise HTTPException(404, "برنامه یافت نشد")
     allowed = (user.role == "student" and plan.student_id == user.id and plan.status == "published") or (user.role == "advisor" and plan.advisor_id == user.id) or user.role == "super_admin"
     if not allowed: raise HTTPException(403, "دسترسی به برنامه مجاز نیست")
-    return ok({"id": plan.id, "student_id": plan.student_id, "title": plan.title, "week_label": plan.week_label,
-        "version": plan.version, "status": plan.status, "activities": [activity_dict(a) for a in plan.activities]})
+    return ok(plan_dict(plan))
 
 
 @router.post("/plans")
@@ -255,7 +275,11 @@ def create_plan(payload: PlanCreate, user: User = Depends(roles("advisor", "supe
     if user.role == "advisor" and not db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == user.id, AdvisorAssignment.student_id == payload.student_id, AdvisorAssignment.active.is_(True))):
         raise HTTPException(403, "دانش‌آموز به شما تخصیص داده نشده است")
     previous = db.scalar(select(WeeklyPlan).where(WeeklyPlan.student_id == payload.student_id).order_by(WeeklyPlan.version.desc()))
-    plan = WeeklyPlan(student_id=payload.student_id, advisor_id=user.id, title=payload.title, week_label=payload.week_label, version=(previous.version + 1 if previous else 1))
+    plan = WeeklyPlan(student_id=payload.student_id, advisor_id=user.id, title=payload.title, week_label=payload.week_label,
+        schedule_days_json=json.dumps(payload.days, ensure_ascii=False), time_slots_json=json.dumps(payload.time_slots, ensure_ascii=False),
+        day_start_time=payload.day_start_time, day_end_time=payload.day_end_time,
+        weekly_mission=payload.weekly_mission,
+        version=(previous.version + 1 if previous else 1))
     db.add(plan); db.flush()
     for item in payload.activities:
         start, end = item.get("start_time", "08:00"), item.get("end_time", "09:00")

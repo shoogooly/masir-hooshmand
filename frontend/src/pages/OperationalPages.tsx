@@ -1,17 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, BookOpen, CheckCircle2, Clock3, MessageSquare, Plus, Save, Search, Send, Trash2, TrendingUp, UserRound } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUp, BookOpen, CheckCircle2, Clock3, Download, MessageSquare, Plus, Save, Search, Send, Trash2, TrendingUp, UserRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import type { ExamListItem, Message, PlanActivity, Profile, ReportData, User, WeeklyPlan } from '../types'
 
+import { jalaaliMonthLength, jalaaliToDateObject, toJalaali } from 'jalaali-js'
 const days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه']
 const fmt=(date?:string)=>date?new Intl.DateTimeFormat('fa-IR',{hour:'2-digit',minute:'2-digit',month:'short',day:'numeric'}).format(new Date(date)):''
 function PageHead({title,subtitle,back}:{title:string;subtitle:string;back?:()=>void}){return <div className="section-head">{back&&<button className="icon-btn" onClick={back}><ArrowRight/></button>}<div><h1>{title}</h1><p>{subtitle}</p></div></div>}
 function State({text='در حال دریافت اطلاعات...'}:{text?:string}){return <div className="page-state">{text}</div>}
 function ErrorBox({error}:{error:unknown}){return <div className="error-box">{error instanceof Error?error.message:'خطایی رخ داد'}</div>}
 
-export function StudentPlanPage(){
+function LegacyStudentPlanPage(){
   const qc=useQueryClient();const {data,isLoading,error}=useQuery({queryKey:['plans'],queryFn:()=>api<WeeklyPlan[]>('/plans')})
   const update=useMutation({mutationFn:({item,form}:{item:PlanActivity;form:FormData})=>api(`/activities/${item.id}`,{method:'PATCH',body:JSON.stringify({status:form.get('status'),actual_minutes:Number(form.get('actual_minutes')),test_count:Number(form.get('test_count')),note:form.get('note'),idempotency_key:crypto.randomUUID()})}),onSuccess:()=>qc.invalidateQueries({queryKey:['plans']})})
   if(isLoading)return <State/>;if(error)return <ErrorBox error={error}/>;const plan=data?.[0]
@@ -55,8 +56,177 @@ type AdvisorStudent=User&{risk:string;progress:number;last_activity?:string;last
 export function AdvisorStudentsPage(){const nav=useNavigate();const [search,setSearch]=useState('');const {data,isLoading,error}=useQuery({queryKey:['advisor-dashboard'],queryFn:()=>api<{students:AdvisorStudent[]}>('/advisors/dashboard')});const rows=useMemo(()=>data?.students.filter(s=>s.full_name.includes(search))||[],[data,search]);if(isLoading)return <State/>;if(error)return <ErrorBox error={error}/>;return <div className="content-page"><PageHead title="دانش‌آموزان" subtitle="پرونده، عملکرد، برنامه و پیام‌های دانش‌آموزان شما"/><div className="list-search"><Search/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="جست‌وجوی نام دانش‌آموز..."/></div><div className="student-cards">{rows.map(s=><button key={s.id} onClick={()=>nav(`/app/advisor/students/${s.id}/report`)}><span className="avatar">{s.full_name[0]}</span><div><b>{s.full_name}</b><small>{s.last_activity||'بدون فعالیت اخیر'}</small><p>{s.last_message||'بدون پیام اخیر'}</p></div><em className={s.risk==='بالا'?'high':''}>{s.risk}</em><strong>{s.progress}٪</strong></button>)}</div></div>}
 
 type DraftActivity={day:string;subject:string;title:string;start_time:string;end_time:string}
-function PlanBuilder({studentId}:{studentId:string}){const qc=useQueryClient();const [title,setTitle]=useState('برنامه هفتگی');const [week,setWeek]=useState('هفته جاری');const [items,setItems]=useState<DraftActivity[]>([{day:'شنبه',subject:'',title:'',start_time:'08:00',end_time:'09:00'}]);const {data}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')});const create=useMutation({mutationFn:async()=>{const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,activities:items})});await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan},onSuccess:()=>qc.invalidateQueries({queryKey:['plans','advisor']})});const update=(i:number,key:keyof DraftActivity,value:string)=>setItems(all=>all.map((x,n)=>n===i?{...x,[key]:value}:x));return <div className="planner"><div className="planner-meta"><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="عنوان برنامه"/><input value={week} onChange={e=>setWeek(e.target.value)} placeholder="بازه هفته"/></div>{items.map((item,i)=><div className="planner-row" key={i}><select value={item.day} onChange={e=>update(i,'day',e.target.value)}>{days.map(d=><option key={d}>{d}</option>)}</select><input type="time" step="900" value={item.start_time} onChange={e=>update(i,'start_time',e.target.value)}/><input type="time" step="900" value={item.end_time} onChange={e=>update(i,'end_time',e.target.value)}/><input value={item.subject} onChange={e=>update(i,'subject',e.target.value)} placeholder="درس"/><input value={item.title} onChange={e=>update(i,'title',e.target.value)} placeholder="عنوان فعالیت"/><button onClick={()=>setItems(a=>a.filter((_,n)=>n!==i))}><Trash2/></button></div>)}<div className="planner-actions"><button className="small-secondary" onClick={()=>setItems(a=>[...a,{day:'شنبه',subject:'',title:'',start_time:'08:00',end_time:'09:00'}])}><Plus/> افزودن بازه</button><button className="btn btn-primary" disabled={create.isPending||items.some(x=>!x.subject||!x.title)} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار</button></div>{create.error&&<ErrorBox error={create.error}/>}<h2>نسخه‌های قبلی</h2>{data?.filter(p=>p.student_id===studentId).map(p=><div className="version-row" key={p.id}><b>{p.title}</b><span>{p.week_label} · نسخه {p.version}</span><em>{p.status==='published'?'منتشرشده':'پیش‌نویس'}</em></div>)}</div>}
+function LegacyPlanBuilder({studentId}:{studentId:string}){const qc=useQueryClient();const [title,setTitle]=useState('برنامه هفتگی');const [week,setWeek]=useState('هفته جاری');const [items,setItems]=useState<DraftActivity[]>([{day:'شنبه',subject:'',title:'',start_time:'08:00',end_time:'09:00'}]);const {data}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')});const create=useMutation({mutationFn:async()=>{const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,activities:items})});await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan},onSuccess:()=>qc.invalidateQueries({queryKey:['plans','advisor']})});const update=(i:number,key:keyof DraftActivity,value:string)=>setItems(all=>all.map((x,n)=>n===i?{...x,[key]:value}:x));return <div className="planner"><div className="planner-meta"><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="عنوان برنامه"/><input value={week} onChange={e=>setWeek(e.target.value)} placeholder="بازه هفته"/></div>{items.map((item,i)=><div className="planner-row" key={i}><select value={item.day} onChange={e=>update(i,'day',e.target.value)}>{days.map(d=><option key={d}>{d}</option>)}</select><input type="time" step="900" value={item.start_time} onChange={e=>update(i,'start_time',e.target.value)}/><input type="time" step="900" value={item.end_time} onChange={e=>update(i,'end_time',e.target.value)}/><input value={item.subject} onChange={e=>update(i,'subject',e.target.value)} placeholder="درس"/><input value={item.title} onChange={e=>update(i,'title',e.target.value)} placeholder="عنوان فعالیت"/><button onClick={()=>setItems(a=>a.filter((_,n)=>n!==i))}><Trash2/></button></div>)}<div className="planner-actions"><button className="small-secondary" onClick={()=>setItems(a=>[...a,{day:'شنبه',subject:'',title:'',start_time:'08:00',end_time:'09:00'}])}><Plus/> افزودن بازه</button><button className="btn btn-primary" disabled={create.isPending||items.some(x=>!x.subject||!x.title)} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار</button></div>{create.error&&<ErrorBox error={create.error}/>}<h2>نسخه‌های قبلی</h2>{data?.filter(p=>p.student_id===studentId).map(p=><div className="version-row" key={p.id}><b>{p.title}</b><span>{p.week_label} · نسخه {p.version}</span><em>{p.status==='published'?'منتشرشده':'پیش‌نویس'}</em></div>)}</div>}
 
 export function StudentFilePage({user,studentId,tab}:{user:User;studentId:string;tab:string}){const nav=useNavigate();const {data,isLoading,error}=useQuery({queryKey:['student-file',studentId],queryFn:()=>api<ReportData&{student:User}>(`/advisors/students/${studentId}/report`)});if(isLoading)return <State/>;if(error||!data)return <ErrorBox error={error}/>;return <div className="content-page"><PageHead back={()=>nav('/app/advisor/students')} title={data.student.full_name} subtitle="پرونده اختصاصی دانش‌آموز"/><div className="file-tabs"><button className={tab==='report'?'active':''} onClick={()=>nav(`/app/advisor/students/${studentId}/report`)}>گزارش عملکرد</button><button className={tab==='plan'?'active':''} onClick={()=>nav(`/app/advisor/students/${studentId}/plan`)}>برنامه هفتگی</button><button className={tab==='chat'?'active':''} onClick={()=>nav(`/app/advisor/students/${studentId}/chat`)}>گفت‌وگو</button></div>{tab==='report'?<ProgressPage studentId={studentId}/>:tab==='plan'?<PlanBuilder studentId={studentId}/>:<ChatPanel counterpart={data.student} currentUser={user}/>}</div>}
 
 export function AdvisorMessagesPage({user}:{user:User}){const [selected,setSelected]=useState<User>();const {data,isLoading,error}=useQuery({queryKey:['advisor-dashboard'],queryFn:()=>api<{students:AdvisorStudent[]}>('/advisors/dashboard')});if(isLoading)return <State/>;if(error)return <ErrorBox error={error}/>;return <div className="content-page"><PageHead title="پیام‌ها" subtitle="گفت‌وگوهای شما با دانش‌آموزان"/><div className="messages-layout"><aside>{data?.students.map(s=><button className={selected?.id===s.id?'active':''} onClick={()=>setSelected(s)} key={s.id}><span className="avatar">{s.full_name[0]}</span><div><b>{s.full_name}</b><small>{s.last_message||'شروع گفت‌وگو'}</small></div></button>)}</aside><main>{selected?<ChatPanel counterpart={selected} currentUser={user}/>:<State text="یک دانش‌آموز را برای گفت‌وگو انتخاب کنید."/>}</main></div></div>}
+
+type TableDay={id:string;label:string;date:string}
+type TableSlot={id:string;start:string;end:string}
+
+const defaultTableDays=()=>days.map(label=>({id:crypto.randomUUID(),label,date:''}))
+const defaultTableSlots=()=>[['08:00','10:00'],['10:00','12:00'],['12:00','14:00'],['14:00','16:00'],['16:00','18:00'],['18:00','20:00']].map(([start,end])=>({id:crypto.randomUUID(),start,end}))
+const cellKey=(dayId:string,slotId:string)=>`${dayId}|${slotId}`
+const activityAt=(plan:WeeklyPlan,day:string,start:string,end:string)=>plan.activities.find(item=>item.day===day&&item.start_time===start&&item.end_time===end)
+
+function LegacyReadOnlyPlanTable({plan,onUpdate,updating=false,tableRef}:{plan:WeeklyPlan;onUpdate?:(item:PlanActivity,form:FormData)=>void;updating?:boolean;tableRef?:{current:HTMLDivElement|null}}){
+  return <div className="plan-table-document" ref={tableRef} dir="rtl">
+    <div className="plan-document-head"><div><h2>{plan.title}</h2><p>{plan.week_label} · نسخه {plan.version}</p></div><span>مسیر هوشمند</span></div>
+    <div className="schedule-table-scroll"><table className="schedule-grid readonly-grid"><thead><tr><th className="day-column">روز و تاریخ</th>{plan.time_slots.map(slot=><th key={`${slot.start}-${slot.end}`}><b>{slot.start}</b><span>تا {slot.end}</span></th>)}</tr></thead><tbody>{plan.days.map(day=><tr key={day.label}><th className="day-column"><b>{day.label}</b><span>{day.date||'بدون تاریخ'}</span></th>{plan.time_slots.map(slot=>{const item=activityAt(plan,day.label,slot.start,slot.end);return <td key={`${day.label}-${slot.start}`} className={item?'filled':''}>{item?<><p>{item.title}</p>{onUpdate&&<details data-html2canvas-ignore="true"><summary>{item.status==='completed'?'انجام شد':'ثبت عملکرد'}</summary><form onSubmit={event=>{event.preventDefault();onUpdate(item,new FormData(event.currentTarget))}}><select name="status" defaultValue={item.status}><option value="pending">انجام نشده</option><option value="in_progress">در حال انجام</option><option value="completed">انجام شد</option></select><input name="actual_minutes" type="number" min="0" defaultValue={item.actual_minutes} placeholder="دقیقه واقعی"/><input name="test_count" type="number" min="0" defaultValue={item.test_count} placeholder="تعداد تست"/><input name="note" defaultValue={item.note} placeholder="یادداشت"/><button disabled={updating}><Save/> ذخیره</button></form></details>}</>:<span className="empty-cell">—</span>}</td>})}</tr>)}</tbody></table></div>
+  </div>
+}
+
+async function exportPlanPdf(element:HTMLDivElement,plan:WeeklyPlan){
+  const [{default:html2canvas},{jsPDF}]=await Promise.all([import('html2canvas'),import('jspdf')])
+  const scroller=element.querySelector<HTMLElement>('.daily-timeline-table, .schedule-table-scroll'),oldOverflow=scroller?.style.overflow||'',oldWidth=element.style.width
+  let canvas:HTMLCanvasElement
+  await document.fonts.ready
+  element.classList.add('pdf-exporting')
+  try{
+    if(scroller){scroller.style.overflow='visible';element.style.width=`${scroller.scrollWidth+250}px`}
+    canvas=await html2canvas(element,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false})
+  }finally{
+    if(scroller)scroller.style.overflow=oldOverflow
+    element.style.width=oldWidth
+    element.classList.remove('pdf-exporting')
+  }
+  const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true})
+  const pageWidth=pdf.internal.pageSize.getWidth(),pageHeight=pdf.internal.pageSize.getHeight(),margin=24
+  const availableWidth=pageWidth-margin*2,availableHeight=pageHeight-margin*2
+  const drawScale=Math.min(1,availableHeight/canvas.height)
+  const sourceWidth=Math.max(1,Math.floor(availableWidth/drawScale))
+  let page=0
+  for(let right=canvas.width;right>0;right-=sourceWidth){
+    const width=Math.min(sourceWidth,right),left=Math.max(0,right-width)
+    const slice=document.createElement('canvas');slice.width=width;slice.height=canvas.height
+    slice.getContext('2d')!.drawImage(canvas,left,0,width,canvas.height,0,0,width,canvas.height)
+    if(page++)pdf.addPage('a4','landscape')
+    pdf.addImage(slice.toDataURL('image/jpeg',.94),'JPEG',margin,margin,width*drawScale,canvas.height*drawScale,undefined,'FAST')
+  }
+  const safeName=plan.week_label.replace(/[\\/:*?"<>|]/g,'-')
+  pdf.save(`برنامه-${safeName}.pdf`)
+}
+
+export function StudentPlanPage(){
+  const qc=useQueryClient(),tableRef=useRef<HTMLDivElement|null>(null)
+  const [selectedId,setSelectedId]=useState(''),[exporting,setExporting]=useState(false)
+  const {data=[],isLoading,error}=useQuery({queryKey:['plans'],queryFn:()=>api<WeeklyPlan[]>('/plans')})
+  useEffect(()=>{if(data.length&&!selectedId)setSelectedId(data[0].id)},[data,selectedId])
+  const {data:studentProfile}=useQuery({queryKey:['profile'],queryFn:()=>api<Profile>('/profile')})
+  const {data:advisor}=useQuery({queryKey:['my-advisor'],queryFn:()=>api<User|null>('/students/advisor')})
+  const selected=data.find(plan=>plan.id===selectedId)||data[0]
+  const update=useMutation({mutationFn:({item,form}:{item:PlanActivity;form:FormData})=>api(`/activities/${item.id}`,{method:'PATCH',body:JSON.stringify({status:form.get('status'),actual_minutes:Number(form.get('actual_minutes')),test_count:Number(form.get('test_count')),note:form.get('note'),idempotency_key:crypto.randomUUID()})}),onSuccess:()=>qc.invalidateQueries({queryKey:['plans']})})
+  const download=async()=>{if(!selected||!tableRef.current)return;setExporting(true);try{await exportPlanPdf(tableRef.current,selected)}finally{setExporting(false)}}
+  if(isLoading)return <State/>;if(error)return <ErrorBox error={error}/>
+  return <div className="content-page"><PageHead title="برنامه من" subtitle="برنامه‌های هفتگی منتشرشده و آرشیو هفته‌های گذشته"/>{!selected?<State text="هنوز برنامه‌ای برای شما منتشر نشده است."/>:<><div className="plan-toolbar"><label>انتخاب هفته<select value={selected.id} onChange={event=>setSelectedId(event.target.value)}>{data.map(plan=><option value={plan.id} key={plan.id}>{plan.week_label} - نسخه {plan.version}</option>)}</select></label><button className="btn btn-primary" disabled={exporting} onClick={download}><Download/>{exporting?'در حال ساخت PDF...':'دانلود PDF'}</button></div><ReadOnlyPlanTable plan={selected} studentName={studentProfile?.full_name||'—'} advisorName={advisor?.full_name||'—'} tableRef={tableRef} onUpdate={(item,form)=>update.mutate({item,form})} updating={update.isPending}/></>}</div>
+}
+
+function addMinutes(time:string,minutes:number){const [hour,minute]=time.split(':').map(Number);const total=Math.min(23*60+45,hour*60+minute+minutes);return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`}
+
+function LegacyDatedPlanBuilder({studentId}:{studentId:string}){
+  const qc=useQueryClient();const [title,setTitle]=useState('برنامه هفتگی'),[week,setWeek]=useState('هفته جاری')
+  const [tableDays,setTableDays]=useState<TableDay[]>(defaultTableDays),[slots,setSlots]=useState<TableSlot[]>(defaultTableSlots),[cells,setCells]=useState<Record<string,string>>({}),[dragged,setDragged]=useState<number|null>(null)
+  const {data=[]}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')})
+  const moveDay=(from:number,to:number)=>{if(to<0||to>=tableDays.length)return;setTableDays(current=>{const next=[...current];const [row]=next.splice(from,1);next.splice(to,0,row);return next})}
+  const updateSlot=(id:string,key:'start'|'end',value:string)=>setSlots(current=>current.map(slot=>slot.id===id?{...slot,[key]:value}:slot))
+  const addSlot=()=>setSlots(current=>{const start=current.at(-1)?.end||'08:00';return [...current,{id:crypto.randomUUID(),start,end:addMinutes(start,60)}]})
+  const create=useMutation({mutationFn:async()=>{
+    const activities=tableDays.flatMap(day=>slots.flatMap(slot=>{const text=cells[cellKey(day.id,slot.id)]?.trim();return text?[{day:day.label,subject:'برنامه',title:text,start_time:slot.start,end_time:slot.end}]:[]}))
+    const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,days:tableDays.map(({label,date})=>({label,date})),time_slots:slots.map(({start,end})=>({start,end})),activities})})
+    await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan
+  },onSuccess:()=>qc.invalidateQueries({queryKey:['plans','advisor']})})
+  return <div className="table-planner"><div className="planner-meta"><label>عنوان برنامه<input value={title} onChange={event=>setTitle(event.target.value)}/></label><label>عنوان یا بازه هفته<input value={week} onChange={event=>setWeek(event.target.value)}/></label></div><div className="table-planner-hint"><p>روزها را با کشیدن ردیف یا فلش‌ها جابه‌جا کنید و داخل هر خانه توضیحات برنامه را بنویسید.</p><button className="small-secondary" onClick={addSlot}><Plus/> افزودن بازه زمانی</button></div><div className="schedule-table-scroll"><table className="schedule-grid editor-grid"><thead><tr><th className="day-column">روز و تاریخ</th>{slots.map(slot=><th key={slot.id}><input type="time" step="900" value={slot.start} onChange={event=>updateSlot(slot.id,'start',event.target.value)}/><span>تا</span><input type="time" step="900" value={slot.end} onChange={event=>updateSlot(slot.id,'end',event.target.value)}/><button aria-label="حذف بازه" disabled={slots.length===1} onClick={()=>setSlots(current=>current.filter(item=>item.id!==slot.id))}><Trash2/></button></th>)}</tr></thead><tbody>{tableDays.map((day,index)=><tr key={day.id} draggable onDragStart={()=>setDragged(index)} onDragOver={event=>event.preventDefault()} onDrop={()=>{if(dragged!==null)moveDay(dragged,index);setDragged(null)}}><th className="day-column"><div className="day-order"><button onClick={()=>moveDay(index,index-1)} disabled={index===0}><ArrowUp/></button><button onClick={()=>moveDay(index,index+1)} disabled={index===tableDays.length-1}><ArrowDown/></button></div><b>{day.label}</b><input type="date" value={day.date} onChange={event=>setTableDays(current=>current.map(item=>item.id===day.id?{...item,date:event.target.value}:item))}/></th>{slots.map(slot=><td key={slot.id}><textarea value={cells[cellKey(day.id,slot.id)]||''} onChange={event=>setCells(current=>({...current,[cellKey(day.id,slot.id)]:event.target.value}))} placeholder="توضیحات برنامه..."/></td>)}</tr>)}</tbody></table></div><div className="planner-actions"><span>{slots.length} بازه زمانی · {tableDays.length} روز</span><button className="btn btn-primary" disabled={create.isPending||!Object.values(cells).some(value=>value.trim())} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار جدول</button></div>{create.isSuccess&&<div className="success-note">جدول برنامه با موفقیت منتشر شد.</div>}{create.error&&<ErrorBox error={create.error}/>}<h2>نسخه‌های قبلی</h2>{data.filter(plan=>plan.student_id===studentId).map(plan=><div className="version-row" key={plan.id}><b>{plan.title}</b><span>{plan.week_label} · نسخه {plan.version}</span><em>{plan.status==='published'?'منتشرشده':'پیش‌نویس'}</em></div>)}</div>
+}
+
+type JalaliSelection={year:number;month:number;day:number}
+const persianMonths=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
+const jsWeekdays=['یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه','شنبه']
+const faDigits=(value:string|number)=>String(value).replace(/\d/g,digit=>'۰۱۲۳۴۵۶۷۸۹'[Number(digit)])
+const padDate=(value:number)=>String(value).padStart(2,'0')
+const initialJalali=():JalaliSelection=>{const value=toJalaali(new Date());return {year:value.jy,month:value.jm,day:value.jd}}
+export const buildJalaliWeek=(start:JalaliSelection):TableDay[]=>{const first=jalaaliToDateObject(start.year,start.month,start.day);return Array.from({length:7},(_,index)=>{const date=new Date(first);date.setDate(first.getDate()+index);const jalali=toJalaali(date);return {id:`day-${index}`,label:jsWeekdays[date.getDay()],date:faDigits(`${jalali.jy}/${padDate(jalali.jm)}/${padDate(jalali.jd)}`)}})}
+
+function PersianDateSelector({value,onChange}:{value:JalaliSelection;onChange:(value:JalaliSelection)=>void}){
+  const update=(key:keyof JalaliSelection,nextValue:number)=>{const next={...value,[key]:nextValue};next.day=Math.min(next.day,jalaaliMonthLength(next.year,next.month));onChange(next)}
+  return <div className="persian-date-selector" aria-label="تاریخ شمسی شروع برنامه"><label>سال<select value={value.year} onChange={event=>update('year',Number(event.target.value))}>{Array.from({length:31},(_,index)=>1395+index).map(year=><option value={year} key={year}>{faDigits(year)}</option>)}</select></label><label>ماه<select value={value.month} onChange={event=>update('month',Number(event.target.value))}>{persianMonths.map((month,index)=><option value={index+1} key={month}>{month}</option>)}</select></label><label>روز<select value={value.day} onChange={event=>update('day',Number(event.target.value))}>{Array.from({length:jalaaliMonthLength(value.year,value.month)},(_,index)=>index+1).map(day=><option value={day} key={day}>{faDigits(day)}</option>)}</select></label></div>
+}
+
+function LegacyGridPlanBuilder({studentId}:{studentId:string}){
+  const qc=useQueryClient();const [title,setTitle]=useState('برنامه هفتگی'),[week,setWeek]=useState('')
+  const [startDate,setStartDate]=useState<JalaliSelection>(initialJalali),[slots,setSlots]=useState<TableSlot[]>(defaultTableSlots),[cells,setCells]=useState<Record<string,string>>({})
+  const tableDays=useMemo(()=>buildJalaliWeek(startDate),[startDate])
+  useEffect(()=>setWeek(`از ${tableDays[0].date} تا ${tableDays[6].date}`),[tableDays])
+  const {data=[]}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')})
+  const updateSlot=(id:string,key:'start'|'end',value:string)=>setSlots(current=>current.map(slot=>slot.id===id?{...slot,[key]:value}:slot))
+  const addSlot=()=>setSlots(current=>{const start=current.at(-1)?.end||'08:00';return [...current,{id:crypto.randomUUID(),start,end:addMinutes(start,60)}]})
+  const create=useMutation({mutationFn:async()=>{
+    const activities=tableDays.flatMap(day=>slots.flatMap(slot=>{const text=cells[cellKey(day.id,slot.id)]?.trim();return text?[{day:day.label,subject:'برنامه',title:text,start_time:slot.start,end_time:slot.end}]:[]}))
+    const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,days:tableDays.map(({label,date})=>({label,date})),time_slots:slots.map(({start,end})=>({start,end})),activities})})
+    await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan
+  },onSuccess:()=>qc.invalidateQueries({queryKey:['plans','advisor']})})
+  return <div className="table-planner"><div className="planner-meta"><label>عنوان برنامه<input value={title} onChange={event=>setTitle(event.target.value)}/></label><label>عنوان یا بازه هفته<input value={week} onChange={event=>setWeek(event.target.value)}/></label></div><div className="planner-calendar-row"><div><b>تاریخ شمسی شروع برنامه</b><p>هفت روز جدول بر اساس این تاریخ به‌صورت خودکار تنظیم می‌شوند.</p><PersianDateSelector value={startDate} onChange={setStartDate}/></div><button className="small-secondary" onClick={addSlot}><Plus/> افزودن بازه زمانی</button></div><div className="schedule-table-scroll"><table className="schedule-grid editor-grid"><thead><tr><th className="day-column">روز و تاریخ</th>{slots.map(slot=><th key={slot.id}><input type="time" step="900" value={slot.start} onChange={event=>updateSlot(slot.id,'start',event.target.value)}/><span>تا</span><input type="time" step="900" value={slot.end} onChange={event=>updateSlot(slot.id,'end',event.target.value)}/><button aria-label="حذف بازه" disabled={slots.length===1} onClick={()=>setSlots(current=>current.filter(item=>item.id!==slot.id))}><Trash2/></button></th>)}</tr></thead><tbody>{tableDays.map(day=><tr key={day.id}><th className="day-column"><b>{day.label}</b><span>{day.date}</span></th>{slots.map(slot=><td key={slot.id}><textarea value={cells[cellKey(day.id,slot.id)]||''} onChange={event=>setCells(current=>({...current,[cellKey(day.id,slot.id)]:event.target.value}))} placeholder="توضیحات برنامه..."/></td>)}</tr>)}</tbody></table></div><div className="planner-actions"><span>{slots.length} بازه زمانی · از {tableDays[0].label} تا {tableDays[6].label}</span><button className="btn btn-primary" disabled={create.isPending||!Object.values(cells).some(value=>value.trim())} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار جدول</button></div>{create.isSuccess&&<div className="success-note">جدول برنامه با موفقیت منتشر شد.</div>}{create.error&&<ErrorBox error={create.error}/>}<h2>نسخه‌های قبلی</h2>{data.filter(plan=>plan.student_id===studentId).map(plan=><div className="version-row" key={plan.id}><b>{plan.title}</b><span>{plan.week_label} · نسخه {plan.version}</span><em>{plan.status==='published'?'منتشرشده':'پیش‌نویس'}</em></div>)}</div>
+}
+
+type TimelineDraft={id:string;dayId:string;start:string;end:string;title:string}
+const normalizeClock=(value:string)=>value.replace(/[۰-۹]/g,digit=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/[٠-٩]/g,digit=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+const timeToMinutes=(value:string)=>{const normalized=normalizeClock(value);if(!/^\d{2}:\d{2}$/.test(normalized))return Number.NaN;const [hour,minute]=normalized.split(':').map(Number);if(hour===24&&minute===0)return 1440;if(hour>23||minute>59)return Number.NaN;return hour*60+minute}
+const minutesToTime=(value:number)=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(value%60).padStart(2,'0')}`
+export const timelinePosition=(start:string,end:string,rangeStart:string,rangeEnd:string)=>{const base=timeToMinutes(rangeStart),itemStart=timeToMinutes(start),itemEnd=timeToMinutes(end),total=timeToMinutes(rangeEnd)-base;if(![base,itemStart,itemEnd,total].every(Number.isFinite)||total<=0)return {right:'0%',width:'0%'};return {right:`${(itemStart-base)/total*100}%`,width:`${(itemEnd-itemStart)/total*100}%`}}
+
+function TimeSelect({value,onChange,min=0,max=1440,label}:{value:string;onChange:(value:string)=>void;min?:number;max?:number;label:string}){
+  return <label>{label}<input type="text" inputMode="numeric" dir="ltr" maxLength={5} pattern="(?:[01]\\d|2[0-3]):[0-5]\\d|24:00" placeholder="08:00" aria-label={label} data-minutes-min={min} data-minutes-max={max} value={value} onChange={event=>onChange(normalizeClock(event.target.value))}/></label>
+}
+
+function TimelineTrack({items,rangeStart,rangeEnd}:{items:{id:string;start_time:string;end_time:string;title:string}[];rangeStart:string;rangeEnd:string}){
+  const rangeMinutes=timeToMinutes(rangeEnd)-timeToMinutes(rangeStart),hourWidth=Number.isFinite(rangeMinutes)&&rangeMinutes>0?100/(rangeMinutes/60):100
+  return <div className="timeline-track" dir="rtl" style={{backgroundSize:`${hourWidth}% 100%`}}><span className="timeline-edge start">{faDigits(rangeStart)}</span><span className="timeline-edge end">{faDigits(rangeEnd)}</span>{items.map(item=>{const duration=timeToMinutes(item.end_time)-timeToMinutes(item.start_time),size=duration<=30?'xs':duration<=60?'sm':duration<=120?'md':'lg';return <article className={`timeline-block pdf-font-${size}`} key={item.id} style={timelinePosition(item.start_time,item.end_time,rangeStart,rangeEnd)}><b>{item.title}</b><small>{faDigits(item.start_time)} تا {faDigits(item.end_time)}</small></article>})}</div>
+}
+
+function ReadOnlyPlanTable({plan,studentName='—',advisorName='—',onUpdate,updating=false,tableRef}:{plan:WeeklyPlan;studentName?:string;advisorName?:string;onUpdate?:(item:PlanActivity,form:FormData)=>void;updating?:boolean;tableRef?:{current:HTMLDivElement|null}}){
+  const rangeStart=plan.day_start_time||'08:00',rangeEnd=plan.day_end_time||'24:00'
+  return <div className="plan-table-document" ref={tableRef} dir="rtl"><div className="pdf-reference-header"><strong className="pdf-site-name">مسیر هوشمند</strong><blockquote className="pdf-green-quote">«افراد با انگیزه، بهتر از افراد با استعداد را شکست می‌دهند.»</blockquote><div><h1>مباحث هفتگی (آقا/خانم «{studentName}»)</h1><p>مشاور و برنامه‌ریز درسی: «{advisorName}»</p></div></div><div className="plan-document-head"><div><h2>{plan.title}</h2><p>{plan.week_label} · نسخه {plan.version}</p></div><span>بازه روزانه {faDigits(rangeStart)} تا {faDigits(rangeEnd)}</span></div><section className="student-mission-card"><b>ماموریت هفته</b><p>{plan.weekly_mission?.trim()||'برای این هفته ماموریتی ثبت نشده است.'}</p></section><div className="pdf-main-layout"><aside className="pdf-weekly-mission"><h3>ماموریت هفته</h3><p>{plan.weekly_mission?.trim()||'ماموریتی برای این هفته ثبت نشده است.'}</p></aside><div className="daily-timeline-table">{plan.days.map(day=>{const items=plan.activities.filter(item=>item.day===day.label).sort((a,b)=>a.start_time.localeCompare(b.start_time));return <section className="daily-timeline-row" key={day.label}><header><b>{day.label}</b><span>{day.date||'بدون تاریخ'}</span></header><div className="daily-timeline-content"><TimelineTrack items={items} rangeStart={rangeStart} rangeEnd={rangeEnd}/>{onUpdate&&items.length>0&&<div className="timeline-performance" data-html2canvas-ignore="true">{items.map(item=><details key={item.id}><summary>{item.title} · ثبت عملکرد</summary><form onSubmit={event=>{event.preventDefault();onUpdate(item,new FormData(event.currentTarget))}}><select name="status" defaultValue={item.status}><option value="pending">انجام نشده</option><option value="in_progress">در حال انجام</option><option value="completed">انجام شد</option></select><input name="actual_minutes" type="number" min="0" defaultValue={item.actual_minutes} placeholder="دقیقه واقعی"/><input name="test_count" type="number" min="0" defaultValue={item.test_count} placeholder="تعداد تست"/><input name="note" defaultValue={item.note} placeholder="یادداشت"/><button disabled={updating}><Save/> ذخیره</button></form></details>)}</div>}</div></section>})}</div></div><footer className="pdf-site-footer">مسیر هوشمند</footer></div>
+}
+
+export function validateTimeline(items:TimelineDraft[],rangeStart:string,rangeEnd:string){
+  const start=timeToMinutes(rangeStart),end=timeToMinutes(rangeEnd)
+  if(start>=end)return 'ساعت پایان بازه کلی باید بعد از ساعت شروع باشد.'
+  if(!Number.isFinite(start)||!Number.isFinite(end))return 'ساعت‌ها را با قالب درست، مانند 08:00 یا 09:06 وارد کنید.'
+  if(!items.length)return 'حداقل یک برنامه برای هفته وارد کنید.'
+  for(const item of items){
+    const itemStart=timeToMinutes(item.start),itemEnd=timeToMinutes(item.end)
+    if(!Number.isFinite(itemStart)||!Number.isFinite(itemEnd))return 'ساعت‌ها را با قالب درست، مانند 08:00 یا 09:06 وارد کنید.'
+    if(!item.title.trim())return 'توضیحات همه بازه‌ها را کامل کنید.'
+    if(itemStart>=itemEnd)return 'ساعت پایان هر برنامه باید بعد از ساعت شروع آن باشد.'
+    if(itemStart<start||itemEnd>end)return 'همه برنامه‌ها باید داخل بازه کلی روز باشند.'
+  }
+  for(const dayId of new Set(items.map(item=>item.dayId))){
+    const sorted=items.filter(item=>item.dayId===dayId).sort((a,b)=>a.start.localeCompare(b.start))
+    if(sorted.some((item,index)=>index>0&&item.start<sorted[index-1].end))return 'بازه‌های یک روز نباید هم‌پوشانی داشته باشند.'
+  }
+  return ''
+}
+
+function nextAvailableRange(items:TimelineDraft[],rangeStart:string,rangeEnd:string){
+  let cursor=timeToMinutes(rangeStart),limit=timeToMinutes(rangeEnd)
+  if(!Number.isFinite(cursor)||!Number.isFinite(limit)||cursor>=limit)return null
+  for(const item of [...items].sort((a,b)=>a.start.localeCompare(b.start))){
+    const itemStart=timeToMinutes(item.start)
+    if(itemStart-cursor>=1)return {start:minutesToTime(cursor),end:minutesToTime(Math.min(cursor+60,itemStart))}
+    cursor=Math.max(cursor,timeToMinutes(item.end))
+  }
+  if(limit-cursor>=1)return {start:minutesToTime(cursor),end:minutesToTime(Math.min(cursor+60,limit))}
+  return null
+}
+function PlanBuilder({studentId}:{studentId:string}){
+  const qc=useQueryClient();const [title,setTitle]=useState('برنامه هفتگی'),[week,setWeek]=useState(''),[startDate,setStartDate]=useState<JalaliSelection>(initialJalali)
+  const [rangeStart,setRangeStart]=useState('08:00'),[rangeEnd,setRangeEnd]=useState('24:00'),[items,setItems]=useState<TimelineDraft[]>([])
+  const [mission,setMission]=useState('')
+  const tableDays=useMemo(()=>buildJalaliWeek(startDate),[startDate]);useEffect(()=>setWeek(`از ${tableDays[0].date} تا ${tableDays[6].date}`),[tableDays])
+  const {data=[]}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')})
+  const addItem=(dayId:string)=>setItems(current=>{const range=nextAvailableRange(current.filter(item=>item.dayId===dayId),rangeStart,rangeEnd);return range?[...current,{id:crypto.randomUUID(),dayId,...range,title:''}]:current})
+  const updateItem=(id:string,key:'start'|'end'|'title',value:string)=>setItems(current=>current.map(item=>item.id===id?{...item,[key]:value}:item))
+  const error=validateTimeline(items,rangeStart,rangeEnd)
+  const create=useMutation({mutationFn:async()=>{if(error)throw new Error(error);const activities=items.map(item=>({day:tableDays.find(day=>day.id===item.dayId)!.label,subject:'برنامه',title:item.title.trim(),start_time:item.start,end_time:item.end}));const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,weekly_mission:mission,day_start_time:rangeStart,day_end_time:rangeEnd,days:tableDays.map(({label,date})=>({label,date})),time_slots:[],activities})});await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan},onSuccess:()=>qc.invalidateQueries({queryKey:['plans','advisor']})})
+  return <div className="table-planner timeline-planner"><div className="planner-meta"><label>عنوان برنامه<input value={title} onChange={event=>setTitle(event.target.value)}/></label><label>عنوان یا بازه هفته<input value={week} onChange={event=>setWeek(event.target.value)}/></label><label className="mission-field">ماموریت هفته<textarea value={mission} maxLength={2000} onChange={event=>setMission(event.target.value)} placeholder="ماموریت و هدف اصلی این هفته را بنویسید..."/></label></div><div className="planner-calendar-row"><div><b>تاریخ شمسی شروع برنامه</b><p>روز و تاریخ تمام هفت روز خودکار محاسبه می‌شود.</p><PersianDateSelector value={startDate} onChange={setStartDate}/></div><div className="daily-range-fields"><TimeSelect label="شروع کل روز" value={rangeStart} max={timeToMinutes(rangeEnd)-1} onChange={setRangeStart}/><TimeSelect label="پایان کل روز" value={rangeEnd} min={timeToMinutes(rangeStart)+1} onChange={setRangeEnd}/></div></div><div className="timeline-editor-list">{tableDays.map(day=>{const dayItems=items.filter(item=>item.dayId===day.id).sort((a,b)=>a.start.localeCompare(b.start));return <section className="timeline-editor-day" key={day.id}><header><b>{day.label}</b><span>{day.date}</span></header><div className="timeline-editor-body"><TimelineTrack items={dayItems.map(item=>({id:item.id,start_time:item.start,end_time:item.end,title:item.title||'برنامه جدید'}))} rangeStart={rangeStart} rangeEnd={rangeEnd}/><div className="timeline-item-editors">{dayItems.map(item=><div className="timeline-item-editor" key={item.id}><TimeSelect label="از" value={item.start} min={timeToMinutes(rangeStart)} max={timeToMinutes(rangeEnd)-1} onChange={value=>updateItem(item.id,'start',value)}/><TimeSelect label="تا" value={item.end} min={timeToMinutes(rangeStart)+1} max={timeToMinutes(rangeEnd)} onChange={value=>updateItem(item.id,'end',value)}/><label className="timeline-description">توضیحات<input value={item.title} onChange={event=>updateItem(item.id,'title',event.target.value)} placeholder="مثلاً مطالعه فصل سوم ریاضی"/></label><button aria-label="حذف برنامه" onClick={()=>setItems(current=>current.filter(entry=>entry.id!==item.id))}><Trash2/></button></div>)}</div><button className="add-day-range" onClick={()=>addItem(day.id)}><Plus/> افزودن بازه برای {day.label}</button></div></section>})}</div><div className="planner-actions"><span className={error?'timeline-error':''}>{error||`${items.length} برنامه در بازه ${faDigits(rangeStart)} تا ${faDigits(rangeEnd)}`}</span><button className="btn btn-primary" disabled={create.isPending||Boolean(error)} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار برنامه</button></div>{create.isSuccess&&<div className="success-note">برنامه خط زمانی با موفقیت منتشر شد.</div>}{create.error&&<ErrorBox error={create.error}/>}<h2>نسخه‌های قبلی</h2>{data.filter(plan=>plan.student_id===studentId).map(plan=><div className="version-row" key={plan.id}><b>{plan.title}</b><span>{plan.week_label} · نسخه {plan.version}</span><em>{plan.status==='published'?'منتشرشده':'پیش‌نویس'}</em></div>)}</div>
+}

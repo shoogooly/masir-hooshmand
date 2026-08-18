@@ -75,7 +75,10 @@ def seed_database(db: Session):
     db.flush()
     db.add(StudentProfile(user_id=student.id))
     db.add(AdvisorAssignment(advisor_id=advisor.id, student_id=student.id))
-    plan = WeeklyPlan(student_id=student.id, advisor_id=advisor.id, title="برنامه آمادگی هفتگی", week_label="۲۰ تا ۲۶ مرداد", status="published", published_at=utcnow())
+    plan = WeeklyPlan(student_id=student.id, advisor_id=advisor.id, title="برنامه آمادگی هفتگی", week_label="۲۰ تا ۲۶ مرداد",
+        schedule_days_json=json.dumps([{"label": day, "date": ""} for day in ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]], ensure_ascii=False),
+        time_slots_json=json.dumps([{"start": start, "end": end} for start, end in [("08:00", "10:00"), ("10:00", "12:00"), ("12:00", "14:00"), ("14:00", "16:00"), ("16:00", "18:00"), ("18:00", "20:00")]]),
+        status="published", published_at=utcnow())
     db.add(plan)
     db.flush()
     db.add_all([
