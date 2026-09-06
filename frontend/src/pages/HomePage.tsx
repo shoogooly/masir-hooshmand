@@ -4,6 +4,7 @@ import Brand from '../components/Brand'
 import ChartCard from '../components/ChartCard'
 import MockDashboard from '../components/MockDashboard'
 import PublicHeader from '../components/PublicHeader'
+import PublicPricing from '../components/PublicPricing'
 import { fa, services, steps, testimonials } from '../data/content'
 
 export default function HomePage() {
@@ -27,7 +28,7 @@ export default function HomePage() {
 
     <section className="section container ai-section" id="features"><div className="ai-visual"><div className="ai-orbit"><BrainCircuit/><span>AI</span><i/><i/><i/></div></div><div className="ai-copy"><div className="overline">هوشمندی در خدمت یادگیری</div><h2>هوش مصنوعی چگونه کمک می‌کند؟</h2><div className="ai-list"><article><span><ChartNo/></span><div><h3>تحلیل وضعیت یادگیری</h3><p>بررسی مداوم عملکرد و عادت‌های مطالعه شما</p></div></article><article><span><Clock3/></span><div><h3>شناسایی نقاط ضعف</h3><p>پیدا کردن موضوعاتی که به تمرین بیشتری نیاز دارند</p></div></article><article><span><Users/></span><div><h3>ساخت برنامه هفتگی</h3><p>یک برنامه عملی با بازبینی مشاور اختصاصی شما</p></div></article></div></div><div className="progress-panel"><div className="progress-head"><h3>گزارش پیشرفت شما</h3><select aria-label="انتخاب هفته"><option>هفته جاری</option></select></div><div className="progress-body"><div className="big-donut"><b>۸۷٪</b><span>درصد پیشرفت</span></div><div className="report-facts"><p><Clock3/><span>ساعت مطالعه</span><b>۳۲ ساعت</b></p><p><BadgeCheck/><span>تعداد آزمون‌ها</span><b>۴ آزمون</b></p><p><Star/><span>میانگین عملکرد</span><b>عالی</b></p></div></div><ChartCard/></div></section>
 
-    <section className="pricing section" id="pricing"><div className="section-title"><h2>اشتراک مناسب خود را انتخاب کنید</h2><p>بدون هزینه پنهان؛ هر زمان که بخواهید قابل تغییر</p></div><div className="pricing-wrap container"><div className="pricing-art"><GraduationCap/><h3>یک سرمایه‌گذاری کوچک<br/>برای یک آینده بزرگ</h3><p>همین امروز شروع کنید</p></div><PriceCard title="اشتراک ماهانه" price="۲۰۰,۰۰۰" period="ماه" features={['مشاور اختصاصی','برنامه هفتگی شخصی','آزمون‌های هفتگی','تحلیل هوش مصنوعی','گزارش پیشرفت']} /><PriceCard featured title="اشتراک سالانه" price="۱,۹۲۰,۰۰۰" period="سال" features={['همه امکانات اشتراک ماهانه','دو ماه اشتراک هدیه','گزارش‌های پیشرفته','پشتیبانی سریع‌تر','صرفه‌جویی ۲۰٪']} /></div></section>
+    <PublicPricing/>
 
     <section className="section container" id="reviews"><div className="section-title"><h2>دانش‌آموزان ما چه می‌گویند؟</h2><p>تجربه کسانی که مسیرشان را با مسیر هوشمند ساخته‌اند</p></div><div className="testimonials">{testimonials.map((t,i)=><article key={t.name}><div className="quote-head"><span className={`avatar av-${i}`}>{t.name[0]}</span><p><b>{t.name}</b><small>{t.meta}</small></p></div><p>{t.text}</p><div className="stars">★★★★★</div></article>)}</div></section>
 

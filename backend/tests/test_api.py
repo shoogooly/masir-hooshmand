@@ -19,8 +19,8 @@ def test_health():
 def test_otp_and_student_dashboard():
     with TestClient(app) as client:
         request = client.post("/api/v1/auth/request-otp", json={"phone": "09120000001"})
-        assert request.json()["data"]["dev_code"] == "12345"
-        login = client.post("/api/v1/auth/verify-otp", json={"phone": "09120000001", "code": "12345", "role": "student"})
+        assert request.json()["data"]["dev_code"] == "123456"
+        login = client.post("/api/v1/auth/verify-otp", json={"phone": "09120000001", "code": "123456", "role": "student"})
         assert login.status_code == 200
         dashboard = client.get("/api/v1/students/dashboard")
         assert dashboard.status_code == 200
@@ -29,14 +29,14 @@ def test_otp_and_student_dashboard():
 
 def test_role_isolation():
     with TestClient(app) as client:
-        login = client.post("/api/v1/auth/verify-otp", json={"phone": "09120000001", "code": "12345", "role": "student"})
+        login = client.post("/api/v1/auth/verify-otp", json={"phone": "09120000001", "code": "123456", "role": "student"})
         csrf = login.json()["data"]["csrf_token"]
         response = client.get("/api/v1/admin/dashboard", headers={"X-CSRF-Token": csrf})
         assert response.status_code == 403
 
 
 def login(client, phone):
-    response = client.post("/api/v1/auth/verify-otp", json={"phone": phone, "code": "12345", "role": "student" if phone.endswith("1") else "advisor"})
+    response = client.post("/api/v1/auth/verify-otp", json={"phone": phone, "code": "123456", "role": "student" if phone.endswith("1") else "advisor"})
     return response.json()["data"]["csrf_token"]
 
 

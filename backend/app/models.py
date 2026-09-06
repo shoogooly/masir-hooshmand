@@ -27,9 +27,14 @@ class User(Base, TimeMixin):
     full_name: Mapped[str] = mapped_column(String(120), default="کاربر مسیر هوشمند")
     role: Mapped[str] = mapped_column(String(32), default="student", index=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
+    password_hash: Mapped[str] = mapped_column(String(255), default="")
+    onboarding_step: Mapped[str] = mapped_column(String(40), default="completed")
     is_admin_mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    profile: Mapped[StudentProfile | None] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")
+    profile: Mapped[StudentProfile | None] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="StudentProfile.user_id")
+    advisor_profile: Mapped[AdvisorProfile | None] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="AdvisorProfile.user_id")
+    referred_by_advisor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    terms_accepted_version: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class RefreshToken(Base):
@@ -46,13 +51,64 @@ class StudentProfile(Base, TimeMixin):
     __tablename__ = "student_profiles"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), unique=True)
+    education_level: Mapped[str] = mapped_column(String(20), default="upper_secondary", index=True)
     grade: Mapped[str] = mapped_column(String(40), default="دوازدهم")
     major: Mapped[str] = mapped_column(String(40), default="تجربی")
     school: Mapped[str] = mapped_column(String(120), default="دبیرستان نمونه")
     goal: Mapped[str] = mapped_column(String(200), default="قبولی در رشته پزشکی")
+    national_code: Mapped[str] = mapped_column(String(10), default="")
+    birth_date: Mapped[str] = mapped_column(String(10), default="")
+    parent_name: Mapped[str] = mapped_column(String(120), default="")
+    parent_phone: Mapped[str] = mapped_column(String(16), default="")
+    address: Mapped[str] = mapped_column(Text, default="")
+    average_grade9: Mapped[float | None] = mapped_column(Float, nullable=True)
+    average_grade7: Mapped[float | None] = mapped_column(Float, nullable=True)
+    average_grade8: Mapped[float | None] = mapped_column(Float, nullable=True)
+    average_grade10: Mapped[float | None] = mapped_column(Float, nullable=True)
+    average_grade11: Mapped[float | None] = mapped_column(Float, nullable=True)
+    average_grade12: Mapped[float | None] = mapped_column(Float, nullable=True)
+    school_schedule_json: Mapped[str] = mapped_column(Text, default="{}")
+    extra_classes_json: Mapped[str] = mapped_column(Text, default="{}")
+    advisor_selection_mode: Mapped[str] = mapped_column(String(20), default="admin")
+    preferred_advisor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     strengths: Mapped[str] = mapped_column(Text, default='["زیست‌شناسی","شیمی"]')
+    registration_review_status: Mapped[str] = mapped_column(String(20), default="not_reviewed", index=True)
+    registration_review_note: Mapped[str] = mapped_column(Text, default="")
+    registration_reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    registration_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    correction_return_step: Mapped[str] = mapped_column(String(40), default="selection")
     weaknesses: Mapped[str] = mapped_column(Text, default='["فیزیک","مدیریت زمان"]')
-    user: Mapped[User] = relationship(back_populates="profile")
+    user: Mapped[User] = relationship(back_populates="profile", foreign_keys=[user_id])
+
+
+class AdvisorProfile(Base, TimeMixin):
+    __tablename__ = "advisor_profiles"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    national_code: Mapped[str] = mapped_column(String(10), default="")
+    birth_date: Mapped[str] = mapped_column(String(10), default="")
+    address: Mapped[str] = mapped_column(Text, default="")
+    education_degree: Mapped[str] = mapped_column(String(80), default="")
+    education_field: Mapped[str] = mapped_column(String(120), default="")
+    experience_years: Mapped[int] = mapped_column(Integer, default=0)
+    education_level: Mapped[str] = mapped_column(String(20), default="upper_secondary", index=True)
+    bio: Mapped[str] = mapped_column(Text, default="")
+    support_capacity: Mapped[int] = mapped_column(Integer, default=20)
+    academic_year: Mapped[str] = mapped_column(String(20), default="1405-1406")
+    documents_json: Mapped[str] = mapped_column(Text, default="[]")
+    approval_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    lead_approval_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    lead_reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    lead_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    admin_approval_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    admin_reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    admin_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    user: Mapped[User] = relationship(back_populates="advisor_profile", foreign_keys=[user_id])
+
+
 
 
 class AdvisorAssignment(Base, TimeMixin):
@@ -62,6 +118,10 @@ class AdvisorAssignment(Base, TimeMixin):
     student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     __table_args__ = (UniqueConstraint("advisor_id", "student_id"),)
+    approval_status: Mapped[str] = mapped_column(String(24), default="approved", index=True)
+    assignment_source: Mapped[str] = mapped_column(String(20), default="admin")
+    assigned_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class WeeklyPlan(Base, TimeMixin):
@@ -80,6 +140,9 @@ class WeeklyPlan(Base, TimeMixin):
     status: Mapped[str] = mapped_column(String(20), default="draft")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activities: Mapped[list[Activity]] = relationship(back_populates="plan", cascade="all, delete-orphan")
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    student_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    advisor_expiry_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Activity(Base, TimeMixin):
@@ -110,6 +173,18 @@ class Message(Base, TimeMixin):
     internal_note: Mapped[bool] = mapped_column(Boolean, default=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+
+class Notification(Base, TimeMixin):
+    __tablename__ = "notifications"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    actor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    body: Mapped[str] = mapped_column(Text, default="")
+    link: Mapped[str] = mapped_column(String(255), default="")
+    related_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 class Question(Base, TimeMixin):
     __tablename__ = "questions"
@@ -185,6 +260,7 @@ class SubscriptionPlan(Base, TimeMixin):
     price: Mapped[int] = mapped_column(Integer)
     features_json: Mapped[str] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    referral_price: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Order(Base, TimeMixin):
@@ -196,6 +272,7 @@ class Order(Base, TimeMixin):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     idempotency_key: Mapped[str] = mapped_column(String(80), unique=True)
     provider_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    custom_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Subscription(Base, TimeMixin):
@@ -208,6 +285,13 @@ class Subscription(Base, TimeMixin):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(20), default="active")
 
+
+class SiteSetting(Base, TimeMixin):
+    __tablename__ = "site_settings"
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"

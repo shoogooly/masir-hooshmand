@@ -21,6 +21,10 @@ export const auth = {
   me: () => api<User>('/auth/me'),
   requestOtp: (phone: string) => api<{ sent: boolean; dev_code?: string }>('/auth/request-otp', { method: 'POST', body: JSON.stringify({ phone }) }),
   verifyOtp: (phone: string, code: string, role: string, mfa_code?: string) => api<{ user: User; csrf_token: string }>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, role, mfa_code }) }),
+  register: (phone: string, role: string, sms_code: string, password: string, password_confirm: string) => api<{ user: User; message: string }>('/auth/register', { method: 'POST', body: JSON.stringify({ phone, role, sms_code, password, password_confirm }) }),
+  login: (phone: string, password: string) => api<{ user: User; csrf_token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ phone, password }) }),
+  staffLogin: (phone: string, code: string) => api<{ user: User; csrf_token: string }>('/auth/staff-login', { method: 'POST', body: JSON.stringify({ phone, code }) }),
+  onboarding: () => api<{ user: User; step: string }>('/onboarding/status'),
   refresh: () => api<{ user: User; csrf_token: string }>('/auth/refresh', { method: 'POST' }),
   logout: () => api('/auth/logout', { method: 'POST' }),
 }

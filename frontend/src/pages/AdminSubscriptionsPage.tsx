@@ -1,0 +1,18 @@
+import { FormEvent } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CalendarPlus, CreditCard, Save } from 'lucide-react'
+import { api } from '../api'
+import type { AdminStudent } from '../types'
+
+type Plan={id:string;name:string;period:string;price:number;referral_price:number;active:boolean;features:string[]}
+type Finance={plans:Plan[];orders:{id:string;user_name:string;amount:number;status:string;created_at:string}[]}
+
+export default function AdminSubscriptionsPage(){
+  const qc=useQueryClient();const finance=useQuery({queryKey:['admin-finance'],queryFn:()=>api<Finance>('/admin/finance')});const students=useQuery({queryKey:['admin-students'],queryFn:()=>api<AdminStudent[]>('/admin/students')})
+  const update=useMutation({mutationFn:({id,body}:{id:string;body:object})=>api(`/admin/subscription-plans/${id}`,{method:'PATCH',body:JSON.stringify(body)}),onSuccess:()=>qc.invalidateQueries({queryKey:['admin-finance']})})
+  const grant=useMutation({mutationFn:(body:object)=>api('/admin/subscriptions/free',{method:'POST',body:JSON.stringify(body)}),onSuccess:()=>{qc.invalidateQueries({queryKey:['admin-students']});qc.invalidateQueries({queryKey:['admin-finance']})}})
+  function savePlan(e:FormEvent<HTMLFormElement>,id:string){e.preventDefault();const f=new FormData(e.currentTarget);update.mutate({id,body:{price:Number(f.get('price')),referral_price:Number(f.get('referral_price')),active:f.get('active')==='on'}})}
+  function free(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);grant.mutate({student_id:f.get('student_id'),expires_at:new Date(String(f.get('expires_at'))).toISOString()})}
+  if(!finance.data)return <div className="page-state">در حال دریافت تعرفه‌ها...</div>
+  return <div className="content-page"><div className="section-head"><div><h1>اشتراک و امور مالی</h1><p>تعرفه عادی و تعرفه دانش‌آموز معرفی‌شده توسط مشاور، و فعال‌سازی رایگان حساب.</p></div></div><div className="subscription-admin-grid">{finance.data.plans.map(plan=><form className="panel subscription-editor" key={plan.id} onSubmit={e=>savePlan(e,plan.id)}><CreditCard/><h2>{plan.name}</h2><label>مبلغ عادی (تومان)<input name="price" type="number" min="0" defaultValue={plan.price}/></label><label>مبلغ معرفی توسط مشاور<input name="referral_price" type="number" min="0" defaultValue={plan.referral_price||plan.price}/></label><label className="switch-line"><input name="active" type="checkbox" defaultChecked={plan.active}/> قابل خرید</label><button className="btn btn-primary" disabled={update.isPending}><Save/> ذخیره تعرفه</button></form>)}</div><form className="panel free-subscription" onSubmit={free}><CalendarPlus/><div><h2>اعطای اشتراک رایگان</h2><p>حساب دانش‌آموز تا تاریخی که تعیین می‌کنید فعال می‌ماند.</p></div><select name="student_id" required defaultValue=""><option value="">انتخاب دانش‌آموز...</option>{students.data?.map(s=><option key={s.id} value={s.id}>{s.full_name} — {s.phone}</option>)}</select><input name="expires_at" type="date" required/><button className="btn btn-primary" disabled={grant.isPending}>فعال‌سازی رایگان</button>{grant.isSuccess&&<span className="success-note">اشتراک رایگان فعال شد.</span>}</form><div className="admin-table"><div className="admin-table-head finance"><span>دانش‌آموز</span><span>مبلغ</span><span>وضعیت</span><span>تاریخ</span></div>{finance.data.orders.map(order=><div className="admin-table-row finance" key={order.id}><b>{order.user_name}</b><span>{order.amount.toLocaleString('fa-IR')} تومان</span><span>{order.status}</span><span>{new Date(order.created_at).toLocaleDateString('fa-IR')}</span></div>)}</div></div>
+}

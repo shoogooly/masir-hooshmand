@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -10,6 +10,187 @@ class OTPVerify(OTPRequest):
     code: str = Field(min_length=5, max_length=8)
     role: str = "student"
     mfa_code: str | None = None
+
+SCHOOL_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه"]
+
+
+class RegistrationDocument(BaseModel):
+    kind: str = Field(min_length=2, max_length=60)
+    name: str = Field(min_length=2, max_length=160)
+    content_type: str = Field(pattern=r"^(application/pdf|image/(jpeg|png|webp))$")
+    content_base64: str = Field(min_length=16, max_length=5_600_000)
+
+
+class StudentRegistration(OTPRequest):
+    full_name: str = Field(min_length=3, max_length=120)
+    national_code: str = Field(pattern=r"^\d{10}$")
+    birth_date: str = Field(min_length=8, max_length=10)
+    parent_name: str = Field(min_length=3, max_length=120)
+    parent_phone: str = Field(pattern=r"^09\d{9}$")
+    address: str = Field(min_length=10, max_length=1000)
+    grade: Literal["هفتم", "هشتم", "نهم", "دهم", "یازدهم", "دوازدهم", "پشت کنکوری"]
+    major: str = Field(default="عمومی", max_length=40)
+    school: str = Field(min_length=2, max_length=120)
+    goal: str = Field(default="", max_length=200)
+    average_grade7: float | None = Field(default=None, ge=0, le=20)
+    average_grade8: float | None = Field(default=None, ge=0, le=20)
+    average_grade9: float | None = Field(default=None, ge=0, le=20)
+    average_grade10: float | None = Field(default=None, ge=0, le=20)
+    average_grade11: float | None = Field(default=None, ge=0, le=20)
+    average_grade12: float | None = Field(default=None, ge=0, le=20)
+    school_schedule: dict[str, list[str]] = Field(default_factory=dict)
+    extra_classes: dict[str, str] = Field(default_factory=dict)
+    plan_id: str
+    advisor_selection_mode: Literal["self", "admin"] = "admin"
+    advisor_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_student_registration(self):
+        required_average = {"هشتم": self.average_grade7, "نهم": self.average_grade8,
+            "دهم": self.average_grade9, "یازدهم": self.average_grade10,
+            "دوازدهم": self.average_grade11, "پشت کنکوری": self.average_grade12}
+        if self.grade in required_average and required_average[self.grade] is None:
+            raise ValueError("معدل سال تحصیلی الزامی وارد نشده است")
+        if self.grade != "پشت کنکوری":
+            if any(len(self.school_schedule.get(day, [])) != 4 or any(not value.strip() for value in self.school_schedule[day]) for day in SCHOOL_DAYS):
+                raise ValueError("برنامه مدرسه شنبه تا چهارشنبه باید برای هر روز چهار زنگ کامل داشته باشد")
+        if self.advisor_selection_mode == "self" and not self.advisor_id:
+            raise ValueError("مشاور مورد نظر را انتخاب کنید")
+        return self
+
+
+class AdvisorRegistration(OTPRequest):
+    full_name: str = Field(min_length=3, max_length=120)
+    national_code: str = Field(pattern=r"^\d{10}$")
+    birth_date: str = Field(min_length=8, max_length=10)
+    address: str = Field(min_length=10, max_length=1000)
+    education_degree: str = Field(min_length=2, max_length=80)
+    education_field: str = Field(min_length=2, max_length=120)
+    experience_years: int = Field(ge=0, le=60)
+    bio: str = Field(min_length=20, max_length=2000)
+    support_capacity: int = Field(ge=1, le=500)
+    academic_year: str = Field(min_length=7, max_length=20)
+    documents: list[RegistrationDocument] = Field(min_length=2, max_length=8)
+
+
+class AdvisorReview(BaseModel):
+    status: Literal["approved", "rejected"]
+    note: str = Field(default="", max_length=1000)
+
+class StaffCreate(BaseModel):
+    phone: str = Field(pattern=r"^09\d{9}$")
+    full_name: str = Field(min_length=3, max_length=120)
+    role: Literal["secretary", "upper_secondary_manager", "lower_secondary_manager"]
+
+
+class StaffOTPVerify(OTPRequest):
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class AssignmentDecision(BaseModel):
+    decision: Literal["approved", "rejected"]
+    note: str = Field(default="", max_length=500)
+
+
+
+
+class AdvisorAssign(BaseModel):
+    advisor_id: str
+
+
+class UserStatusUpdate(BaseModel):
+    status: Literal["active", "suspended", "onboarding_profile", "onboarding_selection", "pending_payment", "pending_approval", "pending_assignment"]
+
+
+class AccountRegistration(OTPRequest):
+    role: Literal["student", "advisor"]
+    sms_code: str = Field(pattern=r"^\d{6}$")
+    password: str = Field(min_length=8, max_length=128)
+    password_confirm: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def passwords_match(self):
+        if self.password != self.password_confirm:
+            raise ValueError("رمز و تکرار رمز یکسان نیستند")
+        return self
+
+
+class PasswordLogin(OTPRequest):
+    password: str = Field(min_length=8, max_length=128)
+
+
+class PasswordReset(OTPRequest):
+    sms_code: str = Field(pattern=r"^\d{6}$")
+    password: str = Field(min_length=8, max_length=128)
+    password_confirm: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def passwords_match(self):
+        if self.password != self.password_confirm:
+            raise ValueError("رمز و تکرار رمز یکسان نیستند")
+        return self
+
+
+class StudentOnboardingProfile(BaseModel):
+    full_name: str = Field(min_length=3, max_length=120)
+    national_code: str = Field(pattern=r"^\d{10}$")
+    birth_date: str = Field(min_length=8, max_length=10)
+    parent_name: str = Field(min_length=3, max_length=120)
+    parent_phone: str = Field(pattern=r"^09\d{9}$")
+    address: str = Field(min_length=10, max_length=1000)
+    grade: Literal["هفتم", "هشتم", "نهم", "دهم", "یازدهم", "دوازدهم", "پشت کنکوری"]
+    major: str = Field(default="عمومی", max_length=40)
+    school: str = Field(min_length=2, max_length=120)
+    goal: str = Field(default="", max_length=200)
+    average_grade7: float | None = Field(default=None, ge=0, le=20)
+    average_grade8: float | None = Field(default=None, ge=0, le=20)
+    average_grade9: float | None = Field(default=None, ge=0, le=20)
+    average_grade10: float | None = Field(default=None, ge=0, le=20)
+    average_grade11: float | None = Field(default=None, ge=0, le=20)
+    average_grade12: float | None = Field(default=None, ge=0, le=20)
+    school_schedule: dict[str, list[str]] = Field(default_factory=dict)
+    extra_classes: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_profile(self):
+        required_average = {"هشتم": self.average_grade7, "نهم": self.average_grade8,
+            "دهم": self.average_grade9, "یازدهم": self.average_grade10,
+            "دوازدهم": self.average_grade11, "پشت کنکوری": self.average_grade12}
+        if self.grade in required_average and required_average[self.grade] is None:
+            raise ValueError("معدل سال تحصیلی الزامی وارد نشده است")
+        if self.grade != "پشت کنکوری" and any(
+            len(self.school_schedule.get(day, [])) != 4 or
+            any(not value.strip() for value in self.school_schedule[day]) for day in SCHOOL_DAYS):
+            raise ValueError("برنامه مدرسه باید شنبه تا چهارشنبه و هر روز شامل چهار زنگ باشد")
+        return self
+
+
+class StudentOnboardingSelection(BaseModel):
+    plan_id: str
+    advisor_selection_mode: Literal["self", "admin"] = "admin"
+    advisor_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_advisor(self):
+        if self.advisor_selection_mode == "self" and not self.advisor_id:
+            raise ValueError("مشاور مورد نظر را انتخاب کنید")
+        return self
+
+
+class AdvisorOnboardingProfile(BaseModel):
+    education_level: Literal["lower_secondary", "upper_secondary"]
+    full_name: str = Field(min_length=3, max_length=120)
+    national_code: str = Field(pattern=r"^\d{10}$")
+    birth_date: str = Field(min_length=8, max_length=10)
+    address: str = Field(min_length=10, max_length=1000)
+    education_degree: str = Field(min_length=2, max_length=80)
+    education_field: str = Field(min_length=2, max_length=120)
+    experience_years: int = Field(ge=0, le=60)
+    bio: str = Field(min_length=20, max_length=2000)
+    support_capacity: int = Field(ge=1, le=500)
+    academic_year: str = Field(min_length=7, max_length=20)
+    documents: list[RegistrationDocument] = Field(min_length=2, max_length=8)
+
 
 
 def time_minutes(value: str) -> int:
@@ -89,6 +270,25 @@ class ProfileUpdate(BaseModel):
     major: str | None = Field(default=None, max_length=40)
     school: str | None = Field(default=None, max_length=120)
     goal: str | None = Field(default=None, max_length=200)
+    national_code: str | None = Field(default=None, pattern=r"^\d{10}$")
+    birth_date: str | None = Field(default=None, max_length=10)
+    parent_name: str | None = Field(default=None, max_length=120)
+    parent_phone: str | None = Field(default=None, pattern=r"^09\d{9}$")
+    address: str | None = Field(default=None, max_length=1000)
+    average_grade9: float | None = Field(default=None, ge=0, le=20)
+    average_grade10: float | None = Field(default=None, ge=0, le=20)
+    average_grade7: float | None = Field(default=None, ge=0, le=20)
+    average_grade8: float | None = Field(default=None, ge=0, le=20)
+    average_grade11: float | None = Field(default=None, ge=0, le=20)
+    average_grade12: float | None = Field(default=None, ge=0, le=20)
+    school_schedule: dict[str, list[str]] | None = None
+    extra_classes: dict[str, str] | None = None
+    education_degree: str | None = Field(default=None, max_length=80)
+    education_field: str | None = Field(default=None, max_length=120)
+    experience_years: int | None = Field(default=None, ge=0, le=60)
+    bio: str | None = Field(default=None, max_length=2000)
+    support_capacity: int | None = Field(default=None, ge=1, le=500)
+    academic_year: str | None = Field(default=None, max_length=20)
 
 
 class QuestionCreate(BaseModel):
@@ -131,3 +331,33 @@ class PaymentCallback(BaseModel):
     order_id: str
     success: bool
     signature: str
+
+class AdvisorReferralCreate(BaseModel):
+    phone: str = Field(pattern=r"^09\d{9}$")
+
+class SubscriptionPlanUpdate(BaseModel):
+    price: int = Field(ge=0, le=2_000_000_000)
+    referral_price: int = Field(ge=0, le=2_000_000_000)
+    active: bool = True
+
+class FreeSubscriptionCreate(BaseModel):
+    student_id: str
+    expires_at: str
+
+class TermsUpdate(BaseModel):
+    student_text: str = Field(min_length=10, max_length=20000)
+    advisor_text: str = Field(min_length=10, max_length=20000)
+
+class TermsAccept(BaseModel):
+    version: int = Field(ge=1)
+    accepted: bool
+
+class AdminStudentCreate(BaseModel):
+    phone: str = Field(pattern=r"^09\d{9}$")
+    advisor_id: str | None = None
+    amount: int = Field(default=0, ge=0, le=2_000_000_000)
+    expires_at: str | None = None
+
+class SubscriptionAdjust(BaseModel):
+    expires_at: str
+    amount: int | None = Field(default=None, ge=0, le=2_000_000_000)

@@ -7,6 +7,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+from app.api.extended import router as extended_router
+from app.api.admin_students_ext import router as admin_students_router
+from app.api.subscription_ext import router as subscription_router
 from app.api.router import router
 from app.core.config import settings
 from app.core.security import csrf_guard
@@ -64,3 +67,6 @@ def health():
 
 
 app.include_router(router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(extended_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(admin_students_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(subscription_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])

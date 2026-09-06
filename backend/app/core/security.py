@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from hashlib import sha256
+from hashlib import pbkdf2_hmac, sha256
 import base64
 import hmac
 import secrets
@@ -14,6 +14,28 @@ from app.models import User
 
 
 ALGORITHM = "HS256"
+
+PASSWORD_ITERATIONS = 310_000
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
+    return "pbkdf2_sha256$" + str(PASSWORD_ITERATIONS) + "$" + base64.urlsafe_b64encode(salt).decode() + "$" + base64.urlsafe_b64encode(digest).decode()
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        algorithm, iterations, salt_text, digest_text = encoded.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        salt = base64.urlsafe_b64decode(salt_text.encode())
+        expected = base64.urlsafe_b64decode(digest_text.encode())
+        actual = pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
+        return secrets.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
 
 
 def create_token(user: User, token_type: str, minutes: int | None = None) -> str:
@@ -32,13 +54,19 @@ def decode_token(token: str, expected_type: str = "access") -> dict:
     return payload
 
 
-def current_user(access_token: str | None = Cookie(default=None), db: Session = Depends(get_db)) -> User:
+def current_account(access_token: str | None = Cookie(default=None), db: Session = Depends(get_db)) -> User:
     if not access_token:
         raise HTTPException(401, "ابتدا وارد شوید")
     payload = decode_token(access_token)
     user = db.get(User, payload["sub"])
-    if not user or user.status != "active":
-        raise HTTPException(401, "کاربر فعال نیست")
+    if not user or user.status == "suspended":
+        raise HTTPException(401, "حساب کاربری در دسترس نیست")
+    return user
+
+
+def current_user(user: User = Depends(current_account)) -> User:
+    if user.status != "active":
+        raise HTTPException(403, "مراحل ثبت‌نام حساب هنوز تکمیل نشده است")
     return user
 
 
@@ -52,7 +80,7 @@ def roles(*allowed: str):
 
 def csrf_guard(request: Request, csrf_cookie: str | None = Cookie(default=None), x_csrf_token: str | None = Header(default=None)):
     if request.method not in {"GET", "HEAD", "OPTIONS"} and request.url.path.startswith("/api/"):
-        if request.url.path.endswith(("/request-otp", "/verify-otp", "/auth/refresh", "/payments/callback")):
+        if request.url.path.endswith(("/request-otp", "/verify-otp", "/auth/register", "/auth/login", "/auth/staff-login", "/auth/refresh", "/payments/callback")):
             return
         if not csrf_cookie or not x_csrf_token or not secrets.compare_digest(csrf_cookie, x_csrf_token):
             raise HTTPException(403, "توکن CSRF معتبر نیست")

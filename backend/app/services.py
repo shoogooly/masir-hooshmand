@@ -7,7 +7,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.config import settings
-from app.models import Activity, AdvisorAssignment, AuditLog, Exam, Insight, Question, StudentProfile, SubscriptionPlan, User, WeeklyPlan, utcnow
+from app.models import Activity, AdvisorAssignment, AdvisorProfile, AuditLog, Exam, Insight, Question, StudentProfile, SubscriptionPlan, User, WeeklyPlan, utcnow
 
 
 class OTPProvider(ABC):
@@ -17,7 +17,7 @@ class OTPProvider(ABC):
 
 class DevelopmentOTPProvider(OTPProvider):
     def send(self, phone: str) -> str:
-        return "12345"
+        return "123456"
 
 
 class AIProvider(ABC):
@@ -66,6 +66,18 @@ def audit(db: Session, actor_id: str | None, action: str, resource_type: str, re
 
 def seed_database(db: Session):
     if db.scalar(select(User.id).limit(1)):
+        advisors = db.scalars(select(User).where(User.role == "advisor")).all()
+        changed = False
+        for advisor in advisors:
+            if not db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == advisor.id)):
+                db.add(AdvisorProfile(user_id=advisor.id, support_capacity=20,
+                    approval_status="approved" if advisor.status == "active" else "pending",
+                    lead_approval_status="approved" if advisor.status == "active" else "pending",
+                    admin_approval_status="approved" if advisor.status == "active" else "pending",
+                    review_note="پروفایل منتقل‌شده از نسخه قبلی سامانه"))
+                changed = True
+        if changed:
+            db.commit()
         return
     student = User(phone="09120000001", full_name="پارسا رضایی", role="student")
     advisor = User(phone="09120000002", full_name="دکتر آرمان بهرامی", role="advisor")
@@ -80,6 +92,7 @@ def seed_database(db: Session):
         time_slots_json=json.dumps([{"start": start, "end": end} for start, end in [("08:00", "10:00"), ("10:00", "12:00"), ("12:00", "14:00"), ("14:00", "16:00"), ("16:00", "18:00"), ("18:00", "20:00")]]),
         status="published", published_at=utcnow())
     db.add(plan)
+    db.add(AdvisorProfile(user_id=advisor.id, national_code="0012345678", education_degree="کارشناسی ارشد", education_field="مشاوره تحصیلی", experience_years=8, bio="مشاور تحصیلی مسیر هوشمند با سابقه برنامه‌ریزی کنکور", support_capacity=30, approval_status="approved", lead_approval_status="approved", admin_approval_status="approved", reviewed_by=admin.id, reviewed_at=utcnow()))
     db.flush()
     db.add_all([
         Activity(plan_id=plan.id, day="شنبه", subject="زیست‌شناسی", title="فصل گردش مواد + ۳۰ تست", start_time="08:00", end_time="09:30", planned_minutes=90, actual_minutes=85, test_count=30, status="completed"),
@@ -96,8 +109,9 @@ def seed_database(db: Session):
         Insight(student_id=student.id, kind="risk", title="نیاز به تثبیت فیزیک", evidence="دو فعالیت فیزیک با تاخیر ثبت شده است.", recommendation="حجم هر جلسه کمتر و تعداد مرورها بیشتر شود.", confidence=0.78),
     ])
     db.add_all([
-        SubscriptionPlan(name="اشتراک ماهانه", period="monthly", price=200000, features_json=json.dumps(["برنامه هفتگی", "آزمون‌های هفتگی", "تحلیل هوشمند"], ensure_ascii=False)),
-        SubscriptionPlan(name="اشتراک سالانه", period="yearly", price=1920000, features_json=json.dumps(["همه امکانات", "مشاور اختصاصی", "گزارش پیشرفته"], ensure_ascii=False)),
+        SubscriptionPlan(name="اشتراک ماهانه", period="monthly", price=200000, referral_price=160000, features_json=json.dumps(["برنامه هفتگی", "آزمون‌های هفتگی", "تحلیل هوشمند"], ensure_ascii=False)),
+        SubscriptionPlan(name="اشتراک سه‌ماهه", period="quarterly", price=540000, referral_price=450000, features_json=json.dumps(["برنامه هفتگی", "آزمون‌های هفتگی", "گزارش پیشرفت"], ensure_ascii=False)),
+        SubscriptionPlan(name="اشتراک سالانه", period="yearly", price=1920000, referral_price=1500000, features_json=json.dumps(["همه امکانات", "مشاور اختصاصی", "گزارش پیشرفته"], ensure_ascii=False)),
     ])
     audit(db, admin.id, "seed.created", "system", reason="داده نمایشی اولیه")
     db.commit()
