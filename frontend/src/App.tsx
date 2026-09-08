@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { auth } from './api'
 import HomePage from './pages/HomePage'
+import HomePreviewPage from './pages/HomePreviewPage'
 import LoginPage from './pages/LoginPage'
 import WorkspacePage from './pages/WorkspacePage'
 import RegistrationPage from './pages/RegistrationPage'
@@ -19,7 +20,9 @@ function Protected() {
 
 export default function App() {
   return <Routes>
-    <Route path="/" element={<HomePage />} />
+    <Route path="/" element={<HomePreviewPage />} />
+    <Route path="/home-preview" element={<HomePreviewPage />} />
+    <Route path="/home-old" element={<HomePage />} />
     <Route path="/login" element={<LoginPage />} />
     <Route path="/register" element={<RegistrationPage />} />
     <Route path="/app/*" element={<Protected />} />
