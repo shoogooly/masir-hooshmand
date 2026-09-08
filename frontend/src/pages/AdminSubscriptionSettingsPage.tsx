@@ -15,7 +15,7 @@ export default function AdminSubscriptionSettingsPage(){
   const [freeExpiry,setFreeExpiry]=useState<string>(new Date(Date.now()+30*86400000).toISOString())
   const finance=useQuery({queryKey:['admin-finance'],queryFn:()=>api<Finance>('/admin/finance')})
   const students=useQuery({queryKey:['admin-students'],queryFn:()=>api<AdminStudent[]>('/admin/students')})
-  const update=useMutation({mutationFn:({id,body}:{id:string;body:object})=>api('/admin/subscription-plans/'+id,{method:'PATCH',body:JSON.stringify(body)}),onSuccess:()=>qc.invalidateQueries({queryKey:['admin-finance']})})
+  const update=useMutation({mutationFn:({id,body}:{id:string;body:object})=>api('/admin/subscription-plans/'+id,{method:'PATCH',body:JSON.stringify(body)}),onSuccess:()=>Promise.all([qc.invalidateQueries({queryKey:['admin-finance']}),qc.invalidateQueries({queryKey:['public-pricing']}),qc.invalidateQueries({queryKey:['public-subscription-plans']})])})
   const grant=useMutation({mutationFn:(body:object)=>api('/admin/subscriptions/free',{method:'POST',body:JSON.stringify(body)}),onSuccess:()=>{qc.invalidateQueries({queryKey:['admin-students']});qc.invalidateQueries({queryKey:['admin-financial-ledger']})}})
   function savePlan(event:FormEvent<HTMLFormElement>,id:string){event.preventDefault();const form=new FormData(event.currentTarget);update.mutate({id,body:{price:Number(form.get('price')),referral_price:Number(form.get('referral_price')),active:form.get('active')==='on'}})}
   function free(event:FormEvent<HTMLFormElement>){event.preventDefault();const form=new FormData(event.currentTarget);if(freeExpiry)grant.mutate({student_id:form.get('student_id'),expires_at:freeExpiry})}

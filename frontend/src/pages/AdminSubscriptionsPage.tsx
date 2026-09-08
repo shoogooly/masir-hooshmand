@@ -9,7 +9,7 @@ type Finance={plans:Plan[];orders:{id:string;user_name:string;amount:number;stat
 
 export default function AdminSubscriptionsPage(){
   const qc=useQueryClient();const finance=useQuery({queryKey:['admin-finance'],queryFn:()=>api<Finance>('/admin/finance')});const students=useQuery({queryKey:['admin-students'],queryFn:()=>api<AdminStudent[]>('/admin/students')})
-  const update=useMutation({mutationFn:({id,body}:{id:string;body:object})=>api(`/admin/subscription-plans/${id}`,{method:'PATCH',body:JSON.stringify(body)}),onSuccess:()=>qc.invalidateQueries({queryKey:['admin-finance']})})
+  const update=useMutation({mutationFn:({id,body}:{id:string;body:object})=>api(`/admin/subscription-plans/${id}`,{method:'PATCH',body:JSON.stringify(body)}),onSuccess:()=>Promise.all([qc.invalidateQueries({queryKey:['admin-finance']}),qc.invalidateQueries({queryKey:['public-pricing']}),qc.invalidateQueries({queryKey:['public-subscription-plans']})])})
   const grant=useMutation({mutationFn:(body:object)=>api('/admin/subscriptions/free',{method:'POST',body:JSON.stringify(body)}),onSuccess:()=>{qc.invalidateQueries({queryKey:['admin-students']});qc.invalidateQueries({queryKey:['admin-finance']})}})
   function savePlan(e:FormEvent<HTMLFormElement>,id:string){e.preventDefault();const f=new FormData(e.currentTarget);update.mutate({id,body:{price:Number(f.get('price')),referral_price:Number(f.get('referral_price')),active:f.get('active')==='on'}})}
   function free(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);grant.mutate({student_id:f.get('student_id'),expires_at:new Date(String(f.get('expires_at'))).toISOString()})}

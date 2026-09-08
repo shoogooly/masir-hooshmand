@@ -12,7 +12,7 @@ import './styles/subscription-management.css'
 import './styles/chat-account.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } })
-import './styles/home-preview.css'
+
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -21,4 +21,3 @@ createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </StrictMode>,
 )
-

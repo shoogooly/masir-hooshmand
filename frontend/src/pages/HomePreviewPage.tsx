@@ -1,99 +1,158 @@
-import {useState} from 'react'
-import {Link} from 'react-router-dom'
-import {useQuery} from '@tanstack/react-query'
-import {ArrowLeft,ArrowUpLeft,BadgeCheck,Bell,BookOpen,BrainCircuit,CalendarDays,Check,ChevronDown,ClipboardCheck,Clock3,FileText,GraduationCap,LineChart,Menu,MessageCircleMore,Play,ShieldCheck,Sparkles,Target,UserRoundCheck,Users,X} from 'lucide-react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowLeft, ArrowUpLeft, Bell, BookOpen, BrainCircuit, CalendarDays, ChartNoAxesCombined, Check, ChevronDown, ClipboardCheck, Clock3, CreditCard, GraduationCap, Menu, MessageCircleMore, Mouse, Play, ShieldCheck, Sparkles, Target, Users, X } from 'lucide-react'
 import Brand from '../components/Brand'
-import {api} from '../api'
-import type {RegistrationOptions} from '../types'
+import { api } from '../api'
+import type { SubscriptionPlanOption } from '../types'
+import '../styles/home-astra.css'
 
-const capabilities=[
-  {icon:CalendarDays,title:'برنامه هفتگی اختصاصی',text:'برنامه‌ای دقیق با بازه‌های زمانی شناور، هماهنگ با مدرسه، کلاس و هدف هر دانش‌آموز.',tone:'violet'},
-  {icon:MessageCircleMore,title:'گفت‌وگوی مستقیم با مشاور',text:'ارتباط دوطرفه، اعلان پیام تازه و همراهی مشاور در تمام مسیر مطالعه.',tone:'mint'},
-  {icon:FileText,title:'آزمون و تحلیل فایل',text:'دریافت سؤال PDF، ثبت زمان اجرا، تحویل پاسخنامه و دریافت تحلیل و منابع تکمیلی.',tone:'orange'},
-  {icon:LineChart,title:'گزارش پیشرفت روشن',text:'مقایسه برنامه با عملکرد واقعی، زمان مطالعه، تعداد تست و نتیجه آزمون‌ها.',tone:'blue'},
-  {icon:Bell,title:'یادآوری‌های به‌موقع',text:'اعلان برنامه، آزمون، پیام و پایان برنامه؛ بدون اینکه چیزی از قلم بیفتد.',tone:'rose'},
-  {icon:ShieldCheck,title:'محیط امن و مدیریت‌شده',text:'تأیید مشاوران، کنترل دسترسی و مدیریت شفاف اشتراک و اطلاعات حساب.',tone:'navy'},
+const services = [
+  { icon: CalendarDays, label: 'برنامه‌ریزی شخصی', title: 'برنامه‌ای که به زندگی تو می‌خورد', text: 'برنامه هفتگی و ساعتی با توجه به هدف، مدرسه و کلاس‌هایت. فعالیت‌ها، زمان مطالعه و تعداد تست را ثبت کن تا برنامه بعدی دقیق‌تر شود.', color: 'violet' },
+  { icon: MessageCircleMore, label: 'مشاوره و گفت‌وگو', title: 'یک مشاور، کنار تمام قدم‌هایت', text: 'مشاور خودت را انتخاب کن، مستقیم پیام بده و درباره برنامه و نتیجه‌ها بازخورد بگیر. پرونده تحصیلی تو مبنای همراهی مشاور است.', color: 'mint' },
+  { icon: ClipboardCheck, label: 'آزمون و بانک سؤال', title: 'یادگیری‌ات را واقعی بسنج', text: 'آزمون‌های تعیین‌شده و سؤال‌های PDF را دریافت کن، زمان اجرا را ثبت کن و پاسخنامه بفرست؛ تحلیل مشاور و منابع تکمیلی را همان‌جا ببین.', color: 'peach' },
+  { icon: ChartNoAxesCombined, label: 'گزارش و تحلیل', title: 'پیشرفتت را ببین، حدس نزن', text: 'ساعت مطالعه، تعداد تست و نتیجه آزمون‌ها را در گزارش‌ها دنبال کن. مقایسه برنامه و عملکرد نشان می‌دهد چه چیزی نیاز به تغییر دارد.', color: 'blue' },
+  { icon: BrainCircuit, label: 'دستیار هوشمند', title: 'برای قدم بعدی، یک پیشنهاد', text: 'بخش پیشنهادهای هوشمند برای کمک به تحلیل عملکرد و برنامه‌ریزی طراحی شده است؛ تصمیم نهایی برنامه با مشاور توست.', color: 'violet', note: 'اتصال به سرویس هوش مصنوعی در نسخه فعلی آزمایشی است.' },
+  { icon: Bell, label: 'اعلان و یادآوری', title: 'هیچ قدمی از قلم نیفتد', text: 'از برنامه تازه، آزمون، پیام مشاور و وضعیت فعالیت‌ها باخبر شو. اعلان‌های مرتبط با حساب را در پنلت یک‌جا دنبال کن.', color: 'mint' },
+  { icon: BookOpen, label: 'منابع و سوابق تحصیلی', title: 'همه چیز، در پرونده خودت', text: 'اطلاعات تحصیلی، برنامه مدرسه، یادداشت‌های مطالعه، فایل آزمون و منابع تکمیلی در مسیر کار تو و مشاور در دسترس هستند.', color: 'peach' },
+  { icon: CreditCard, label: 'اشتراک و تمدید', title: 'مدیریت روشنِ مدت همراهی', text: 'طرح‌های فعال و امکاناتشان را مقایسه کن، وضعیت و زمان پایان اشتراکت را ببین و برای ادامه همراهی، تمدید را از حساب خودت انجام بده.', color: 'blue' },
+  { icon: ShieldCheck, label: 'پنل مشاور و مدیریت', title: 'یک تیم هماهنگ، پشت مسیر تو', text: 'مشاور، برنامه‌ها و پیگیری دانش‌آموزان را مدیریت می‌کند. مدیر هم تأیید مشاوران، تخصیص‌ها، کاربران، تعرفه‌ها و امور مالی را در پنل اختصاصی انجام می‌دهد.', color: 'violet' },
 ]
-const journey=[
-  {n:'۰۱',title:'ثبت‌نام ساده',text:'شماره موبایل، نقش و اطلاعات تحصیلی را مرحله‌به‌مرحله کامل کن.'},
-  {n:'۰۲',title:'انتخاب مشاور',text:'مشاور مناسب را انتخاب کن یا انتخاب را به مدیریت بسپار.'},
-  {n:'۰۳',title:'دریافت نقشه راه',text:'مشاور با توجه به مدرسه و شرایط تو، برنامه هفتگی را می‌سازد.'},
-  {n:'۰۴',title:'اجرا، آزمون، پیشرفت',text:'فعالیت‌ها را ثبت کن، آزمون بده و هر هفته بهتر از قبل ادامه بده.'},
+const days = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه']
+const demo = [
+  ['ریاضی · تابع', 'زیست · گردش مواد', 'مرور نکته‌های هفته'],
+  ['شیمی · محلول‌ها', 'ریاضی · تمرین تابع', 'تست و تحلیل پاسخ‌ها'],
+  ['زیست · تنظیم عصبی', 'فیزیک · حرکت‌شناسی', 'مرور نکته‌های دیروز'],
+  ['ریاضی · حد و پیوستگی', 'شیمی · تست زمان‌دار', 'جمع‌بندی و رفع اشکال'],
+  ['فیزیک · کار و انرژی', 'زیست · تمرین ترکیبی', 'مرور خلاصه‌نویسی‌ها'],
+  ['آزمون هفتگی', 'تحلیل پاسخ‌های آزمون', 'گفت‌وگو با مشاور'],
+  ['مرور سبک هفته', 'بررسی گزارش پیشرفت', 'آماده‌سازی هفته بعد'],
 ]
-const fa=new Intl.NumberFormat('fa-IR')
-const period:Record<string,string>={monthly:'یک‌ماهه',quarterly:'سه‌ماهه',three_months:'سه‌ماهه',yearly:'سالانه'}
+const audiences = [
+  { title: 'دانش‌آموز', icon: GraduationCap, heading: 'بدان امروز از کجا شروع کنی.', text: 'به جای جابه‌جایی بین دفتر برنامه، پیام‌رسان و فایل‌ها، مسیر مطالعه‌ات را یک‌جا دنبال کن.', items: ['برنامه روزانه و هفتگی متناسب با شرایط تو', 'ثبت مطالعه، تست و یادداشت‌های هر فعالیت', 'آزمون، پاسخنامه و بازخورد مشاور', 'گزارش پیشرفت، پیام‌ها و مدیریت اشتراک'], action: 'ساخت حساب دانش‌آموزی' },
+  { title: 'مشاور', icon: Users, heading: 'برای هر دانش‌آموز، همراهی دقیق‌تر.', text: 'اطلاعات تحصیلی و عملکرد واقعی دانش‌آموز را کنار هم ببین و برنامه هفته بعد را با دید روشن‌تری بساز.', items: ['پرونده دانش‌آموز و برنامه مدرسه و کلاس‌ها', 'برنامه‌ساز ساعتی و دریافت خروجی PDF', 'تعیین آزمون، بررسی پاسخنامه و ارسال منابع', 'فهرست پیگیری، گزارش‌ها و گفت‌وگوی مستقیم'], action: 'ثبت‌نام مشاور' },
+]
+const journey = [
+  ['خودت و هدفت را معرفی کن', 'با شماره موبایل ثبت‌نام کن و اطلاعات تحصیلی‌ات را کامل کن.'],
+  ['مشاور همراهت را انتخاب کن', 'مشاورت را انتخاب کن یا تخصیص را به مدیریت بسپار.'],
+  ['برنامه‌ات را بگیر و شروع کن', 'برنامه متناسب با شرایطت را اجرا کن و فعالیت‌هایت را ثبت کن.'],
+  ['نتیجه را بسنج؛ مسیر را بهتر کن', 'آزمون بده، بازخورد بگیر و برای هفته بعد دقیق‌تر ادامه بده.'],
+]
+const fa = new Intl.NumberFormat('fa-IR')
+const periods: Record<string, string> = { monthly: 'یک‌ماهه', quarterly: 'سه‌ماهه', three_months: 'سه‌ماهه', yearly: 'یک‌ساله' }
 
-export default function HomePreviewPage(){
-  const [menu,setMenu]=useState(false)
-  const plans=useQuery({queryKey:['public-pricing'],queryFn:()=>api<RegistrationOptions>('/registrations/options')})
-  const activePlans=plans.data?.plans.filter(item=>item.active!==false)||[]
-  return <div className="hp" id="preview-top">
-    <div className="hp-noise"/>
-    <header className="hp-header hp-container">
-      <a href="#preview-top" aria-label="صفحه اصلی"><Brand/></a>
-      <nav className={menu?'open':''} aria-label="منوی نمونه صفحه اصلی">
-        <a href="#preview-services" onClick={()=>setMenu(false)}>امکانات</a>
-        <a href="#preview-path" onClick={()=>setMenu(false)}>مسیر همراهی</a>
-        <a href="#preview-audiences" onClick={()=>setMenu(false)}>برای چه کسانی؟</a>
-        <a href="#preview-pricing" onClick={()=>setMenu(false)}>تعرفه‌ها</a>
+export default function HomePreviewPage() {
+  const [menu, setMenu] = useState(false)
+  const [day, setDay] = useState(2)
+  const [audience, setAudience] = useState(0)
+  const [loadPlans, setLoadPlans] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const scene = useRef<HTMLDivElement>(null)
+  const pricing = useRef<HTMLElement>(null)
+  const plans = useQuery({
+    queryKey: ['public-subscription-plans'],
+    queryFn: () => api<SubscriptionPlanOption[]>('/subscriptions/plans', { cache: 'no-store' }),
+    enabled: loadPlans,
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
+    refetchOnMount: 'always',
+    refetchInterval: loadPlans ? 30_000 : false,
+  })
+  const periodOrder: Record<string, number> = { monthly: 0, quarterly: 1, three_months: 1, yearly: 2 }
+  const activePlans = (plans.data || []).filter(plan => plan.active !== false)
+    .sort((a, b) => (periodOrder[a.period] ?? 3) - (periodOrder[b.period] ?? 3))
+  const person = audiences[audience]
+
+  useEffect(() => {
+    const oldTitle = document.title
+    document.title = 'مسیر هوشمند | برنامه درسی، مشاور و پیشرفت'
+    const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+      if (entry.target === scene.current) {
+        entry.target.classList.toggle('is-offscreen', !entry.isIntersecting)
+      } else if (entry.target === pricing.current) {
+        setLoadPlans(entry.isIntersecting)
+      } else if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible')
+        observer.unobserve(entry.target)
+      }
+    }), { rootMargin: '80px', threshold: 0.01 })
+    root.current?.querySelectorAll('.mh-reveal').forEach(node => observer.observe(node))
+    if (scene.current) observer.observe(scene.current)
+    if (pricing.current) observer.observe(pricing.current)
+    return () => { observer.disconnect(); document.title = oldTitle }
+  }, [])
+
+  useEffect(() => {
+    if (!menu) return
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenu(false) }
+    document.addEventListener('keydown', close)
+    return () => document.removeEventListener('keydown', close)
+  }, [menu])
+
+  return <div className="mh" dir="rtl" ref={root} id="preview-top">
+    <a className="mh-skip" href="#main-content">رفتن به محتوای اصلی</a>
+    <header className="mh-header mh-wrap">
+      <a href="#preview-top" aria-label="مسیر هوشمند، صفحه اصلی"><Brand light /></a>
+      <nav id="mh-navigation" className={menu ? 'is-open' : ''} aria-label="منوی اصلی">
+        {[['#preview-services', 'خدمات ما'], ['#preview-path', 'چطور شروع کنم؟'], ['#preview-audiences', 'برای چه کسانی؟'], ['#preview-pricing', 'تعرفه‌ها']].map(([href, text]) => <a key={href} href={href} onClick={() => setMenu(false)}>{text}</a>)}
       </nav>
-      <div className="hp-head-actions"><Link to="/login">ورود</Link><Link className="hp-button compact" to="/register">شروع مسیر <ArrowLeft/></Link></div>
-      <button className="hp-menu" onClick={()=>setMenu(value=>!value)} aria-label={menu?'بستن منو':'بازکردن منو'}>{menu?<X/>:<Menu/>}</button>
+      <div className="mh-header-actions"><Link to="/login">ورود</Link><Link className="mh-btn mh-btn-small" to="/register">شروع مسیر <ArrowUpLeft size={17} /></Link></div>
+      <button className="mh-menu" aria-label={menu ? 'بستن منو' : 'باز کردن منو'} aria-expanded={menu} aria-controls="mh-navigation" onClick={() => setMenu(!menu)}>{menu ? <X /> : <Menu />}</button>
     </header>
 
-    <main>
-      <section className="hp-hero hp-container">
-        <div className="hp-hero-copy">
-          <span className="hp-kicker"><Sparkles/> برنامه‌ریزی انسانی، ابزارهای هوشمند</span>
-          <h1>درس خواندن وقتی ساده می‌شود که <em>مسیرت روشن باشد.</em></h1>
-          <p>مسیر هوشمند، برنامه مدرسه، هدف و عملکردت را کنار هم می‌گذارد؛ مشاور اختصاصی هر هفته برایت یک برنامه قابل‌اجرا می‌سازد و تا رسیدن به نتیجه همراهت می‌ماند.</p>
-          <div className="hp-hero-actions"><Link className="hp-button" to="/register">همین حالا شروع کن <ArrowLeft/></Link><a className="hp-text-button" href="#preview-services"><Play/> ببین چطور کمک می‌کنیم</a></div>
-          <div className="hp-reassurance"><span><Check/> برنامه شخصی</span><span><Check/> مشاور تأییدشده</span><span><Check/> گزارش قابل فهم</span></div>
+    <main id="main-content">
+      <section className="mh-hero mh-wrap">
+        <div className="mh-hero-copy">
+          <div className="mh-eyebrow"><span className="mh-live-dot" /> مسیر تو، به سبک خودت <Sparkles size={15} /></div>
+          <h1>هدف بزرگ تو،<br />با <span>قدم‌های روشن.</span></h1>
+          <p>برنامهٔ درسی مخصوص تو، مشاوری که کنارت می‌ماند و گزارشی که پیشرفتت را نشان می‌دهد.<br /><strong>همه در یک جا: مسیر هوشمند.</strong></p>
+          <div className="mh-actions"><Link to="/register" className="mh-btn">مسیر من رو بساز <ArrowLeft size={20} /></Link><a href="#preview-services" className="mh-demo-link"><span><Play size={15} fill="currentColor" /></span> کشف امکانات</a></div>
+          <div className="mh-hero-checks"><span><Check /> برنامه شخصی</span><span><Check /> همراهی مشاور</span><span><Check /> پیگیری پیشرفت</span></div>
         </div>
-        <div className="hp-hero-visual" aria-label="نمایی از برنامه هفتگی مسیر هوشمند">
-          <div className="hp-orbit orbit-one"/><div className="hp-orbit orbit-two"/>
-          <div className="hp-week-card">
-            <header><div><small>برنامه این هفته</small><b>یک قدم جلوتر از دیروز</b></div><span>۸۴٪</span></header>
-            <div className="hp-week-days"><i className="done">ش</i><i className="done">ی</i><i className="today">د</i><i>س</i><i>چ</i><i>پ</i><i>ج</i></div>
-            <div className="hp-schedule-row"><time>۰۸:۰۰</time><span className="math"><b>ریاضی</b><small>تابع و تست زمان‌دار</small></span></div>
-            <div className="hp-schedule-row"><time>۱۰:۱۵</time><span className="biology"><b>زیست‌شناسی</b><small>فصل گردش مواد</small></span></div>
-            <div className="hp-schedule-row"><time>۱۳:۰۰</time><span className="review"><b>مرور و جمع‌بندی</b><small>فلش‌کارت‌های امروز</small></span></div>
-            <footer><span><i/> ۳ فعالیت باقی مانده</span><b>مشاهده برنامه <ArrowUpLeft/></b></footer>
+        <div className="mh-scene" ref={scene}>
+          <div className="mh-scene-grid" aria-hidden="true" />
+          <div className="mh-orb" aria-hidden="true"><div /><i /><b /></div>
+          <div className="mh-orbit mh-orbit-one" aria-hidden="true" /><div className="mh-orbit mh-orbit-two" aria-hidden="true" />
+          <div className="mh-stage">
+            <div className="mh-panel-layer mh-layer-back" aria-hidden="true" /><div className="mh-panel-layer mh-layer-mid" aria-hidden="true" />
+            <div className="mh-planner">
+              <div className="mh-planner-head"><span className="mh-tile"><CalendarDays size={22} /></span><div><b>این هفته، یک قدم جلوتر</b><small>برنامهٔ مطالعاتی من</small></div><span className="mh-sample">نمونه</span></div>
+              <div className="mh-days" aria-label="انتخاب روز در برنامه نمونه">{days.map((name, index) => <button key={name} onClick={() => setDay(index)} aria-pressed={day === index} className={day === index ? 'selected' : ''}><span>{name}</span><b>{fa.format(index + 14)}</b><i /></button>)}</div>
+              <div className="mh-plan-label"><span>{days[day]}؛ قدم‌های امروز</span><span><Clock3 size={13} /> ۳ فعالیت</span></div>
+              <div className="mh-tasks" key={day}>{demo[day].map((task, index) => <div className={'mh-task mh-task-' + index} key={task}><span className="mh-task-icon">{index === 0 ? <BookOpen size={19} /> : index === 1 ? <Target size={19} /> : <ClipboardCheck size={19} />}</span><div><b>{task}</b><small>{['یادگیری و تمرین', 'تست و رفع اشکال', 'تثبیت آموخته‌ها'][index]}</small></div><time>{['۰۸:۰۰', '۱۰:۱۵', '۱۳:۰۰'][index]}</time>{index === 0 ? <span className="mh-task-done"><Check size={13} /></span> : <span className="mh-task-circle" />}</div>)}</div>
+              <div className="mh-plan-bottom"><span><i /> قدم اول انجام شد</span><b>۱ از ۳</b></div><div className="mh-progress"><i /></div>
+            </div>
+            <div className="mh-floating mh-advisor"><span className="mh-advisor-avatar"><GraduationCap /><i /></span><div><small>تنها پیش نمی‌ری</small><b>مشاورت کنارته.</b></div><MessageCircleMore size={19} /></div>
+            <div className="mh-floating mh-growth"><div><span className="mh-growth-icon"><ChartNoAxesCombined size={19} /></span><span>گزارش پیشرفت</span></div><b>هر روز، بهتر از دیروز</b><div className="mh-bars" aria-hidden="true">{[26, 42, 36, 60, 51, 76, 94].map((height, index) => <i key={index} style={{ '--bar': height + '%', '--i': index } as CSSProperties} />)}</div><small>نمایش نمونهٔ روند مطالعه</small></div>
+            <span className="mh-spark mh-spark-one" aria-hidden="true">✦</span><span className="mh-spark mh-spark-two" aria-hidden="true">✧</span>
           </div>
-          <div className="hp-float hp-float-advisor"><span>م</span><div><b>مشاور همراه شماست</b><small><i/> پاسخ‌گویی مستقیم</small></div></div>
-          <div className="hp-float hp-float-report"><LineChart/><div><small>روند این هفته</small><b>۱۲٪ رشد</b></div></div>
-          <div className="hp-float hp-float-focus"><Target/><span>امروز فقط<br/><b>روی قدم بعدی</b></span></div>
+          <div className="mh-scene-caption"><Mouse size={14} /> روزهای برنامه را انتخاب کن و یک نمونه ببین</div>
         </div>
       </section>
+      <div className="mh-strip"><div className="mh-wrap"><span>از برنامه تا نتیجه، همراهت هستیم</span><b><CalendarDays /> برنامه‌ریزی</b><i /><b><Users /> مشاوره</b><i /><b><ClipboardCheck /> آزمون</b><i /><b><ChartNoAxesCombined /> تحلیل پیشرفت</b></div></div>
 
-      <section className="hp-promise"><div className="hp-container"><p>همه چیزی که برای یک هفته موفق نیاز داری</p><span/><b>برنامه‌ریزی</b><i/> <b>پیگیری</b><i/> <b>آزمون</b><i/> <b>تحلیل</b><i/> <b>گفت‌وگو</b></div></section>
-
-      <section className="hp-section hp-container" id="preview-services">
-        <div className="hp-section-head"><span>یک پنل، یک مسیر روشن</span><h2>ابزارهای کامل؛<br/>بدون پیچیدگی اضافه</h2><p>هر قابلیت دقیقاً جایی قرار گرفته که به آن نیاز داری؛ ساده، فارسی و قابل استفاده روی موبایل و کامپیوتر.</p></div>
-        <div className="hp-capabilities">{capabilities.map((item,index)=><article className={`hp-cap hp-${item.tone}`} style={{'--delay':`${index*70}ms`} as React.CSSProperties} key={item.title}><span><item.icon/></span><div><h3>{item.title}</h3><p>{item.text}</p></div><ArrowUpLeft/></article>)}</div>
+      <section className="mh-section mh-wrap" id="preview-services">
+        <div className="mh-section-head mh-reveal"><div><span className="mh-overline">هر چیزی که برای مسیرت نیاز داری</span><h2>روی درس خواندن تمرکز کن.<br /><span>ابزارهایش اینجاست.</span></h2></div><p>از اولین برنامه تا بررسی نتیجه؛<br />تمام خدمات در یک فضای یکپارچه.</p></div>
+        <div className="mh-services">{services.map((service, index) => <article className={'mh-service mh-' + service.color + ' mh-reveal'} key={service.label} style={{ '--delay': (index % 3 * 70) + 'ms' } as CSSProperties}><div className="mh-service-top"><span className="mh-service-icon"><service.icon /></span><span className="mh-service-number">{fa.format(index + 1).padStart(2, '۰')}</span></div><span className="mh-service-label">{service.label}</span><h3>{service.title}</h3><p>{service.text}</p>{service.note && <small className="mh-note">{service.note}</small>}</article>)}</div>
       </section>
 
-      <section className="hp-journey" id="preview-path"><div className="hp-container">
-        <div className="hp-journey-intro"><span className="hp-kicker"><GraduationCap/> از ثبت‌نام تا نتیجه</span><h2>قرار نیست مسیر موفقیت را تنها بروی.</h2><p>چهار مرحله ساده؛ با همراهی انسانی و بازخورد واقعی در هر هفته.</p><Link className="hp-button light" to="/register">ساخت حساب دانش‌آموزی <ArrowLeft/></Link></div>
-        <div className="hp-journey-list">{journey.map((item,index)=><article key={item.n}><span>{item.n}</span><div><h3>{item.title}</h3><p>{item.text}</p></div>{index<journey.length-1&&<i/>}</article>)}</div>
+      <section className="mh-section mh-path-section" id="preview-path"><div className="mh-wrap"><div className="mh-center mh-reveal"><span className="mh-overline">شروعش ساده‌تر از چیزیه که فکر می‌کنی</span><h2>چهار قدم، تا مسیر خودت.</h2><p>لازم نیست از همین اول همه جواب‌ها را بدانی.</p></div><div className="mh-journey">{journey.map(([title, text], index) => <article className="mh-reveal" key={title}><div className="mh-step-marker"><span>{fa.format(index + 1).padStart(2, '۰')}</span>{index < 3 && <ArrowLeft size={18} />}</div><h3>{title}</h3><p>{text}</p></article>)}</div><div className="mh-centered-action"><Link className="mh-btn" to="/register">قدم اول رو بردار <ArrowLeft size={18} /></Link></div></div></section>
+
+      <section className="mh-section mh-wrap" id="preview-audiences"><div className="mh-audience mh-reveal"><div className="mh-audience-copy"><span className="mh-overline">دو نقش، یک هدف</span><h2>هرکس ابزار خودش را دارد.</h2><div className="mh-role-switch" role="group" aria-label="نمایش امکانات هر نقش">{audiences.map((item, index) => <button key={item.title} aria-pressed={audience === index} onClick={() => setAudience(index)}><item.icon size={17} />{item.title}</button>)}</div><div key={audience} className="mh-role-content" aria-live="polite"><h3>{person.heading}</h3><p>{person.text}</p><ul>{person.items.map(item => <li key={item}><Check size={16} />{item}</li>)}</ul><Link className="mh-inline-link" to="/register">{person.action}<ArrowLeft size={18} /></Link></div></div><div className="mh-role-art" aria-hidden="true"><div className="mh-role-ring" /><div className="mh-role-ring inner" /><span className="mh-role-core"><person.icon strokeWidth={1.1} /></span><span className="mh-role-chip top"><CalendarDays /> برنامه روشن</span><span className="mh-role-chip bottom"><ChartNoAxesCombined /> پیشرفت قابل پیگیری</span><span className="mh-role-star">✦</span><p>کنار هم، یک قدم جلوتر.</p></div></div></section>
+
+      <section className="mh-section mh-wrap" id="preview-pricing" ref={pricing}><div className="mh-center mh-reveal"><span className="mh-overline">همراهی، به انتخاب تو</span><h2>طرح مناسب مسیرت را پیدا کن.</h2><p>مدت همراهی، قیمت و امکانات هر اشتراک را بررسی کن.</p></div><div className="mh-prices">
+        {plans.isPending ? <div className="mh-price-state" role="status"><span className="mh-loading-dot" /> در حال دریافت تعرفه‌های به‌روز…</div> : plans.isError ? <div className="mh-price-state" role="status"><CreditCard /><h3>تعرفه‌ها فعلاً در دسترس نیستند.</h3><p>برای دریافت قیمت‌های به‌روز دوباره تلاش کن.</p><button className="mh-btn mh-btn-outline" onClick={() => void plans.refetch()} disabled={plans.isFetching}>{plans.isFetching ? 'در حال دریافت…' : 'دریافت دوباره تعرفه‌ها'}</button></div> : activePlans.length ? activePlans.map((plan) => <article className={'mh-price ' + (plan.period === 'yearly' ? 'mh-price-featured' : '')} key={plan.id}>{plan.period === 'yearly' && <span className="mh-price-popular">انتخاب محبوب</span>}<span className="mh-overline">{periods[plan.period] || plan.period}</span><h3>{plan.name}</h3><div className="mh-price-amount"><strong>{fa.format(plan.price)}</strong><span>تومان</span></div><ul>{plan.features.map(feature => <li key={feature}><Check size={17} />{feature}</li>)}</ul><Link className={'mh-btn ' + (plan.period === 'yearly' ? '' : 'mh-btn-outline')} to="/register">انتخاب این طرح <ArrowLeft size={17} /></Link></article>) : <div className="mh-price-state"><h3>هنوز طرح فعالی ارائه نشده است.</h3><p>پس از فعال‌شدن اشتراک‌ها، مشخصات و تعرفه‌ها اینجا نمایش داده می‌شود.</p></div>}
       </div></section>
 
-      <section className="hp-section hp-container" id="preview-audiences">
-        <div className="hp-center-head"><span>هرکس، پنل مخصوص خودش</span><h2>همراهی منظم بین دانش‌آموز، مشاور و خانواده آموزشی</h2></div>
-        <div className="hp-audiences">
-          <article className="student"><div className="hp-audience-icon"><BookOpen/></div><span>برای دانش‌آموز</span><h3>هر روز بدان چه کاری باید انجام دهی.</h3><ul><li><Check/> برنامه هفتگی و مأموریت هفته</li><li><Check/> ثبت مطالعه، تست و یادداشت</li><li><Check/> آزمون PDF و تحلیل مشاور</li><li><Check/> گزارش پیشرفت و وضعیت اشتراک</li></ul><Link to="/register">ثبت‌نام دانش‌آموز <ArrowLeft/></Link></article>
-          <article className="advisor"><div className="hp-audience-icon"><UserRoundCheck/></div><span>برای مشاور</span><h3>برای هر دانش‌آموز، یک تصمیم دقیق‌تر.</h3><ul><li><Check/> پرونده کامل و برنامه مدرسه</li><li><Check/> برنامه‌ساز ساعتی و خروجی PDF</li><li><Check/> آزمون، پاسخنامه و منابع تکمیلی</li><li><Check/> فهرست پیگیری و گفت‌وگوی مستقیم</li></ul><Link to="/register">ثبت‌نام مشاور <ArrowLeft/></Link></article>
-        </div>
-      </section>
+      <section className="mh-section mh-wrap mh-faq"><div><span className="mh-overline">قبل از شروع</span><h2>چند جواب کوتاه.</h2><p>برای انتخاب مسیر، تصویر روشنی داشته باش.</p></div><div>{[
+        ['برنامه من چطور ساخته می‌شود؟', 'اطلاعات تحصیلی، هدف، برنامه مدرسه و زمان‌های در دسترس تو در اختیار مشاور قرار می‌گیرد. مشاور برنامه هفتگی را می‌سازد و با توجه به فعالیت‌هایی که ثبت می‌کنی و نتیجه آزمون‌ها آن را بازبینی می‌کند.'],
+        ['ارتباط با مشاور چطور است؟', 'پس از انتخاب و تخصیص مشاور، گفت‌وگوی مستقیم در پنل در دسترس است. می‌توانی درباره برنامه و نتیجه‌ها پیام بدهی و پاسخ و فایل‌های مرتبط را در همان مسیر دنبال کنی.'],
+        ['با موبایل هم می‌توانم استفاده کنم؟', 'بله. برنامه، ثبت فعالیت، پیام‌ها و بخش‌های اصلی سایت از مرورگر موبایل در دسترس هستند و نیازی به نصب برنامه جداگانه نیست.'],
+        ['هوش مصنوعی جای مشاور را می‌گیرد؟', 'خیر. پیشنهادهای هوشمند ابزار کمکی هستند و برنامه با نظر مشاور پیش می‌رود. اتصال سرویس هوش مصنوعی در نسخه فعلی پروژه آزمایشی است.'],
+      ].map(([question, answer]) => <details key={question}><summary>{question}<ChevronDown size={19} /></summary><p>{answer}</p></details>)}</div></section>
 
-      <section className="hp-section hp-pricing" id="preview-pricing"><div className="hp-container">
-        <div className="hp-center-head"><span>شفاف و قابل انتخاب</span><h2>زمان همراهی مناسب خودت را انتخاب کن.</h2><p>امکانات اصلی در همه طرح‌ها فعال است؛ فقط مدت همراهی متفاوت خواهد بود.</p></div>
-        <div className="hp-price-grid">{activePlans.length?activePlans.map(plan=>{const popular=plan.period==='yearly';return <article className={popular?'featured':''} key={plan.id}>{popular&&<em>انتخاب محبوب</em>}<span>{period[plan.period]||plan.name}</span><h3>{fa.format(plan.price)} <small>تومان</small></h3><ul>{plan.features.slice(0,5).map(feature=><li key={feature}><Check/>{feature}</li>)}</ul><Link className={popular?'hp-button':'hp-price-button'} to="/register">انتخاب طرح <ArrowLeft/></Link></article>}):<div className="hp-price-loading">در حال دریافت تعرفه‌های به‌روز...</div>}</div>
-      </div></section>
-
-      <section className="hp-final hp-container"><div><span><Sparkles/></span><h2>برای یک شروع خوب، لازم نیست همه جواب‌ها را بدانی.</h2><p>کافی است هدفت را بگویی؛ قدم بعدی را با هم مشخص می‌کنیم.</p></div><Link className="hp-button light" to="/register">شروع مسیر من <ArrowLeft/></Link></section>
+      <section className="mh-final mh-wrap mh-reveal"><div className="mh-final-orbit" aria-hidden="true" /><span className="mh-overline"><Sparkles size={17} /> آینده، از قدم امروز شروع می‌شود</span><h2>این بار، با یک مسیر روشن شروع کن.</h2><p>هدفت را بگو؛ قدم‌های بعدی را با هم مشخص می‌کنیم.</p><Link className="mh-btn" to="/register">بزن بریم، مسیر من! <ArrowLeft size={20} /></Link></section>
     </main>
-
-    <footer className="hp-footer"><div className="hp-container"><div><Brand light/><p>برنامه‌ریزی درسی، مشاوره و پیگیری پیشرفت در یک فضای ساده و یکپارچه.</p></div><div><b>مسیر هوشمند</b><a href="#preview-services">امکانات</a><a href="#preview-path">نحوه همراهی</a><a href="#preview-pricing">تعرفه‌ها</a></div><div><b>دسترسی سریع</b><Link to="/login">ورود به پنل</Link><Link to="/register">ثبت‌نام دانش‌آموز</Link><Link to="/register">ثبت‌نام مشاور</Link></div><div><b>اعتماد و پشتیبانی</b><span><ShieldCheck/> اطلاعات شما امن می‌ماند</span><span><Users/> مشاوران پس از تأیید فعال می‌شوند</span></div></div><p>مسیر هوشمند؛ هر هفته یک قدم روشن‌تر.</p></footer>
+    <footer className="mh-footer mh-wrap"><div className="mh-footer-main"><div><Brand light /><p>برنامه‌ریزی درسی، مشاوره و پیگیری پیشرفت.<br />هر هفته، یک قدم روشن‌تر.</p></div><div><h3>کشف مسیر</h3><a href="#preview-services">تمام خدمات</a><a href="#preview-path">مراحل شروع</a><a href="#preview-pricing">تعرفه اشتراک‌ها</a></div><div><h3>همراه ما باش</h3><Link to="/register">ثبت‌نام دانش‌آموز و مشاور</Link><Link to="/login">ورود به حساب کاربری</Link><a href="#preview-audiences">آشنایی با پنل‌ها</a></div></div><div className="mh-footer-bottom"><span>مسیر هوشمند · همراه مسیر یادگیری تو</span><a href="#preview-top">برگشت به بالا <ArrowUpLeft size={16} /></a></div></footer>
   </div>
 }
