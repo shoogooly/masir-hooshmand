@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import current_account, current_user, roles
 from app.db.session import get_db
-from app.models import Message, Notification, Order, SiteSetting, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
+from app.models import AdvisorAssignment, AdvisorProfile, Message, Notification, Order, SiteSetting, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
 from app.schemas import AdvisorReferralCreate, FreeSubscriptionCreate, SubscriptionPlanUpdate, TermsAccept, TermsUpdate
 from app.services import audit
 
@@ -16,6 +16,13 @@ router = APIRouter()
 def ok(data=None):
     return {"success": True, "data": data, "meta": {}}
 
+
+def advisor_capacity(db: Session, advisor_id: str):
+    profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == advisor_id))
+    assigned = db.scalar(select(func.count(AdvisorAssignment.id)).where(
+        AdvisorAssignment.advisor_id == advisor_id, AdvisorAssignment.active.is_(True))) or 0
+    capacity = profile.support_capacity if profile else 0
+    return profile, assigned, max(capacity - assigned, 0)
 
 def notify(db: Session, user_id: str, kind: str, title: str, body: str = "", link: str = "", actor_id: str | None = None, related_id: str | None = None):
     db.add(Notification(user_id=user_id, actor_id=actor_id, kind=kind, title=title, body=body, link=link, related_id=related_id))
@@ -50,6 +57,8 @@ def notification_summary(user: User = Depends(current_user), db: Session = Depen
         by_sender[message.sender_id] = by_sender.get(message.sender_id, 0) + 1
     unread_notes = db.scalar(select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.read_at.is_(None))) or 0
     latest_student_plan = db.scalar(select(WeeklyPlan).where(WeeklyPlan.student_id == user.id, WeeklyPlan.status == "published").order_by(WeeklyPlan.published_at.desc())) if user.role == "student" else None
+    unseen_exams = db.scalar(select(func.count(Notification.id)).where(
+        Notification.user_id == user.id, Notification.kind == "exam_assigned", Notification.read_at.is_(None))) or 0
     unseen = 1 if latest_student_plan and latest_student_plan.student_viewed_at is None else 0
     expired_ids: list[str] = []
     if user.role in {"advisor", "super_admin"}:
@@ -66,7 +75,7 @@ def notification_summary(user: User = Depends(current_user), db: Session = Depen
             end = end if end.tzinfo else end.replace(tzinfo=timezone.utc)
             if end <= now:
                 expired_ids.append(student_id)
-    return ok({"unread_messages": len(messages), "unread_by_sender": by_sender, "unread_notifications": unread_notes, "unseen_plans": unseen or 0, "expired_student_ids": expired_ids})
+    return ok({"unread_messages": len(messages), "unread_by_sender": by_sender, "unread_notifications": unread_notes, "unseen_plans": unseen or 0, "unseen_exams": unseen_exams, "expired_student_ids": expired_ids})
 
 
 @router.get("/notifications")
@@ -76,6 +85,16 @@ def list_notifications(user: User = Depends(current_user), db: Session = Depends
     return ok([{"id": x.id, "kind": x.kind, "title": x.title, "body": x.body, "link": x.link, "actor_id": x.actor_id, "related_id": x.related_id, "read_at": x.read_at, "created_at": x.created_at} for x in items])
 
 
+@router.post("/notifications/exams/read")
+def read_exam_notifications(user: User = Depends(roles("student")), db: Session = Depends(get_db)):
+    items = db.scalars(select(Notification).where(
+        Notification.user_id == user.id, Notification.kind == "exam_assigned", Notification.read_at.is_(None))).all()
+    now = utcnow()
+    for item in items:
+        item.read_at = now
+    db.commit()
+    return ok({"read": len(items)})
+
 @router.post("/notifications/{notification_id}/read")
 def read_notification(notification_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     item = db.get(Notification, notification_id)
@@ -84,6 +103,8 @@ def read_notification(notification_id: str, user: User = Depends(current_user), 
     item.read_at = item.read_at or utcnow()
     db.commit()
     return ok({"read": True})
+
+
 
 
 @router.post("/notifications/read-all")
@@ -114,12 +135,19 @@ def advisor_referral(payload: AdvisorReferralCreate, user: User = Depends(roles(
     existing = db.scalar(select(User).where(User.phone == payload.phone))
     if existing and (existing.role != "student" or existing.password_hash):
         raise HTTPException(409, "این شماره قبلاً در سایت ثبت شده است")
+    if existing and existing.referred_by_advisor_id and existing.referred_by_advisor_id != user.id:
+        raise HTTPException(409, "این شماره قبلاً توسط مشاور دیگری معرفی شده است")
+    advisor_profile, _, remaining = advisor_capacity(db, user.id)
+    if not advisor_profile or user.status != "active" or advisor_profile.approval_status != "approved":
+        raise HTTPException(403, "حساب مشاور برای معرفی دانش‌آموز فعال نیست")
+    if remaining <= 0:
+        raise HTTPException(409, "ظرفیت پذیرش دانش‌آموز شما تکمیل شده است")
     student = existing or User(phone=payload.phone, full_name="دانش‌آموز معرفی‌شده", role="student", status="invited", onboarding_step="account")
     student.referred_by_advisor_id = user.id
     if not existing:
         db.add(student)
     db.commit()
-    return ok({"id": student.id, "phone": student.phone, "message": "دانش‌آموز معرفی شد؛ اکنون می‌تواند با همین شماره ثبت‌نام کند."})
+    return ok({"id": student.id, "phone": student.phone, "advisor_id": user.id, "advisor_name": user.full_name, "message": "دانش‌آموز معرفی شد؛ اکنون می‌تواند با همین شماره ثبت‌نام کند و مشاور او قابل تغییر نخواهد بود."})
 
 
 @router.patch("/admin/subscription-plans/{plan_id}")

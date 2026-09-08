@@ -9,6 +9,7 @@ import './styles/onboarding.css'
 import './styles/notifications.css'
 import './styles/admin-control.css'
 import './styles/subscription-management.css'
+import './styles/chat-account.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } })
 

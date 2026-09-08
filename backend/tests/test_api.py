@@ -113,7 +113,6 @@ def test_plan_timeline_range_validation():
         assert False, "overlapping ranges must be rejected"
     except ValidationError:
         pass
-
     try:
         PlanCreate(**base, activities=[
             {"day": "یکشنبه", "title": "خارج محدوده", "start_time": "06:45", "end_time": "08:00"},
@@ -121,3 +120,39 @@ def test_plan_timeline_range_validation():
         assert False, "out-of-range activity must be rejected"
     except ValidationError:
         pass
+
+
+def test_admin_chat_is_visible_and_can_lock_replies():
+    with TestClient(app) as admin:
+        login_response = admin.post("/api/v1/auth/verify-otp", json={
+            "phone":"09120000003","code":"123456","role":"super_admin","mfa_code":"654321"})
+        csrf = login_response.json()["data"]["csrf_token"]
+        contacts = admin.get("/api/v1/chat/contacts").json()["data"]
+        student = next(item for item in contacts if item["phone"] == "09120000001")
+        sent = admin.post("/api/v1/messages", headers={"X-CSRF-Token":csrf},
+            json={"recipient_id":student["id"],"body":"پیام مستقیم مدیریت"})
+        assert sent.status_code == 200
+        locked = admin.patch(f"/api/v1/admin/chat-locks/{student['id']}",
+            headers={"X-CSRF-Token":csrf}, json={"locked":True})
+        assert locked.status_code == 200
+        detail = admin.get(f"/api/v1/admin/users/{student['id']}/detail")
+        assert detail.status_code == 200
+        assert "payments" in detail.json()["data"] and "subscriptions" in detail.json()["data"]
+
+    with TestClient(app) as student_client:
+        csrf = login(student_client, "09120000001")
+        contacts = student_client.get("/api/v1/chat/contacts").json()["data"]
+        admin_user = next(item for item in contacts if item["role"] == "super_admin")
+        assert admin_user["locked"] is True
+        history = student_client.get(f"/api/v1/messages?counterpart_id={admin_user['id']}")
+        assert any(item["body"] == "پیام مستقیم مدیریت" for item in history.json()["data"])
+        blocked = student_client.post("/api/v1/messages", headers={"X-CSRF-Token":csrf},
+            json={"recipient_id":admin_user["id"],"body":"پاسخ دانش‌آموز"})
+        assert blocked.status_code == 403
+
+    with TestClient(app) as admin:
+        login_response = admin.post("/api/v1/auth/verify-otp", json={
+            "phone":"09120000003","code":"123456","role":"super_admin","mfa_code":"654321"})
+        csrf = login_response.json()["data"]["csrf_token"]
+        student_id = next(item["id"] for item in admin.get("/api/v1/chat/contacts").json()["data"] if item["phone"] == "09120000001")
+        assert admin.patch(f"/api/v1/admin/chat-locks/{student_id}", headers={"X-CSRF-Token":csrf}, json={"locked":False}).status_code == 200

@@ -75,6 +75,13 @@ class StudentProfile(Base, TimeMixin):
     registration_review_status: Mapped[str] = mapped_column(String(20), default="not_reviewed", index=True)
     registration_review_note: Mapped[str] = mapped_column(Text, default="")
     registration_reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    advisor_approval_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    admin_approval_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    advisor_reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    advisor_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    admin_reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    admin_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approval_note: Mapped[str] = mapped_column(Text, default="")
     registration_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     correction_return_step: Mapped[str] = mapped_column(String(40), default="selection")
     weaknesses: Mapped[str] = mapped_column(Text, default='["فیزیک","مدیریت زمان"]')
@@ -173,6 +180,16 @@ class Message(Base, TimeMixin):
     internal_note: Mapped[bool] = mapped_column(Boolean, default=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+class ChatLock(Base, TimeMixin):
+    __tablename__ = "chat_locks"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    admin_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    locked: Mapped[bool] = mapped_column(Boolean, default=True)
+    __table_args__ = (UniqueConstraint("admin_id", "user_id", name="uq_chat_lock_admin_user"),)
+
+
+
 
 class Notification(Base, TimeMixin):
     __tablename__ = "notifications"
@@ -211,6 +228,31 @@ class Exam(Base, TimeMixin):
     question_ids_json: Mapped[str] = mapped_column(Text, default="[]")
     audience_json: Mapped[str] = mapped_column(Text, default="[]")
 
+
+class AssignedExam(Base, TimeMixin):
+    __tablename__ = "assigned_exams"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    advisor_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    duration_minutes: Mapped[int] = mapped_column(Integer)
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    question_filename: Mapped[str] = mapped_column(String(255))
+    question_content_type: Mapped[str] = mapped_column(String(80), default="application/pdf")
+    question_base64: Mapped[str] = mapped_column(Text)
+    question_downloaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    answer_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    answer_content_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    answer_base64: Mapped[str | None] = mapped_column(Text, nullable=True)
+    student_notes: Mapped[str] = mapped_column(Text, default="")
+    answer_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    analysis_text: Mapped[str] = mapped_column(Text, default="")
+    resources_json: Mapped[str] = mapped_column(Text, default="[]")
+    lesson_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lesson_content_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    lesson_base64: Mapped[str | None] = mapped_column(Text, nullable=True)
+    analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="assigned", index=True)
 
 class ExamSession(Base, TimeMixin):
     __tablename__ = "exam_sessions"

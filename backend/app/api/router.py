@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.security import create_token, current_account, current_user, hash_password, hash_token, new_csrf, new_refresh_token, roles, verify_password, verify_totp
 from app.db.session import get_db
-from app.models import Activity, AdvisorAssignment, AdvisorProfile, AuditLog, Exam, ExamAnswer, ExamSession, Insight, Message, Notification, Order, Question, RefreshToken, SiteSetting, StudentProfile, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
+from app.models import Activity, AdvisorAssignment, AdvisorProfile, AuditLog, ChatLock, Exam, ExamAnswer, ExamSession, Insight, Message, Notification, Order, Question, RefreshToken, SiteSetting, StudentProfile, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
+from app.api.accounts_ext import finalize_student_registration
 from app.schemas import AccountRegistration, ActivityUpdate, AdvisorAssign, AdvisorOnboardingProfile, AdvisorReferralCreate, AdvisorRegistration, AdvisorReview, AnswerUpdate, AssignmentDecision, ExamCreate, FreeSubscriptionCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PasswordLogin, PasswordReset, PaymentCallback, PlanCreate, ProfileUpdate, QuestionCreate, SCHOOL_DAYS, StaffCreate, StaffOTPVerify, StudentOnboardingProfile, StudentOnboardingSelection, StudentRegistration, SubscriptionPlanUpdate, TermsAccept, TermsUpdate, UserStatusUpdate
 from app.services import ai_provider, audit, otp_provider, payment_provider
 
@@ -83,8 +84,10 @@ def student_profile_dict(profile: StudentProfile | None):
         "registration_reviewed_by": profile.registration_reviewed_by,
         "registration_reviewed_at": profile.registration_reviewed_at,
         "correction_return_step": profile.correction_return_step,
+        "advisor_approval_status": profile.advisor_approval_status,
+        "admin_approval_status": profile.admin_approval_status,
+        "approval_note": profile.approval_note,
     }
-
 
 def advisor_profile_dict(db: Session, profile: AdvisorProfile | None, include_documents: bool = False):
     if not profile:
@@ -468,6 +471,9 @@ def onboarding_status(user: User = Depends(current_account), db: Session = Depen
         profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
         order = db.scalar(select(Order).where(Order.user_id == user.id).order_by(Order.created_at.desc()))
         data["profile"] = student_profile_dict(profile)
+        if user.referred_by_advisor_id:
+            referred_advisor = db.get(User, user.referred_by_advisor_id)
+            data["referred_advisor"] = user_dict(referred_advisor) if referred_advisor else None
         if order and order.status == "pending":
             data["payment"] = {"order_id": order.id, "amount": order.amount, "signature": order.provider_reference}
     elif user.role == "advisor":
@@ -520,7 +526,16 @@ def onboarding_student_selection(payload: StudentOnboardingSelection,
     if not plan or not plan.active:
         raise HTTPException(404, "طرح انتخابی فعال نیست")
     preferred = None
-    if payload.advisor_selection_mode == "self":
+    selection_mode = payload.advisor_selection_mode
+    if user.referred_by_advisor_id:
+        selection_mode = "self"
+        preferred = db.get(User, user.referred_by_advisor_id)
+        advisor_profile, _, _ = advisor_capacity(db, user.referred_by_advisor_id)
+        if not preferred or preferred.role != "advisor" or preferred.status != "active" or not advisor_profile or advisor_profile.approval_status != "approved":
+            raise HTTPException(409, "مشاور معرفی‌کننده در حال حاضر فعال نیست؛ با پشتیبانی تماس بگیرید")
+        if advisor_profile.education_level != profile.education_level:
+            raise HTTPException(409, "مقطع تحصیلی شما با حوزه فعالیت مشاور معرفی‌کننده سازگار نیست")
+    elif selection_mode == "self":
         preferred = db.get(User, payload.advisor_id)
         advisor_profile, _, remaining = advisor_capacity(db, payload.advisor_id or "")
         if not preferred or preferred.role != "advisor" or preferred.status != "active" or not advisor_profile or advisor_profile.approval_status != "approved":
@@ -529,7 +544,7 @@ def onboarding_student_selection(payload: StudentOnboardingSelection,
             raise HTTPException(409, "مشاور انتخابی مربوط به مقطع تحصیلی شما نیست")
         if remaining <= 0:
             raise HTTPException(409, "ظرفیت این مشاور تکمیل شده است")
-    profile.advisor_selection_mode = payload.advisor_selection_mode
+    profile.advisor_selection_mode = selection_mode
     profile.preferred_advisor_id = preferred.id if preferred else None
     existing = db.scalar(select(Order).where(Order.user_id == user.id, Order.status == "pending").order_by(Order.created_at.desc()))
     if existing:
@@ -549,7 +564,7 @@ def onboarding_student_selection(payload: StudentOnboardingSelection,
     user.status = "pending_payment"
     user.onboarding_step = "payment"
     audit(db, user.id, "onboarding.student_selection_completed", "order", order.id,
-        after={"plan_id": plan.id, "advisor_mode": payload.advisor_selection_mode})
+        after={"plan_id": plan.id, "advisor_mode": selection_mode, "advisor_id": preferred.id if preferred else None})
     db.commit()
     return ok({"order_id": order.id, "amount": order.amount, **payment})
 
@@ -754,8 +769,15 @@ def send_message(payload: MessageCreate, user: User = Depends(current_user), db:
     recipient = db.get(User, payload.recipient_id)
     if not recipient or not can_communicate(db, user, recipient):
         raise HTTPException(403, "ارسال پیام به این کاربر مجاز نیست")
+    if user.role != "super_admin" and recipient.role == "super_admin":
+        locked = db.scalar(select(ChatLock).where(
+            ChatLock.admin_id == recipient.id, ChatLock.user_id == user.id, ChatLock.locked.is_(True)))
+        if locked:
+            raise HTTPException(403, "مدیر این گفت‌وگو را قفل کرده است")
     msg = Message(sender_id=user.id, recipient_id=payload.recipient_id, body=payload.body, internal_note=payload.internal_note and user.role == "advisor")
-    db.add(msg); db.flush(); add_notification(db, recipient.id, "message", "پیام جدید", f"{user.full_name}: {payload.body[:100]}", "/app/student/chat" if recipient.role == "student" else "/app/advisor/messages", user.id, msg.id)
+    db.add(msg); db.flush()
+    link = "/app/student/chat" if recipient.role == "student" else "/app/advisor/messages" if recipient.role == "advisor" else "/app/admin/messages" if recipient.role == "super_admin" else "/app/management/messages"
+    add_notification(db, recipient.id, "message", "پیام جدید", f"{user.full_name}: {payload.body[:100]}", link, user.id, msg.id)
     db.commit(); return ok({"id": msg.id, "sent": True, "created_at": msg.created_at})
 
 
@@ -930,8 +952,10 @@ def payment_callback(payload: PaymentCallback, db: Session = Depends(get_db)):
     target_expiry = order.custom_expires_at or (starts_from + timedelta(days=days))
     sub = Subscription(user_id=order.user_id, plan_id=plan.id, order_id=order.id,
         starts_at=utcnow(), expires_at=target_expiry)
-    db.add(sub)
     registered_user = db.get(User, order.user_id)
+    if registered_user and registered_user.role == "student" and registered_user.status != "active":
+        sub.status = "pending_activation"
+    db.add(sub)
     if registered_user and registered_user.role == "student" and registered_user.status != "active":
         profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == registered_user.id))
         if profile and profile.preferred_advisor_id:
@@ -945,14 +969,14 @@ def payment_callback(payload: PaymentCallback, db: Session = Depends(get_db)):
                 else:
                     db.add(AdvisorAssignment(advisor_id=advisor.id, student_id=registered_user.id, active=False,
                         approval_status="pending", assignment_source="student", assigned_by=registered_user.id))
-                registered_user.onboarding_step = "advisor_confirmation"
-            else: registered_user.onboarding_step = "advisor_assignment"
-        else: registered_user.onboarding_step = "advisor_assignment"
-        registered_user.status = "pending_assignment"
+                registered_user.onboarding_step = "dual_approval"
+            else: registered_user.onboarding_step = "dual_approval"
+        else: registered_user.onboarding_step = "dual_approval"
+        registered_user.status = "pending_approval"
     audit(db, order.user_id, "payment.verified", "order", order.id,
         after={"subscription": sub.id, "user_status": registered_user.status if registered_user else None})
     db.commit()
-    return ok({"order_id": order.id, "subscription_id": sub.id, "status": "active",
+    return ok({"order_id": order.id, "subscription_id": sub.id, "status": sub.status,
         "user_status": registered_user.status if registered_user else None})
 
 
@@ -1122,8 +1146,11 @@ def admin_assign_advisor(student_id: str, payload: AdvisorAssign,
     if profile:
         profile.preferred_advisor_id = advisor.id
         profile.advisor_selection_mode = "admin"
-    student.onboarding_step = "completed"
-    student.status = "active"
+    if profile:
+        profile.advisor_approval_status = "approved"
+        profile.advisor_reviewed_by = user.id
+        profile.advisor_reviewed_at = utcnow()
+        finalize_student_registration(db, student, profile)
     audit(db, user.id, "admin.advisor_assigned", "user", student.id,
         after={"advisor_id": advisor.id})
     db.commit()
@@ -1321,13 +1348,21 @@ def advisor_assignment_decision(assignment_id: str, payload: AssignmentDecision,
             current.active = False
         assignment.active = True
         assignment.approval_status = "approved"
-        student.status = "active"
-        student.onboarding_step = "completed"
+        profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student.id))
+        if profile:
+            profile.advisor_approval_status = "approved"
+            profile.advisor_reviewed_by = user.id
+            profile.advisor_reviewed_at = utcnow()
+            finalize_student_registration(db, student, profile)
     else:
         assignment.active = False
         assignment.approval_status = "rejected"
-        student.status = "pending_assignment"
-        student.onboarding_step = "advisor_assignment"
+        profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student.id))
+        if profile:
+            profile.advisor_approval_status = "rejected"
+            profile.approval_note = payload.note
+        student.status = "pending_approval"
+        student.onboarding_step = "dual_approval"
     assignment.decided_at = utcnow()
     audit(db, user.id, "advisor.assignment_decided", "advisor_assignment", assignment.id,
         after={"decision": payload.decision}, reason=payload.note)

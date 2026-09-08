@@ -1,3 +1,4 @@
+from app.api.exam_files import router as exam_files_router
 from contextlib import asynccontextmanager
 import logging
 import time
@@ -11,6 +12,7 @@ from app.api.extended import router as extended_router
 from app.api.admin_students_ext import router as admin_students_router
 from app.api.subscription_ext import router as subscription_router
 from app.api.router import router
+from app.api.accounts_ext import router as accounts_router
 from app.core.config import settings
 from app.core.security import csrf_guard
 from app.db.session import Base, SessionLocal, engine
@@ -70,3 +72,5 @@ app.include_router(router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(extended_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(admin_students_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(subscription_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(accounts_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(exam_files_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])

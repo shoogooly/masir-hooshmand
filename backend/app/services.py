@@ -85,7 +85,7 @@ def seed_database(db: Session):
     editor = User(phone="09120000004", full_name="سارا محتوایی", role="content_editor")
     db.add_all([student, advisor, admin, editor])
     db.flush()
-    db.add(StudentProfile(user_id=student.id))
+    db.add(StudentProfile(user_id=student.id, advisor_approval_status="approved", admin_approval_status="approved"))
     db.add(AdvisorAssignment(advisor_id=advisor.id, student_id=student.id))
     plan = WeeklyPlan(student_id=student.id, advisor_id=advisor.id, title="برنامه آمادگی هفتگی", week_label="۲۰ تا ۲۶ مرداد",
         schedule_days_json=json.dumps([{"label": day, "date": ""} for day in ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]], ensure_ascii=False),
