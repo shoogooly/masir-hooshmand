@@ -1,5 +1,7 @@
 import type { ApiResponse, User } from './types'
 
+export const SUBSCRIPTION_REQUIRED_EVENT = 'masir:subscription-required'
+
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 function csrf() {
@@ -10,10 +12,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: 'include',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(), ...init.headers },
   })
   const body = (await response.json()) as ApiResponse<T>
-  if (!response.ok || !body.success) throw new Error(body.error?.message || 'خطایی رخ داد')
+  if (!response.ok || !body.success) {
+    if (body.error?.code === 'SUBSCRIPTION_REQUIRED')
+      window.dispatchEvent(new Event(SUBSCRIPTION_REQUIRED_EVENT))
+    throw new Error(body.error?.message || 'خطایی رخ داد')
+  }
   return body.data
 }
 

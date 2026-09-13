@@ -1,0 +1,5 @@
+export type AnswerSectionDraft={id:string;title:string;correct_answers:(number|null)[]}
+export type OnlineDefinition={sections:{title:string;correct_answers:(number|null)[]}[];negative_marking:boolean}
+export type SectionStats={title:string;total:number;correct:number;wrong:number;unanswered:number;percentage:number;accuracy:number}
+export type OnlineResult={sections:SectionStats[];questions:{number:number;subject:string;answer:number|null;correct_answer:number;status:'correct'|'wrong'|'unanswered'}[];total:number;correct:number;wrong:number;unanswered:number;percentage:number;accuracy:number;negative_marking:boolean;elapsed_seconds:number;elapsed_minutes:number;overtime_seconds:number;average_seconds_per_question:number}
+export type OnlineSheet={exam_id:string;sections:{title:string;question_count:number;start_number:number}[];answers:(number|null)[];version:number;negative_marking:boolean;started_at?:string;submitted_at?:string;server_time:string;result?:OnlineResult|null;answer_key?:number[]}

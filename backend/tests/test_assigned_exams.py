@@ -1,3 +1,5 @@
+import pytest
+pytestmark = pytest.mark.usefixtures('subscribed_demo_student')
 import base64
 
 from fastapi.testclient import TestClient

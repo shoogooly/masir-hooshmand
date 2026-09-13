@@ -37,6 +37,20 @@ class User(Base, TimeMixin):
     terms_accepted_version: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class PasswordChallenge(Base):
+    __tablename__ = 'password_challenges'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    phone: Mapped[str] = mapped_column(String(16), index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey('users.id'), nullable=True)
+    ip_hash: Mapped[str] = mapped_column(String(64), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    credential_tag: Mapped[str] = mapped_column(String(64))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -191,6 +205,15 @@ class ChatLock(Base, TimeMixin):
 
 
 
+class ChatAccessRequest(Base, TimeMixin):
+    __tablename__ = "chat_access_requests"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    admin_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    request_day: Mapped[str] = mapped_column(String(10))
+    __table_args__ = (UniqueConstraint("student_id", "request_day", name="uq_student_chat_request_day"),)
+
+
 class Notification(Base, TimeMixin):
     __tablename__ = "notifications"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -253,6 +276,17 @@ class AssignedExam(Base, TimeMixin):
     lesson_base64: Mapped[str | None] = mapped_column(Text, nullable=True)
     analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="assigned", index=True)
+
+class AssignedExamSheet(Base, TimeMixin):
+    __tablename__ = "assigned_exam_sheets"
+    exam_id: Mapped[str] = mapped_column(ForeignKey("assigned_exams.id"), primary_key=True)
+    sections_json: Mapped[str] = mapped_column(Text)
+    answers_json: Mapped[str] = mapped_column(Text, default="[]")
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    negative_marking: Mapped[bool] = mapped_column(Boolean, default=False)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 class ExamSession(Base, TimeMixin):
     __tablename__ = "exam_sessions"

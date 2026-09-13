@@ -1,3 +1,7 @@
+import TimeFields from '../components/TimeFields'
+import PasswordChange from '../components/PasswordChange'
+import { exportPlanPdf } from '../utils/planPdf'
+import '../styles/planner-readable.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowRight, ArrowUp, BookOpen, CheckCircle2, Clock3, Download, MessageSquare, Plus, Save, Search, Send, Trash2, TrendingUp, UserRound } from 'lucide-react'
@@ -47,7 +51,7 @@ export function SettingsPage({user:_user}:{user?:User}={}){
   return <div className="content-page"><PageHead title="تنظیمات" subtitle={data.role==='advisor'?'اطلاعات حرفه‌ای و ظرفیت پذیرش سال تحصیلی':'اطلاعات حساب، سوابق و برنامه مدرسه'}/><form className="settings-form panel expanded" onSubmit={submit}><label>نام و نام خانوادگی<input name="full_name" defaultValue={data.full_name} required/></label><label>شماره ورود<input value={data.phone} disabled/></label>
     {data.role==='student'&&<><label>پایه<select name="grade" defaultValue={data.grade}><option>دهم</option><option>یازدهم</option><option>دوازدهم</option><option>پشت کنکوری</option></select></label><label>رشته<input name="major" defaultValue={data.major}/></label><label>مدرسه<input name="school" defaultValue={data.school}/></label><label className="full">هدف تحصیلی<textarea name="goal" defaultValue={data.goal}/></label><div className="settings-averages full">{[['average_grade9','معدل نهم'],['average_grade10','معدل دهم'],['average_grade11','معدل یازدهم'],['average_grade12','معدل دوازدهم']].map(([name,label])=><label key={name}>{label}<input name={name} type="number" min="0" max="20" step=".01" defaultValue={String(data[name as keyof Profile]??'')}/></label>)}</div><div className="school-settings full"><h3>برنامه مدرسه و کلاس‌های فوق‌العاده</h3>{days.slice(0,5).map(day=>{const periods=schedule[day]||['','','',''];return <section key={day}><b>{day}</b>{periods.map((value,index)=><input key={index} value={value} placeholder={`زنگ ${index+1}`} onChange={e=>setSchedule({...schedule,[day]:periods.map((item,i)=>i===index?e.target.value:item)})}/>)}<textarea value={extras[day]||''} placeholder="کلاس فوق‌العاده یا توضیحات" onChange={e=>setExtras({...extras,[day]:e.target.value})}/></section>})}</div></>}
     {data.role==='advisor'&&<><label>مدرک تحصیلی<input name="education_degree" defaultValue={data.education_degree}/></label><label>رشته تحصیلی<input name="education_field" defaultValue={data.education_field}/></label><label>سابقه کاری (سال)<input name="experience_years" type="number" min="0" defaultValue={data.experience_years}/></label><label>ظرفیت سال تحصیلی<input name="support_capacity" type="number" min={data.assigned_students||1} max="500" defaultValue={data.support_capacity}/><small>{data.assigned_students||0} دانش‌آموز فعال؛ {data.remaining_capacity||0} ظرفیت باقی‌مانده</small></label><label>سال تحصیلی<input name="academic_year" defaultValue={data.academic_year}/></label><label className="full">معرفی و سوابق<textarea name="bio" defaultValue={data.bio}/></label></>}
-    <button className="btn btn-primary" disabled={save.isPending}><Save/> ذخیره تغییرات</button>{save.isSuccess&&<span className="success-note">تغییرات ذخیره شد.</span>}{save.error&&<ErrorBox error={save.error}/>}</form></div>
+    <button className="btn btn-primary" disabled={save.isPending}><Save/> ذخیره تغییرات</button>{save.isSuccess&&<span className="success-note">تغییرات ذخیره شد.</span>}{save.error&&<ErrorBox error={save.error}/>}</form><PasswordChange/></div>
 }
 
 export function ChatPanel({counterpart,currentUser}:{counterpart:User;currentUser:User}){
@@ -94,37 +98,6 @@ function LegacyReadOnlyPlanTable({plan,onUpdate,updating=false,tableRef}:{plan:W
     <div className="plan-document-head"><div><h2>{plan.title}</h2><p>{plan.week_label} · نسخه {plan.version}</p></div><span>مسیر هوشمند</span></div>
     <div className="schedule-table-scroll"><table className="schedule-grid readonly-grid"><thead><tr><th className="day-column">روز و تاریخ</th>{plan.time_slots.map(slot=><th key={`${slot.start}-${slot.end}`}><b>{slot.start}</b><span>تا {slot.end}</span></th>)}</tr></thead><tbody>{plan.days.map(day=><tr key={day.label}><th className="day-column"><b>{day.label}</b><span>{day.date||'بدون تاریخ'}</span></th>{plan.time_slots.map(slot=>{const item=activityAt(plan,day.label,slot.start,slot.end);return <td key={`${day.label}-${slot.start}`} className={item?'filled':''}>{item?<><p>{item.title}</p>{onUpdate&&<details data-html2canvas-ignore="true"><summary>{item.status==='completed'?'انجام شد':'ثبت عملکرد'}</summary><form onSubmit={event=>{event.preventDefault();onUpdate(item,new FormData(event.currentTarget))}}><select name="status" defaultValue={item.status}><option value="pending">انجام نشده</option><option value="in_progress">در حال انجام</option><option value="completed">انجام شد</option></select><input name="actual_minutes" type="number" min="0" defaultValue={item.actual_minutes} placeholder="دقیقه واقعی"/><input name="test_count" type="number" min="0" defaultValue={item.test_count} placeholder="تعداد تست"/><input name="note" defaultValue={item.note} placeholder="یادداشت"/><button disabled={updating}><Save/> ذخیره</button></form></details>}</>:<span className="empty-cell">—</span>}</td>})}</tr>)}</tbody></table></div>
   </div>
-}
-
-async function exportPlanPdf(element:HTMLDivElement,plan:WeeklyPlan){
-  const [{default:html2canvas},{jsPDF}]=await Promise.all([import('html2canvas'),import('jspdf')])
-  const scroller=element.querySelector<HTMLElement>('.daily-timeline-table, .schedule-table-scroll'),oldOverflow=scroller?.style.overflow||'',oldWidth=element.style.width
-  let canvas:HTMLCanvasElement
-  await document.fonts.ready
-  element.classList.add('pdf-exporting')
-  try{
-    if(scroller){scroller.style.overflow='visible';element.style.width=`${scroller.scrollWidth+250}px`}
-    canvas=await html2canvas(element,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false})
-  }finally{
-    if(scroller)scroller.style.overflow=oldOverflow
-    element.style.width=oldWidth
-    element.classList.remove('pdf-exporting')
-  }
-  const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true})
-  const pageWidth=pdf.internal.pageSize.getWidth(),pageHeight=pdf.internal.pageSize.getHeight(),margin=24
-  const availableWidth=pageWidth-margin*2,availableHeight=pageHeight-margin*2
-  const drawScale=Math.min(1,availableHeight/canvas.height)
-  const sourceWidth=Math.max(1,Math.floor(availableWidth/drawScale))
-  let page=0
-  for(let right=canvas.width;right>0;right-=sourceWidth){
-    const width=Math.min(sourceWidth,right),left=Math.max(0,right-width)
-    const slice=document.createElement('canvas');slice.width=width;slice.height=canvas.height
-    slice.getContext('2d')!.drawImage(canvas,left,0,width,canvas.height,0,0,width,canvas.height)
-    if(page++)pdf.addPage('a4','landscape')
-    pdf.addImage(slice.toDataURL('image/jpeg',.94),'JPEG',margin,margin,width*drawScale,canvas.height*drawScale,undefined,'FAST')
-  }
-  const safeName=plan.week_label.replace(/[\\/:*?"<>|]/g,'-')
-  pdf.save(`برنامه-${safeName}.pdf`)
 }
 
 export function StudentPlanPage(){
@@ -195,12 +168,25 @@ const minutesToTime=(value:number)=>`${String(Math.floor(value/60)).padStart(2,'
 export const timelinePosition=(start:string,end:string,rangeStart:string,rangeEnd:string)=>{const base=timeToMinutes(rangeStart),itemStart=timeToMinutes(start),itemEnd=timeToMinutes(end),total=timeToMinutes(rangeEnd)-base;if(![base,itemStart,itemEnd,total].every(Number.isFinite)||total<=0)return {right:'0%',width:'0%'};return {right:`${(itemStart-base)/total*100}%`,width:`${(itemEnd-itemStart)/total*100}%`}}
 
 function TimeSelect({value,onChange,min=0,max=1440,label}:{value:string;onChange:(value:string)=>void;min?:number;max?:number;label:string}){
-  return <label>{label}<input type="text" inputMode="numeric" dir="ltr" maxLength={5} pattern="(?:[01]\\d|2[0-3]):[0-5]\\d|24:00" placeholder="08:00" aria-label={label} data-minutes-min={min} data-minutes-max={max} value={value} onChange={event=>onChange(normalizeClock(event.target.value))}/></label>
+  return <TimeFields value={value} onChange={onChange} label={label}/>
 }
 
 function TimelineTrack({items,rangeStart,rangeEnd}:{items:{id:string;start_time:string;end_time:string;title:string}[];rangeStart:string;rangeEnd:string}){
-  const rangeMinutes=timeToMinutes(rangeEnd)-timeToMinutes(rangeStart),hourWidth=Number.isFinite(rangeMinutes)&&rangeMinutes>0?100/(rangeMinutes/60):100
-  return <div className="timeline-track" dir="rtl" style={{backgroundSize:`${hourWidth}% 100%`}}><span className="timeline-edge start">{faDigits(rangeStart)}</span><span className="timeline-edge end">{faDigits(rangeEnd)}</span>{items.map(item=>{const duration=timeToMinutes(item.end_time)-timeToMinutes(item.start_time),size=duration<=30?'xs':duration<=60?'sm':duration<=120?'md':'lg';return <article className={`timeline-block pdf-font-${size}`} key={item.id} style={timelinePosition(item.start_time,item.end_time,rangeStart,rangeEnd)}><b>{item.title}</b><small>{faDigits(item.start_time)} تا {faDigits(item.end_time)}</small></article>})}</div>
+  const track=useRef<HTMLDivElement>(null)
+  const rangeMinutes=timeToMinutes(rangeEnd)-timeToMinutes(rangeStart)
+  const valid=items.filter(item=>Number.isFinite(timeToMinutes(item.start_time))&&Number.isFinite(timeToMinutes(item.end_time))&&timeToMinutes(item.end_time)>timeToMinutes(item.start_time))
+  const shortest=Math.min(...valid.map(item=>timeToMinutes(item.end_time)-timeToMinutes(item.start_time)))
+  const minWidth=Number.isFinite(shortest)&&rangeMinutes>0?Math.max(850,Math.ceil(rangeMinutes/shortest*150)):850
+  const hourWidth=rangeMinutes>0?100/(rangeMinutes/60):100
+  useEffect(()=>{
+    const element=track.current;if(!element)return
+    const resize=()=>{const height=Math.max(130,...Array.from(element.querySelectorAll<HTMLElement>('.timeline-block'),block=>block.offsetHeight+40));element.style.height=height+'px'}
+    resize();if(typeof ResizeObserver==='undefined')return
+    const observer=new ResizeObserver(resize)
+    element.querySelectorAll('.timeline-block').forEach(block=>observer.observe(block))
+    return ()=>observer.disconnect()
+  },[items,rangeStart,rangeEnd])
+  return <div className="timeline-scroll"><div ref={track} className="timeline-track inline-timeline" dir="rtl" style={{minWidth,backgroundSize:`${hourWidth}% 100%`}}><span className="timeline-edge start">{faDigits(rangeStart)}</span><span className="timeline-edge end">{faDigits(rangeEnd)}</span>{valid.map(item=><article className="timeline-block" key={item.id} style={timelinePosition(item.start_time,item.end_time,rangeStart,rangeEnd)}><b>{item.title}</b><small>{faDigits(item.start_time)} تا {faDigits(item.end_time)}</small></article>)}</div></div>
 }
 
 function ReadOnlyPlanTable({plan,studentName='—',advisorName='—',onUpdate,updating=false,tableRef}:{plan:WeeklyPlan;studentName?:string;advisorName?:string;onUpdate?:(item:PlanActivity,form:FormData)=>void;updating?:boolean;tableRef?:{current:HTMLDivElement|null}}){
@@ -216,6 +202,7 @@ export function validateTimeline(items:TimelineDraft[],rangeStart:string,rangeEn
   for(const item of items){
     const itemStart=timeToMinutes(item.start),itemEnd=timeToMinutes(item.end)
     if(!Number.isFinite(itemStart)||!Number.isFinite(itemEnd))return 'ساعت‌ها را با قالب درست، مانند 08:00 یا 09:06 وارد کنید.'
+    if(item.title.split('\n').length>3)return 'توضیحات هر بازه حداکثر سه خط است.'
     if(!item.title.trim())return 'توضیحات همه بازه‌ها را کامل کنید.'
     if(itemStart>=itemEnd)return 'ساعت پایان هر برنامه باید بعد از ساعت شروع آن باشد.'
     if(itemStart<start||itemEnd>end)return 'همه برنامه‌ها باید داخل بازه کلی روز باشند.'
@@ -227,34 +214,22 @@ export function validateTimeline(items:TimelineDraft[],rangeStart:string,rangeEn
   return ''
 }
 
-function nextAvailableRange(items:TimelineDraft[],rangeStart:string,rangeEnd:string){
-  let cursor=timeToMinutes(rangeStart),limit=timeToMinutes(rangeEnd)
-  if(!Number.isFinite(cursor)||!Number.isFinite(limit)||cursor>=limit)return null
-  for(const item of [...items].sort((a,b)=>a.start.localeCompare(b.start))){
-    const itemStart=timeToMinutes(item.start)
-    if(itemStart-cursor>=1)return {start:minutesToTime(cursor),end:minutesToTime(Math.min(cursor+60,itemStart))}
-    cursor=Math.max(cursor,timeToMinutes(item.end))
-  }
-  if(limit-cursor>=1)return {start:minutesToTime(cursor),end:minutesToTime(Math.min(cursor+60,limit))}
-  return null
-}
-
 type AdvisorSchoolProfile={grade?:string;major?:string;school?:string;goal?:string;average_grade9?:number|null;average_grade10?:number|null;average_grade11?:number|null;average_grade12?:number|null;school_schedule?:Record<string,string[]>;extra_classes?:Record<string,string>}
 
 function AdvisorSchoolReference({profile}:{profile:AdvisorSchoolProfile}){
   const schedule=profile.school_schedule||{},extras=profile.extra_classes||{}
   return <section className="advisor-school-reference"><div><h3>برنامه مدرسه دانش‌آموز</h3><p>{profile.grade||'—'} · {profile.major||'—'} · {profile.school||'مدرسه ثبت نشده'}</p><small>معدل‌ها — نهم: {profile.average_grade9??'—'} | دهم: {profile.average_grade10??'—'} | یازدهم: {profile.average_grade11??'—'} | دوازدهم: {profile.average_grade12??'—'}</small></div>{Object.keys(schedule).length?<div className="advisor-school-days">{Object.entries(schedule).map(([day,periods])=><article key={day}><b>{day}</b>{periods.map((item,index)=><span key={index}>{index+1}. {item||'خالی'}</span>)}<small>{extras[day]||'بدون کلاس فوق‌العاده'}</small></article>)}</div>:<p className="empty-school-plan">برنامه مدرسه‌ای ثبت نشده است.</p>}</section>
 }
-function PlanBuilder({studentId}:{studentId:string}){
+export function PlanBuilder({studentId}:{studentId:string}){
   const qc=useQueryClient();const [title,setTitle]=useState('برنامه هفتگی'),[week,setWeek]=useState(''),[startDate,setStartDate]=useState<JalaliSelection>(initialJalali)
   const [rangeStart,setRangeStart]=useState('08:00'),[rangeEnd,setRangeEnd]=useState('24:00'),[items,setItems]=useState<TimelineDraft[]>([])
   const [mission,setMission]=useState('')
   const tableDays=useMemo(()=>buildJalaliWeek(startDate),[startDate]);useEffect(()=>setWeek(`از ${tableDays[0].date} تا ${tableDays[6].date}`),[tableDays])
   const {data=[]}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')})
   const {data:studentFile}=useQuery({queryKey:['student-file-school',studentId],queryFn:()=>api<ReportData&{student:User;profile:AdvisorSchoolProfile}>(`/advisors/students/${studentId}/report`)})
-  const addItem=(dayId:string)=>setItems(current=>{const range=nextAvailableRange(current.filter(item=>item.dayId===dayId),rangeStart,rangeEnd);return range?[...current,{id:crypto.randomUUID(),dayId,...range,title:''}]:current})
+  const addItem=(dayId:string)=>setItems(current=>[...current,{id:crypto.randomUUID(),dayId,start:'',end:'',title:''}])
   const updateItem=(id:string,key:'start'|'end'|'title',value:string)=>setItems(current=>current.map(item=>item.id===id?{...item,[key]:value}:item))
   const error=validateTimeline(items,rangeStart,rangeEnd)
   const create=useMutation({mutationFn:async()=>{if(error)throw new Error(error);const activities=items.map(item=>({day:tableDays.find(day=>day.id===item.dayId)!.label,subject:'برنامه',title:item.title.trim(),start_time:item.start,end_time:item.end}));const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,weekly_mission:mission,day_start_time:rangeStart,day_end_time:rangeEnd,days:tableDays.map(({label,date})=>({label,date})),time_slots:[],activities})});await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan},onSuccess:()=>qc.invalidateQueries({queryKey:['plans','advisor']})})
-  return <div className="table-planner timeline-planner">{studentFile&&<AdvisorSchoolReference profile={studentFile.profile}/>}<div className="planner-meta"><label>عنوان برنامه<input value={title} onChange={event=>setTitle(event.target.value)}/></label><label>عنوان یا بازه هفته<input value={week} onChange={event=>setWeek(event.target.value)}/></label><label className="mission-field">ماموریت هفته<textarea value={mission} maxLength={2000} onChange={event=>setMission(event.target.value)} placeholder="ماموریت و هدف اصلی این هفته را بنویسید..."/></label></div><div className="planner-calendar-row"><div><b>تاریخ شمسی شروع برنامه</b><p>روز و تاریخ تمام هفت روز خودکار محاسبه می‌شود.</p><PersianDateSelector value={startDate} onChange={setStartDate}/></div><div className="daily-range-fields"><TimeSelect label="شروع کل روز" value={rangeStart} max={timeToMinutes(rangeEnd)-1} onChange={setRangeStart}/><TimeSelect label="پایان کل روز" value={rangeEnd} min={timeToMinutes(rangeStart)+1} onChange={setRangeEnd}/></div></div><div className="timeline-editor-list">{tableDays.map(day=>{const dayItems=items.filter(item=>item.dayId===day.id).sort((a,b)=>a.start.localeCompare(b.start));return <section className="timeline-editor-day" key={day.id}><header><b>{day.label}</b><span>{day.date}</span></header><div className="timeline-editor-body"><TimelineTrack items={dayItems.map(item=>({id:item.id,start_time:item.start,end_time:item.end,title:item.title||'برنامه جدید'}))} rangeStart={rangeStart} rangeEnd={rangeEnd}/><div className="timeline-item-editors">{dayItems.map(item=><div className="timeline-item-editor" key={item.id}><TimeSelect label="از" value={item.start} min={timeToMinutes(rangeStart)} max={timeToMinutes(rangeEnd)-1} onChange={value=>updateItem(item.id,'start',value)}/><TimeSelect label="تا" value={item.end} min={timeToMinutes(rangeStart)+1} max={timeToMinutes(rangeEnd)} onChange={value=>updateItem(item.id,'end',value)}/><label className="timeline-description">توضیحات<input value={item.title} onChange={event=>updateItem(item.id,'title',event.target.value)} placeholder="مثلاً مطالعه فصل سوم ریاضی"/></label><button aria-label="حذف برنامه" onClick={()=>setItems(current=>current.filter(entry=>entry.id!==item.id))}><Trash2/></button></div>)}</div><button className="add-day-range" onClick={()=>addItem(day.id)}><Plus/> افزودن بازه برای {day.label}</button></div></section>})}</div><div className="planner-actions"><span className={error?'timeline-error':''}>{error||`${items.length} برنامه در بازه ${faDigits(rangeStart)} تا ${faDigits(rangeEnd)}`}</span><button className="btn btn-primary" disabled={create.isPending||Boolean(error)} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار برنامه</button></div>{create.isSuccess&&<div className="success-note">برنامه خط زمانی با موفقیت منتشر شد.</div>}{create.error&&<ErrorBox error={create.error}/>}<h2>نسخه‌های قبلی</h2>{data.filter(plan=>plan.student_id===studentId).map(plan=><div className="version-row" key={plan.id}><b>{plan.title}</b><span>{plan.week_label} · نسخه {plan.version}</span><em>{plan.status==='published'?'منتشرشده':'پیش‌نویس'}</em></div>)}</div>
+  return <div className="table-planner timeline-planner">{studentFile&&<AdvisorSchoolReference profile={studentFile.profile}/>}<div className="planner-meta"><label>عنوان برنامه<input value={title} onChange={event=>setTitle(event.target.value)}/></label><label>عنوان یا بازه هفته<input value={week} onChange={event=>setWeek(event.target.value)}/></label><label className="mission-field">ماموریت هفته<textarea value={mission} maxLength={2000} onChange={event=>setMission(event.target.value)} placeholder="ماموریت و هدف اصلی این هفته را بنویسید..."/></label></div><div className="planner-calendar-row"><div><b>تاریخ شمسی شروع برنامه</b><p>روز و تاریخ تمام هفت روز خودکار محاسبه می‌شود.</p><PersianDateSelector value={startDate} onChange={setStartDate}/></div><div className="daily-range-fields"><TimeSelect label="شروع کل روز" value={rangeStart} max={timeToMinutes(rangeEnd)-1} onChange={setRangeStart}/><TimeSelect label="پایان کل روز" value={rangeEnd} min={timeToMinutes(rangeStart)+1} onChange={setRangeEnd}/></div></div><div className="timeline-editor-list">{tableDays.map(day=>{const dayItems=items.filter(item=>item.dayId===day.id);return <section className="timeline-editor-day" key={day.id}><header><b>{day.label}</b><span>{day.date}</span></header><div className="timeline-editor-body"><TimelineTrack items={dayItems.map(item=>({id:item.id,start_time:item.start,end_time:item.end,title:item.title||'برنامه جدید'}))} rangeStart={rangeStart} rangeEnd={rangeEnd}/><div className="timeline-item-editors">{dayItems.map(item=><div className="timeline-item-editor" key={item.id}><TimeSelect label="از" value={item.start} min={timeToMinutes(rangeStart)} max={timeToMinutes(rangeEnd)-1} onChange={value=>updateItem(item.id,'start',value)}/><TimeSelect label="تا" value={item.end} min={timeToMinutes(rangeStart)+1} max={timeToMinutes(rangeEnd)} onChange={value=>updateItem(item.id,'end',value)}/><label className="timeline-description">توضیحات (تا ۳ خط)<textarea rows={3} maxLength={180} value={item.title} onChange={event=>updateItem(item.id,'title',event.target.value.replace(/\r/g,'').split('\n').slice(0,3).join('\n'))} placeholder="مثلاً مطالعه فصل سوم ریاضی"/></label><button aria-label="حذف برنامه" onClick={()=>setItems(current=>current.filter(entry=>entry.id!==item.id))}><Trash2/></button></div>)}</div><button className="add-day-range" onClick={()=>addItem(day.id)}><Plus/> افزودن بازه برای {day.label}</button></div></section>})}</div><div className="planner-actions"><span className={error?'timeline-error':''}>{error||`${items.length} برنامه در بازه ${faDigits(rangeStart)} تا ${faDigits(rangeEnd)}`}</span><button className="btn btn-primary" disabled={create.isPending||Boolean(error)} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار برنامه</button></div>{create.isSuccess&&<div className="success-note">برنامه خط زمانی با موفقیت منتشر شد.</div>}{create.error&&<ErrorBox error={create.error}/>}<h2>نسخه‌های قبلی</h2>{data.filter(plan=>plan.student_id===studentId).map(plan=><div className="version-row" key={plan.id}><b>{plan.title}</b><span>{plan.week_label} · نسخه {plan.version}</span><em>{plan.status==='published'?'منتشرشده':'پیش‌نویس'}</em></div>)}</div>
 }

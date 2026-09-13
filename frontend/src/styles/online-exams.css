@@ -1,0 +1,16 @@
+.online-key-builder,.student-online-sheet,.online-result,.online-key-review{padding:18px;border:1px solid #dcd3ed;border-radius:14px;background:#fcfaff;min-width:0}
+.online-key-builder p,.student-online-sheet p,.online-result p{font-size:14px;line-height:1.9;color:#625773}
+.online-check{display:flex!important;align-items:center;gap:9px}.online-check input{width:auto!important}
+.online-subject{margin:18px 0;border:1px solid #e1d8ef;border-radius:12px;padding:14px;background:white;min-width:0}
+.online-subject>header{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.online-subject>header label{flex:1;min-width:150px}
+.online-question-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px;margin-top:14px}
+.online-question{margin:0;border:1px solid #e3dced;border-radius:9px;padding:10px;min-width:0}.online-question legend{font-size:14px;padding:0 6px;font-weight:700}
+.online-question>div{display:flex;justify-content:space-between;gap:5px}.online-question button{display:flex;align-items:center;gap:6px;padding:7px;border:1px solid transparent;border-radius:7px;background:#faf8fd;font:inherit;cursor:pointer}
+.online-question button.selected{background:#eee5ff;border-color:#7950cd;color:#5b31ac}.online-question button:focus-visible{outline:2px solid #7850cc;outline-offset:2px}
+.choice-square{width:23px;height:23px;border:2px solid #ae9bcf;border-radius:3px;display:grid;place-items:center;color:#673bbb;font-weight:900}
+.online-question:disabled{opacity:.7}.online-result-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}.online-result-summary>span{display:grid;gap:8px;padding:12px;background:#eee7f8;border-radius:9px;font-size:14px}.online-result-summary b{font-size:19px;color:#6037ad}
+.online-result-table{overflow-x:auto;margin:16px 0}.online-result table{width:100%;border-collapse:collapse;font-size:14px;min-width:540px}.online-result td,.online-result th{padding:11px;border:1px solid #ddd4e8;text-align:center}.online-result thead{background:#efe8f9}.online-result tr.correct{background:#eaf8ef}.online-result tr.wrong{background:#fff0f0}.online-result tr.unanswered{background:#f4f2f7}
+.student-online-sheet>header,.online-sheet-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.online-finish-confirm{padding:15px;border:1px solid #d4b973;background:#fff8e7;border-radius:10px;margin-top:14px}.online-finish-confirm .btn{margin:4px}
+.online-result details summary,.online-key-review summary{cursor:pointer;padding:10px;font-weight:700}.online-start-note{padding:15px;background:#f0e9fb;border-radius:10px;line-height:1.9}
+@media(max-width:600px){.online-key-builder,.student-online-sheet,.online-result{padding:10px}.online-question-grid{grid-template-columns:1fr}.online-sheet-actions .btn{width:100%}}

@@ -7,11 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from app.chat_access import chat_locked, request_day
+from app.models import ChatAccessRequest
 
 from app.core.security import current_user, roles
 from app.db.session import get_db
 from app.models import AdvisorAssignment, AdvisorProfile, ChatLock, Message, Notification, Order, StudentProfile, Subscription, SubscriptionPlan, User, utcnow
 from app.services import audit
+from app.api.onboarding_flow import advance_student, paid_registration
 
 router = APIRouter()
 
@@ -25,33 +29,8 @@ def plan_days(plan: SubscriptionPlan):
     return 365 if plan.period == "yearly" else 90 if plan.period in {"quarterly", "three_months"} else 30
 
 def finalize_student_registration(db: Session, student: User, profile: StudentProfile | None = None):
-    was_active = student.status == "active"
-    profile = profile or db.scalar(select(StudentProfile).where(StudentProfile.user_id == student.id))
-    assignment = db.scalar(select(AdvisorAssignment).where(
-        AdvisorAssignment.student_id == student.id,
-        AdvisorAssignment.approval_status == "approved",
-        AdvisorAssignment.active.is_(True)))
-    ready = bool(profile and assignment and profile.admin_approval_status == "approved" and profile.advisor_approval_status == "approved")
-    if not ready:
-        student.status = "pending_approval"
-        student.onboarding_step = "dual_approval"
-        return False
-    pending = db.scalar(select(Subscription).where(
-        Subscription.user_id == student.id, Subscription.status == "pending_activation"
-    ).order_by(Subscription.created_at.desc()))
-    if pending:
-        plan = db.get(SubscriptionPlan, pending.plan_id)
-        now = utcnow()
-        pending.starts_at = now
-        pending.expires_at = now + timedelta(days=plan_days(plan))
-        pending.status = "active"
-    student.status = "active"
-    student.onboarding_step = "completed"
-    if not was_active:
-        db.add(Notification(user_id=student.id, kind="registration", title="حساب شما فعال شد",
-            body="تأیید مدیر و مشاور تکمیل شد و دوره اشتراک شما از همین لحظه آغاز گردید.",
-            link="/app/student/subscription"))
-    return True
+    return advance_student(db, student, profile)
+
 
 class LockUpdate(BaseModel):
     locked: bool
@@ -87,9 +66,37 @@ def chat_contacts(user: User = Depends(current_user), db: Session = Depends(get_
             (Message.sender_id == user.id) & (Message.recipient_id == item.id),
             (Message.sender_id == item.id) & (Message.recipient_id == user.id))).order_by(Message.created_at.desc()))
         admin_id = user.id if user.role == "super_admin" else item.id if item.role == "super_admin" else None
-        locked = bool(admin_id and db.scalar(select(ChatLock).where(ChatLock.admin_id == admin_id, ChatLock.user_id == (item.id if user.role == "super_admin" else user.id), ChatLock.locked.is_(True))))
-        rows.append(basic(item) | {"last_message": last.body if last else None, "last_message_at": last.created_at if last else None, "locked": locked})
+        target = item if user.role == "super_admin" else user
+        locked = chat_locked(db, admin_id, target) if admin_id else False
+        requested_today = bool(user.role == "student" and db.scalar(select(ChatAccessRequest.id).where(ChatAccessRequest.student_id == user.id, ChatAccessRequest.request_day == request_day())))
+        rows.append(basic(item) | {"last_message": last.body if last else None, "last_message_at": last.created_at if last else None, "locked": locked,
+            "chat_request_allowed": user.role == "student" and item.role == "super_admin" and locked and not requested_today,
+            "chat_requested_today": requested_today})
+    rows.sort(key=lambda row: row["last_message_at"].isoformat() if row["last_message_at"] else "", reverse=True)
     return ok(rows)
+
+@router.post("/chat/access-requests/{admin_id}")
+def request_admin_chat(admin_id: str, student: User = Depends(roles("student")), db: Session = Depends(get_db)):
+    admin = db.get(User, admin_id)
+    if not admin or admin.role != "super_admin" or admin.status != "active":
+        raise HTTPException(404, "مدیر سایت در دسترس نیست")
+    if not chat_locked(db, admin.id, student):
+        raise HTTPException(409, "گفت‌وگو با مدیریت برای شما فعال است")
+    db.add(ChatAccessRequest(student_id=student.id, admin_id=admin.id, request_day=request_day()))
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(429, "درخواست امروز شما ثبت شده است؛ از فردا می‌توانید دوباره درخواست دهید")
+    body = f"با سلام و احترام؛ اینجانب {student.full_name}، برای طرح و بررسی برخی مسائل، درخواست گفت‌وگوی مستقیم با مدیریت محترم سایت را دارم. خواهشمند است در صورت امکان، دسترسی اینجانب به گفت‌وگو را فعال فرمایید. با سپاس."
+    message = Message(sender_id=student.id, recipient_id=admin.id, body=body)
+    db.add(message)
+    db.flush()
+    db.add(Notification(user_id=admin.id, actor_id=student.id, kind="message", title="درخواست فعال‌سازی گفت‌وگو", body=body, link="/app/admin/messages", related_id=message.id))
+    audit(db, student.id, "student.chat_access_requested", "message", message.id)
+    db.commit()
+    return ok({"sent": True, "message_id": message.id})
+
 
 @router.patch("/admin/chat-locks/{user_id}")
 def set_chat_lock(user_id: str, payload: LockUpdate, admin: User = Depends(roles("super_admin")), db: Session = Depends(get_db)):
@@ -157,6 +164,11 @@ def admin_student_approval(student_id: str, payload: StudentApprovalUpdate, admi
     profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student_id))
     if not student or student.role != "student" or not profile:
         raise HTTPException(404, "پرونده دانش‌آموز یافت نشد")
+    if student.status != "active":
+        if not paid_registration(db, student.id) or profile.advisor_approval_status != "approved" or student.onboarding_step not in {"manager_review", "dual_approval"}:
+            raise HTTPException(409, "ابتدا تأیید مشاور و پرداخت باید تکمیل شود")
+        if payload.approve_as_advisor:
+            raise HTTPException(409, "تأیید مشاور باید توسط خود مشاور انجام شود")
     if payload.status == "rejected" and not payload.note.strip():
         raise HTTPException(422, "برای رد پرونده دلیل را وارد کنید")
     profile.admin_approval_status = payload.status
@@ -176,6 +188,7 @@ def admin_student_approval(student_id: str, payload: StudentApprovalUpdate, admi
     if payload.status == "rejected":
         student.status = "onboarding_profile"
         student.onboarding_step = "profile_correction"
+        profile.registration_review_status = "rejected"
         profile.registration_review_note = payload.note.strip()
     else:
         finalize_student_registration(db, student, profile)

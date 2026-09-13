@@ -3,6 +3,19 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
+def accept_terms(client, csrf, role="student"):
+    version = client.get(f"/api/v1/terms/{role}").json()["data"]["version"]
+    assert client.post("/api/v1/onboarding/terms/accept", headers={"X-CSRF-Token":csrf}, json={"version":version,"accepted":True}).status_code == 200
+
+def login_advisor(client):
+    return client.post("/api/v1/auth/verify-otp", json={"phone":"09120000002","code":"123456","role":"advisor"}).json()["data"]
+
+def decide(client, csrf, student_id, decision, note=""):
+    requests = client.get("/api/v1/advisors/assignment-requests").json()["data"]
+    assignment = next(row for row in requests if row["student"]["id"] == student_id)
+    return client.patch(f"/api/v1/advisors/assignment-requests/{assignment['id']}",headers={"X-CSRF-Token":csrf},json={"decision":decision,"note":note})
+
+
 def test_password_registration_and_student_steps():
     with TestClient(app) as client:
         payload = {
@@ -28,29 +41,43 @@ def test_password_registration_and_student_steps():
         })
         assert profile.status_code == 200
         assert profile.json()["data"]["next_step"] == "terms"
+        accept_terms(client, csrf)
         options = client.get("/api/v1/registrations/options").json()["data"]
         selected = client.post("/api/v1/onboarding/student/selection", headers={"X-CSRF-Token": csrf}, json={
             "plan_id": options["plans"][0]["id"], "advisor_selection_mode": "admin",
         })
         assert selected.status_code == 200
-        payment = selected.json()["data"]
-        paid = client.post("/api/v1/payments/callback", json={
-            "order_id": payment["order_id"], "success": True, "signature": payment["signature"],
-        })
-        assert paid.status_code == 200
-        assert paid.json()["data"]["user_status"] == "pending_approval"
-        status = client.get("/api/v1/onboarding/status").json()["data"]
-        assert status["step"] == "dual_approval"
-        assert status["profile"]["admin_approval_status"] == "pending"
-        assert status["profile"]["advisor_approval_status"] == "pending"
-
-        with TestClient(app) as admin:
-            admin_login = admin.post("/api/v1/auth/verify-otp", json={"phone":"09120000003","code":"123456","role":"super_admin","mfa_code":"654321"})
-            admin_csrf = admin_login.json()["data"]["csrf_token"]
-            advisors = admin.get("/api/v1/registrations/options").json()["data"]["advisors"]
-            assigned = admin.post(f"/api/v1/admin/students/{registered.json()['data']['user']['id']}/assign-advisor", headers={"X-CSRF-Token":admin_csrf}, json={"advisor_id":advisors[0]["id"]})
+        student_id = registered.json()["data"]["user"]["id"]
+        assert "signature" not in selected.json()["data"]
+        assert client.get("/api/v1/onboarding/status").json()["data"]["step"] == "advisor_assignment"
+        with TestClient(app) as admin, TestClient(app) as advisor:
+            admin_result = admin.post("/api/v1/auth/verify-otp", json={"phone":"09120000003","code":"123456","role":"super_admin","mfa_code":"654321"})
+            admin_headers = {"X-CSRF-Token":admin_result.json()["data"]["csrf_token"]}
+            advisor_data = login_advisor(advisor)
+            assigned = admin.post(f"/api/v1/admin/students/{student_id}/assign-advisor", headers=admin_headers, json={"advisor_id":advisor_data["user"]["id"]})
             assert assigned.status_code == 200
-            approval = admin.patch(f"/api/v1/admin/students/{registered.json()['data']['user']['id']}/registration-approval", headers={"X-CSRF-Token":admin_csrf}, json={"status":"approved","note":"پرونده کامل است","approve_as_advisor":False})
+            approval_path = f"/api/v1/admin/students/{student_id}/registration-approval"
+            assert admin.patch(approval_path, headers=admin_headers, json={"status":"approved"}).status_code == 409
+            assert "payment" not in client.get("/api/v1/onboarding/status").json()["data"]
+            assert decide(advisor,advisor_data["csrf_token"],student_id,"approved").status_code == 200
+            status = client.get("/api/v1/onboarding/status").json()["data"]
+            assert status["step"] == "payment"
+            payment = status["payment"]
+            assert client.post("/api/v1/onboarding/back",headers={"X-CSRF-Token":csrf}).status_code == 200
+            assert client.post("/api/v1/onboarding/back",headers={"X-CSRF-Token":csrf}).status_code == 200
+            assert client.post("/api/v1/payments/callback",json={"order_id":payment["order_id"],"signature":payment["signature"],"success":True}).status_code in {400,409}
+            assert client.post("/api/v1/onboarding/student/selection",headers={"X-CSRF-Token":csrf},json={"plan_id":options["plans"][0]["id"],"advisor_selection_mode":"self","advisor_id":advisor_data["user"]["id"]}).status_code == 200
+            assert decide(advisor,advisor_data["csrf_token"],student_id,"approved").status_code == 200
+            payment = client.get("/api/v1/onboarding/status").json()["data"]["payment"]
+            paid = client.post("/api/v1/payments/callback",json={"order_id":payment["order_id"],"signature":payment["signature"],"success":True})
+            assert paid.status_code == 200
+            assert client.get("/api/v1/onboarding/status").json()["data"]["step"] == "manager_review"
+            assert client.post("/api/v1/onboarding/back",headers={"X-CSRF-Token":csrf}).status_code == 200
+            status = client.get("/api/v1/onboarding/status").json()["data"]
+            assert status["paid"] is True and "payment" not in status
+            assert admin.patch(approval_path,headers=admin_headers,json={"status":"approved"}).status_code == 409
+            assert client.post("/api/v1/onboarding/continue",headers={"X-CSRF-Token":csrf}).status_code == 200
+            approval = admin.patch(approval_path,headers=admin_headers,json={"status":"approved","note":"پرونده کامل است"})
             assert approval.status_code == 200
             assert approval.json()["data"]["status"] == "active"
 
@@ -110,6 +137,7 @@ def test_advisor_referral_locks_selection_and_uses_referral_price():
             "average_grade9": 18.5, "school_schedule": schedule, "extra_classes": {},
         })
         assert profile.status_code == 200
+        accept_terms(student_client, csrf)
         options = student_client.get("/api/v1/registrations/options").json()["data"]
         plan = options["plans"][0]
         selection = student_client.post("/api/v1/onboarding/student/selection", headers={"X-CSRF-Token": csrf}, json={
@@ -121,3 +149,21 @@ def test_advisor_referral_locks_selection_and_uses_referral_price():
         assert status["referred_advisor"]["id"] == advisor_id
         assert status["profile"]["advisor_selection_mode"] == "self"
         assert status["profile"]["preferred_advisor_id"] == advisor_id
+
+        student_id = registered.json()["data"]["user"]["id"]
+        reason = "ظرفیت همراهی با برنامه تحصیلی شما را ندارم"
+        with TestClient(app) as reviewer:
+            reviewer_data = login_advisor(reviewer)
+            for note in ["", "   "]:
+                assert decide(reviewer, reviewer_data["csrf_token"], student_id, "rejected", note).status_code == 422
+            assert decide(reviewer, reviewer_data["csrf_token"], student_id, "rejected", reason).status_code == 200
+        with TestClient(app) as returning:
+            login = returning.post("/api/v1/auth/login", json={"phone":invited_phone,"password":"SafePass123"})
+            headers = {"X-CSRF-Token":login.json()["data"]["csrf_token"]}
+            status = returning.get("/api/v1/onboarding/status").json()["data"]
+            assert status["step"] == "selection"
+            assert status["profile"]["approval_note"] == reason
+            assert advisor_id in status["rejected_advisor_ids"]
+            assert returning.post("/api/v1/onboarding/student/selection",headers=headers,json={"plan_id":plan["id"],"advisor_selection_mode":"self","advisor_id":advisor_id}).status_code == 409
+            assert returning.post("/api/v1/onboarding/student/selection",headers=headers,json={"plan_id":plan["id"],"advisor_selection_mode":"admin"}).status_code == 200
+            assert returning.get("/api/v1/onboarding/status").json()["data"]["step"] == "advisor_assignment"

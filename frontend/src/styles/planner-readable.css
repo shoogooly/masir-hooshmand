@@ -1,0 +1,64 @@
+/* Readable planner controls and student/advisor plan views. */
+.table-planner,.plan-table-document{font-size:16px}
+.table-planner .planner-meta label,.table-planner .planner-meta input,.planner-meta .mission-field textarea{font-size:16px;line-height:1.8}
+.table-planner .persian-date-selector select{font-size:15px}
+.daily-range-fields .time-field,.timeline-item-editor .time-field,.timeline-item-editor label{font-size:14px;display:grid;gap:7px}
+.split-clock{display:flex;align-items:center;gap:5px;width:125px}
+.split-clock input,.daily-range-fields .split-clock input,.timeline-item-editor .split-clock input{box-sizing:border-box;width:55px;min-width:0;padding:9px 4px;text-align:center;font:17px/1.4 Tahoma,sans-serif;border:1px solid #cec3e0;border-radius:8px;background:#fff}
+.split-clock input:focus{outline:2px solid #a387e8;outline-offset:1px}
+.timeline-item-editor{grid-template-columns:135px 135px minmax(240px,1fr) 40px;gap:12px;align-items:center;padding:12px}
+.timeline-description textarea{box-sizing:border-box;width:100%;min-height:104px;resize:vertical;border:1px solid #dcd5e7;border-radius:8px;padding:9px;font:16px/1.7 PlanKoodak,Tahoma,sans-serif}
+.daily-timeline-row>header b,.timeline-editor-day>header b{font-size:19px}
+.daily-timeline-row>header span,.timeline-editor-day>header span{font-size:15px}
+.timeline-track{height:132px;overflow:visible;margin-bottom:8px}
+.timeline-block{height:102px;box-sizing:border-box}.timeline-block b{font-size:16px;line-height:1.6}.timeline-block small{font-size:12px}.timeline-edge{font-size:12px}
+.timeline-performance summary,.timeline-performance input,.timeline-performance select{font-size:15px}
+.student-mission-card b{font-size:18px}.student-mission-card p{font-size:17px;line-height:1.9}.add-day-range{font-size:15px;padding:10px 14px}
+/* The PDF has its own measured flow layout, independent of the screen timeline's width. */
+.print-plan-host{position:absolute;left:-20000px;top:0;pointer-events:none}
+.planner-pdf-sheet,.planner-pdf-sheet *{box-sizing:border-box}
+.planner-pdf-sheet{width:1280px;padding:18px;background:#fff;color:#191523;font-family:PlanKoodak,Tahoma,sans-serif}
+.print-plan-header{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #7454b8;padding:0 4px 12px;margin-bottom:12px;gap:20px}
+.print-plan-header h1{font-size:24px;margin:0 0 6px}.print-plan-header p{font-size:16px;margin:3px 0}.print-plan-brand{font-size:27px;color:#654298;white-space:nowrap}
+.print-plan-main{display:grid;grid-template-columns:minmax(0,1fr) 185px;gap:12px;align-items:stretch}
+.print-plan-days{display:grid;gap:8px;align-content:start}.print-plan-day{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px}
+.print-plan-date{display:flex;flex-direction:column;justify-content:center;text-align:center;gap:8px;background:#eee7f9;border:1px solid #ad9bc9;border-radius:8px;padding:8px 3px;font-size:17px}.print-plan-date span{font:15px Tahoma,sans-serif}
+.print-plan-cards{display:grid;gap:7px;align-items:stretch}.print-plan-card{border:1px solid #8e809f;border-radius:7px;overflow:hidden;min-width:0;background:#fff}
+.print-plan-card small{display:block;text-align:center;padding:5px 2px;background:#f0edf5;border-bottom:1px solid #bcb1c9;font:15px/1.4 Tahoma,sans-serif;white-space:nowrap}
+.print-plan-card p{margin:0;padding:7px;text-align:center;white-space:pre-wrap;overflow-wrap:anywhere;font-size:19px;line-height:1.5;min-height:54px}
+.print-plan-mission{border:1px solid #8e809f;border-top:6px solid #7454b8;border-radius:8px;padding:12px;min-width:0}
+.print-plan-mission h2{font-size:20px;text-align:center;border-bottom:1px solid #bbb;padding-bottom:9px;margin:0 0 10px}
+.print-plan-mission p{font-size:17px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.print-plan-footer{font-size:15px;text-align:center;padding-top:10px;margin-top:10px;border-top:1px solid #bdb3cc}.print-plan-empty{font-size:17px;color:#61546f}
+@media(max-width:760px){.planner-calendar-row{flex-wrap:wrap}.timeline-item-editor{grid-template-columns:135px 135px minmax(220px,1fr) 40px}.daily-range-fields{flex-wrap:wrap}}
+
+/* Compact A4 output. The complete sheet is scaled uniformly only after layout fitting. */
+.planner-pdf-sheet{--print-body-size:16px;--print-time-size:15px;--print-gap:6px;padding:12px}
+.print-plan-header{padding-bottom:8px;margin-bottom:8px}.print-plan-header h1{font-size:22px}.print-plan-header p{font-size:15px;line-height:1.3}.print-plan-brand{font-size:24px}
+.print-plan-main{grid-template-columns:minmax(0,1fr) 170px;gap:8px}.print-plan-day{grid-template-columns:78px minmax(0,1fr);gap:6px}
+.print-plan-days,.print-plan-cards{gap:var(--print-gap)}.print-plan-date{font-size:16px;padding:5px 2px}.print-plan-date span{font-size:13px}
+.print-plan-card p{font-size:var(--print-body-size);line-height:1.2;padding:5px;min-height:0}
+.print-plan-card small{font-size:var(--print-time-size);line-height:1.2;padding:3px 1px}
+.print-plan-mission{padding:8px}.print-plan-mission p{font-size:var(--print-body-size);line-height:1.4}.print-plan-mission h2{font-size:18px}.print-plan-footer{font-size:13px;padding-top:6px;margin-top:6px}
+
+.planner-pdf-sheet{font-family:Tahoma,sans-serif}.print-plan-card p{line-height:1.45;font-weight:400}.print-plan-mission p{line-height:1.6}.print-plan-footer{background:#fff;color:#453855}
+.timeline-scroll{min-width:0;max-width:100%;overflow-x:auto;padding-bottom:5px}
+/* Fixed A4 timeline: zero column gaps keep study and rest widths on one exact scale. */
+.planner-pdf-sheet{height:880px;display:flex;flex-direction:column}
+.print-plan-header,.print-plan-footer{flex-shrink:0}
+.print-plan-main{flex:1;min-height:0}
+.print-plan-days{grid-auto-rows:minmax(0,1fr);align-content:stretch;gap:5px;min-height:0}
+.print-plan-day{min-height:0}
+.print-plan-cards{gap:0;min-width:0;min-height:0}
+.print-plan-card{display:flex;align-items:center;justify-content:center;min-height:0;border-radius:0;border-width:.5px;background:#eee7fa}
+.print-plan-rest{background:#faf9fc;border-color:#ccc5d6;color:#746b80}
+.print-plan-card-content{width:100%;min-width:0;font-size:16px;text-align:center;line-height:1.4}
+.print-plan-card p{font:inherit;padding:0;margin:0;min-height:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.print-plan-card small{font:inherit;font-size:.8em;padding:0;margin-top:.25em;background:none;border:0;white-space:normal;overflow-wrap:anywhere}
+.print-plan-mission{min-height:0;overflow:hidden}
+.print-plan-rest p,.print-plan-card small span{white-space:nowrap}
+.print-plan-date b{font-size:14px}
+.inline-timeline{height:150px;margin-bottom:0;overflow:hidden}
+.inline-timeline .timeline-block{height:auto;min-height:108px;top:8px;padding:10px 8px;gap:8px;overflow:visible}
+.inline-timeline .timeline-block b{display:block;font-size:16px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;overflow:visible;font-weight:600}
+.inline-timeline .timeline-block small{display:block;flex-shrink:0;white-space:nowrap;font-size:13px;opacity:1}

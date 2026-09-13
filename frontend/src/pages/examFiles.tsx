@@ -1,7 +1,7 @@
 import {formatIranDateTime} from '../utils/jalali'
 export type PdfPayload={filename:string;content_type:string;content_base64:string}
 export type FileResult=PdfPayload&{downloaded_at?:string}
-export type AssignedExam={id:string;title:string;duration_minutes:number;instructions:string;status:string;advisor?:{id:string;full_name:string};student?:{id:string;full_name:string};question_filename:string;question_downloaded_at?:string;answer_filename?:string;student_notes:string;answer_uploaded_at?:string;elapsed_minutes?:number;analysis_text:string;resource_links:string[];lesson_filename?:string;analyzed_at?:string;created_at:string}
+export type AssignedExam={id:string;title:string;duration_minutes:number;instructions:string;status:string;advisor?:{id:string;full_name:string};student?:{id:string;full_name:string};question_filename:string;question_downloaded_at?:string;answer_filename?:string;student_notes:string;answer_uploaded_at?:string;elapsed_minutes?:number;analysis_text:string;resource_links:string[];lesson_filename?:string;analyzed_at?:string;created_at:string;has_online_sheet?:boolean}
 
 export const dateTime=(value?:string)=>value?formatIranDateTime(value):'ثبت نشده'
 

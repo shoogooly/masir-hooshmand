@@ -66,6 +66,8 @@ def test_advisor_requires_level_manager_and_admin_approval():
         })
         assert submitted.status_code == 200
         assert submitted.json()["data"]["next_step"] == "terms"
+        version = advisor.get("/api/v1/terms/advisor").json()["data"]["version"]
+        assert advisor.post("/api/v1/onboarding/terms/accept", headers={"X-CSRF-Token": csrf}, json={"version": version, "accepted": True}).status_code == 200
 
     with TestClient(app) as admin:
         csrf = admin_login(admin)

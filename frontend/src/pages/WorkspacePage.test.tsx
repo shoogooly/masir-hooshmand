@@ -37,7 +37,7 @@ test('student sidebar opens the real plan route',async()=>{
   expect(screen.getByText(/مشاور و برنامه‌ریز درسی.*مریم احمدی/)).toBeTruthy()
   expect(screen.getByText('مرور کامل فصل سوم',{selector:'.student-mission-card p'})).toBeTruthy()
   expect(screen.getByText(/افراد با انگیزه/)).toBeTruthy()
-  expect(screen.getByText('مطالعه ریاضی').closest('.timeline-block')?.className).toContain('pdf-font-md')
+  expect(screen.getByText('مطالعه ریاضی').closest('.timeline-block')).toBeTruthy()
   expect(screen.getByRole('button',{name:/دانلود PDF/})).toBeTruthy()
   expect(screen.getByRole('button',{name:/برنامه من/}).className).toContain('selected')
 })

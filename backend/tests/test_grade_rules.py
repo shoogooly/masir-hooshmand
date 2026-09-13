@@ -20,6 +20,7 @@ def test_each_grade_requires_its_previous_required_average(grade, field):
     payload = {**BASE, "grade": grade, "major": "عمومی" if grade in {"هفتم", "هشتم", "نهم"} else "تجربی"}
     if grade == "پشت کنکوری":
         payload["school_schedule"] = {}
+        payload["average_grade11"] = 18
     with pytest.raises(ValidationError):
         StudentOnboardingProfile(**payload)
     payload[field] = 18.5
@@ -30,3 +31,19 @@ def test_seventh_grade_needs_no_average_major_or_goal():
     profile = StudentOnboardingProfile(**BASE, grade="هفتم")
     assert profile.major == "عمومی"
     assert profile.goal == ""
+
+
+@pytest.mark.parametrize("grade", ["هفتم", "هشتم", "نهم", "دهم", "یازدهم", "دوازدهم", "پشت کنکوری"])
+def test_school_schedule_is_optional_for_every_grade(grade):
+    payload = {**BASE, "grade": grade, "major": "تجربی", "school_schedule": {}}
+    payload.update({f"average_grade{n}": 18 for n in range(7, 13)})
+    assert StudentOnboardingProfile(**payload).school_schedule == {}
+    payload.pop("school_schedule")
+    assert StudentOnboardingProfile(**payload).school_schedule == {}
+
+@pytest.mark.parametrize("missing", ["average_grade11", "average_grade12"])
+def test_postgraduate_needs_both_averages(missing):
+    payload = {**BASE, "grade": "پشت کنکوری", "major": "تجربی", "average_grade11": 18, "average_grade12": 19}
+    payload.pop(missing)
+    with pytest.raises(ValidationError):
+        StudentOnboardingProfile(**payload)

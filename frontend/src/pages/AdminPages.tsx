@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import PasswordChange from '../components/PasswordChange'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, CheckCircle2, CreditCard, Download, FileQuestion, Search, ShieldCheck, UserCheck, Users, XCircle } from 'lucide-react'
 import { api } from '../api'
@@ -90,7 +91,7 @@ export function AdminCatalogPage({kind}:{kind:'questions'|'exams'}){
 
 export function AdminAccessPage(){
   const access=[['مدیر سایت','دسترسی کامل به کاربران، برنامه‌ها، گفت‌وگوها، تخصیص و انتقال، تأیید و امور مالی'],['مسئول متوسطه دوم','مشاوران و دانش‌آموزان متوسطه دوم، تأیید مدارک، برنامه‌ها و نظارت بر گفت‌وگوها'],['مسئول متوسطه اول','مشاوران و دانش‌آموزان متوسطه اول، تأیید مدارک، برنامه‌ها و نظارت بر گفت‌وگوها'],['منشی','مشاهده و چاپ برنامه‌ها و پیام به مشاوران و مدیر سایت'],['مدیر عملیات','کاربران، پرونده‌ها، تخصیص و گزارش‌های عملیاتی'],['مدیر مالی','طرح‌ها، سفارش‌ها و پرداخت‌ها']]
-  return <div className="content-page"><Head title="تنظیمات و سطح دسترسی" subtitle="تعریف شفاف مسئولیت نقش‌های مدیریتی"/><div className="access-grid">{access.map(([role,items])=><article className="panel" key={role}><UserCheck/><h3>{role}</h3><p>{items}</p></article>)}</div><section className="panel security-note"><ShieldCheck/><div><h2>کنترل‌های فعال</h2><p>احراز هویت دومرحله‌ای مدیر، جداسازی نقش‌ها، ممیزی تغییرات، محدودسازی مدارک به مدیریت و جلوگیری از تخصیص بیش از ظرفیت فعال است.</p></div></section></div>
+  return <div className="content-page"><Head title="تنظیمات و سطح دسترسی" subtitle="تعریف شفاف مسئولیت نقش‌های مدیریتی"/><PasswordChange/><div className="access-grid">{access.map(([role,items])=><article className="panel" key={role}><UserCheck/><h3>{role}</h3><p>{items}</p></article>)}</div><section className="panel security-note"><ShieldCheck/><div><h2>کنترل‌های فعال</h2><p>احراز هویت دومرحله‌ای مدیر، جداسازی نقش‌ها، ممیزی تغییرات، محدودسازی مدارک به مدیریت و جلوگیری از تخصیص بیش از ظرفیت فعال است.</p></div></section></div>
 }
 
 function Info({label,value}:{label:string;value:unknown}){return <p><small>{label}</small><b>{String(value||'—')}</b></p>}

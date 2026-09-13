@@ -46,14 +46,14 @@ class StudentRegistration(OTPRequest):
 
     @model_validator(mode="after")
     def validate_student_registration(self):
+        if self.grade == "پشت کنکوری" and self.average_grade11 is None:
+            raise ValueError("معدل پایه یازدهم برای پشت کنکوری الزامی است")
         required_average = {"هشتم": self.average_grade7, "نهم": self.average_grade8,
             "دهم": self.average_grade9, "یازدهم": self.average_grade10,
             "دوازدهم": self.average_grade11, "پشت کنکوری": self.average_grade12}
         if self.grade in required_average and required_average[self.grade] is None:
             raise ValueError("معدل سال تحصیلی الزامی وارد نشده است")
-        if self.grade != "پشت کنکوری":
-            if any(len(self.school_schedule.get(day, [])) != 4 or any(not value.strip() for value in self.school_schedule[day]) for day in SCHOOL_DAYS):
-                raise ValueError("برنامه مدرسه شنبه تا چهارشنبه باید برای هر روز چهار زنگ کامل داشته باشد")
+
         if self.advisor_selection_mode == "self" and not self.advisor_id:
             raise ValueError("مشاور مورد نظر را انتخاب کنید")
         return self
@@ -90,6 +90,13 @@ class StaffOTPVerify(OTPRequest):
 class AssignmentDecision(BaseModel):
     decision: Literal["approved", "rejected"]
     note: str = Field(default="", max_length=500)
+
+    @model_validator(mode="after")
+    def rejection_reason(self):
+        self.note = self.note.strip()
+        if self.decision == "rejected" and not self.note:
+            raise ValueError("وارد کردن دلیل رد دانش‌آموز الزامی است")
+        return self
 
 
 
@@ -153,15 +160,14 @@ class StudentOnboardingProfile(BaseModel):
 
     @model_validator(mode="after")
     def validate_profile(self):
+        if self.grade == "پشت کنکوری" and self.average_grade11 is None:
+            raise ValueError("معدل پایه یازدهم برای پشت کنکوری الزامی است")
         required_average = {"هشتم": self.average_grade7, "نهم": self.average_grade8,
             "دهم": self.average_grade9, "یازدهم": self.average_grade10,
             "دوازدهم": self.average_grade11, "پشت کنکوری": self.average_grade12}
         if self.grade in required_average and required_average[self.grade] is None:
             raise ValueError("معدل سال تحصیلی الزامی وارد نشده است")
-        if self.grade != "پشت کنکوری" and any(
-            len(self.school_schedule.get(day, [])) != 4 or
-            any(not value.strip() for value in self.school_schedule[day]) for day in SCHOOL_DAYS):
-            raise ValueError("برنامه مدرسه باید شنبه تا چهارشنبه و هر روز شامل چهار زنگ باشد")
+
         return self
 
 
@@ -222,6 +228,8 @@ class PlanCreate(BaseModel):
     def validate_activities(cls, items: list[dict[str, Any]]):
         occupied: dict[str, list[tuple[int, int]]] = {}
         for item in items:
+            if len(str(item.get("title", "")).split("\n")) > 3:
+                raise ValueError("توضیحات هر بازه حداکثر سه خط است")
             start, end = item.get("start_time", "08:00"), item.get("end_time", "09:00")
             start_minute, end_minute = time_minutes(start), time_minutes(end)
             if start_minute >= end_minute:

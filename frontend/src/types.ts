@@ -1,7 +1,7 @@
 export type Role = 'student' | 'advisor' | 'secretary' | 'upper_secondary_manager' | 'lower_secondary_manager' | 'content_editor' | 'reviewer' | 'exam_designer' | 'support' | 'finance' | 'operations_admin' | 'super_admin'
 
-export interface User { id: string; phone: string; full_name: string; role: Role; status: string; onboarding_step?: string; referred_by_advisor_id?:string; subscription_expired?:boolean; subscription?:{expires_at:string;status:string}|null }
-export interface ApiResponse<T> { success: boolean; data: T; meta: Record<string, unknown>; error?: { message: string } }
+export interface User { id: string; phone: string; full_name: string; role: Role; status: string; onboarding_step?: string; referred_by_advisor_id?:string; subscription_expired?:boolean; server_time?:string; subscription?:{expires_at:string;status:string}|null }
+export interface ApiResponse<T> { success: boolean; data: T; meta: Record<string, unknown>; error?: { message: string; code?: string } }
 export interface Activity { id: string; day: string; subject: string; title: string; planned_minutes: number; actual_minutes: number; status: string }
 export interface Insight { id: string; kind: string; title: string; evidence: string; recommendation: string; confidence: number; status: string }
 

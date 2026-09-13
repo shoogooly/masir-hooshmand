@@ -4,6 +4,7 @@ from datetime import timedelta
 import hashlib
 import hmac
 import json
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.config import settings
@@ -17,6 +18,8 @@ class OTPProvider(ABC):
 
 class DevelopmentOTPProvider(OTPProvider):
     def send(self, phone: str) -> str:
+        if settings.env not in {'development', 'test'}:
+            raise HTTPException(503, 'سرویس پیامک واقعی هنوز پیکربندی نشده است')
         return "123456"
 
 
@@ -46,11 +49,17 @@ class PaymentProvider(ABC):
 
 
 class MockPaymentProvider(PaymentProvider):
+    def require_development(self):
+        if settings.env not in {"development", "test"}:
+            raise HTTPException(503, "درگاه پرداخت واقعی هنوز پیکربندی نشده است")
+
     def create(self, order_id: str, amount: int) -> dict:
+        self.require_development()
         signature = hmac.new(settings.secret_key.encode(), order_id.encode(), hashlib.sha256).hexdigest()
         return {"redirect_url": f"/mock-payment/{order_id}", "signature": signature, "amount": amount}
 
     def verify(self, order_id: str, success: bool, signature: str) -> bool:
+        self.require_development()
         expected = hmac.new(settings.secret_key.encode(), order_id.encode(), hashlib.sha256).hexdigest()
         return success and hmac.compare_digest(expected, signature)
 

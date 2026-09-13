@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import current_account, current_user, roles
+from app.api.onboarding_flow import ensure_editable
 from app.db.session import get_db
 from app.models import AdvisorAssignment, AdvisorProfile, Message, Notification, Order, SiteSetting, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
 from app.schemas import AdvisorReferralCreate, FreeSubscriptionCreate, SubscriptionPlanUpdate, TermsAccept, TermsUpdate
@@ -208,6 +209,9 @@ def get_terms(role: str, db: Session = Depends(get_db)):
 
 @router.post("/onboarding/terms/accept")
 def accept_terms(payload: TermsAccept, user: User = Depends(current_account), db: Session = Depends(get_db)):
+    ensure_editable(user)
+    if user.onboarding_step != "terms":
+        raise HTTPException(409, "ابتدا اطلاعات پرونده را تکمیل کنید")
     if not payload.accepted:
         raise HTTPException(422, "پذیرش شرایط برای ادامه الزامی است")
     item = terms_setting(db, user.role)

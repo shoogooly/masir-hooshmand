@@ -1,3 +1,5 @@
+import pytest
+pytestmark = pytest.mark.usefixtures('subscribed_demo_student')
 import os
 import tempfile
 from pathlib import Path

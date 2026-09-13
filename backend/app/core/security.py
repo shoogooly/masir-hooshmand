@@ -7,10 +7,11 @@ import struct
 import time
 import jwt
 from fastapi import Cookie, Depends, Header, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import User
+from app.models import Subscription, User, utcnow
 
 
 ALGORITHM = "HS256"
@@ -38,10 +39,14 @@ def verify_password(password: str, encoded: str) -> bool:
 
 
 
+def credential_tag(user: User) -> str:
+    return hmac.new(settings.secret_key.encode(), (user.password_hash or '').encode(), 'sha256').hexdigest()
+
+
 def create_token(user: User, token_type: str, minutes: int | None = None) -> str:
     now = datetime.now(timezone.utc)
     delta = timedelta(minutes=minutes or settings.access_token_minutes)
-    return jwt.encode({"sub": user.id, "role": user.role, "type": token_type, "iat": now, "exp": now + delta}, settings.secret_key, algorithm=ALGORITHM)
+    return jwt.encode({"sub": user.id, "role": user.role, "type": token_type, "credential_tag": credential_tag(user), "iat": now, "exp": now + delta}, settings.secret_key, algorithm=ALGORITHM)
 
 
 def decode_token(token: str, expected_type: str = "access") -> dict:
@@ -54,19 +59,68 @@ def decode_token(token: str, expected_type: str = "access") -> dict:
     return payload
 
 
-def current_account(access_token: str | None = Cookie(default=None), db: Session = Depends(get_db)) -> User:
+
+RENEWAL_ACCOUNT_ROUTES = frozenset({
+    ("GET", "/api/v1/auth/me"),
+    ("POST", "/api/v1/auth/logout"),
+    ("POST", "/api/v1/auth/change-password"),
+    ("POST", "/api/v1/payments/orders"),
+})
+
+
+def active_subscription(db: Session, user_id: str):
+    now = utcnow()
+    return db.scalar(select(Subscription).where(
+        Subscription.user_id == user_id,
+        Subscription.status == "active",
+        Subscription.starts_at <= now,
+        Subscription.expires_at > now,
+    ).order_by(Subscription.expires_at.desc()))
+
+
+def subscription_state(db: Session, user: User):
+    if user.role != "student":
+        return {}
+    current = active_subscription(db, user.id)
+    expires = current.expires_at if current else None
+    if expires and expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return {
+        # Incomplete registrations continue through onboarding, not renewal.
+        "subscription_expired": user.status == "active" and current is None,
+        "subscription": {"expires_at": expires, "status": current.status} if current else None,
+        "server_time": utcnow(),
+    }
+
+
+def require_subscription(db: Session, user: User):
+    # Database time/state is authoritative. Never trust JWT claims or browser flags.
+    if user.role == "student" and user.status == "active" and active_subscription(db, user.id) is None:
+        raise HTTPException(403, {
+            "code": "SUBSCRIPTION_REQUIRED",
+            "message": "اشتراک شما فعال نیست؛ برای ادامه اشتراک خود را تمدید کنید.",
+        })
+
+
+def current_account(request: Request, access_token: str | None = Cookie(default=None), db: Session = Depends(get_db)) -> User:
     if not access_token:
         raise HTTPException(401, "ابتدا وارد شوید")
     payload = decode_token(access_token)
     user = db.get(User, payload["sub"])
     if not user or user.status == "suspended":
         raise HTTPException(401, "حساب کاربری در دسترس نیست")
+    if not secrets.compare_digest(payload.get('credential_tag', ''), credential_tag(user)):
+        raise HTTPException(401, "رمز حساب تغییر کرده است؛ دوباره وارد شوید")
+    # Only these account operations remain available without an active subscription.
+    if (request.method, getattr(request.scope.get("route"), "path", None)) not in RENEWAL_ACCOUNT_ROUTES:
+        require_subscription(db, user)
     return user
 
 
-def current_user(user: User = Depends(current_account)) -> User:
+def current_user(user: User = Depends(current_account), db: Session = Depends(get_db)) -> User:
     if user.status != "active":
         raise HTTPException(403, "مراحل ثبت‌نام حساب هنوز تکمیل نشده است")
+    require_subscription(db, user)
     return user
 
 
@@ -79,6 +133,8 @@ def roles(*allowed: str):
 
 
 def csrf_guard(request: Request, csrf_cookie: str | None = Cookie(default=None), x_csrf_token: str | None = Header(default=None)):
+    if request.url.path in {'/api/v1/auth/password-recovery/request', '/api/v1/auth/password-recovery/complete'}:
+        return
     if request.method not in {"GET", "HEAD", "OPTIONS"} and request.url.path.startswith("/api/"):
         if request.url.path.endswith(("/request-otp", "/verify-otp", "/auth/register", "/auth/login", "/auth/staff-login", "/auth/refresh", "/payments/callback")):
             return

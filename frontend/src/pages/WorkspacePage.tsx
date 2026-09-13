@@ -10,6 +10,7 @@ import NotificationBell, { useNotificationSummary } from '../components/Notifica
 import AdvisorReferralPage from './AdvisorReferralPage'
 import AdminTermsPage from './AdminTermsPage'
 import AdminSubscriptionsPage from './AdminSubscriptionSettingsPage'
+import PasswordChange from '../components/PasswordChange'
 import AdminStudentControlPage from './AdminStudentManagementPage'
 import AdminFinancialLedgerPage from './AdminFinancialLedgerPage'
 import StudentSubscriptionOfferPage from './StudentSubscriptionOfferPage'
@@ -62,7 +63,7 @@ export default function WorkspacePage({user}:{user:User}){
     content=match?<StudentFilePage user={user} studentId={match[1]} tab={match[2]}/>:location.pathname.includes('/add-student')?<AdvisorReferralPage/>:location.pathname.includes('/requests')?<AdvisorRequestsPage/>:location.pathname.includes('/students')||location.pathname.includes('/planner')?<AdvisorStudentsPage/>:location.pathname.includes('/messages')?<UniversalChatPage user={user}/>:location.pathname.includes('/settings')?<SettingsPage user={user}/>:<AdvisorDashboard/>
   }else if(staffRole){
     const path=location.pathname
-    content=path.includes('/advisors')?<ManagerAdvisorsPage/>:path.includes('/chats')?<ConversationMonitorPage/>:path.includes('/messages')?<UniversalChatPage user={user}/>:<ProgramsAccessPage user={user}/>
+    content=path.includes('/settings')?<div className="content-page"><h1>تنظیمات حساب</h1><PasswordChange/></div>:path.includes('/advisors')?<ManagerAdvisorsPage/>:path.includes('/chats')?<ConversationMonitorPage/>:path.includes('/messages')?<UniversalChatPage user={user}/>:<ProgramsAccessPage user={user}/>
   }else{
     const path=location.pathname
     content=path.includes('/staff')&&user.role==='super_admin'?<AdminStaffPage/>:path.includes('/programs')&&user.role==='super_admin'?<ProgramsAccessPage user={user}/>:path.includes('/chats')&&user.role==='super_admin'?<ConversationMonitorPage/>:path.includes('/messages')&&user.role==='super_admin'?<UniversalChatPage user={user}/>:path.includes('/terms')&&user.role==='super_admin'?<AdminTermsPage/>:path.includes('/users')&&adminManager?<AdminUserDirectoryPage/>:path.includes('/students')&&adminManager?<AdminStudentControlPage/>:path.includes('/advisors')&&adminManager?<AdminAdvisorsPage/>:path.includes('/questions')?<AdminCatalogPage kind="questions"/>:path.includes('/exams')?<AdminCatalogPage kind="exams"/>:path.includes('/ledger')?<AdminFinancialLedgerPage/>:path.includes('/finance')?<AdminSubscriptionsPage/>:path.includes('/settings')?<AdminAccessPage/>:<AdminDashboard user={user}/>
@@ -77,7 +78,7 @@ export default function WorkspacePage({user}:{user:User}){
     {user.role==='super_admin'&&<><button className={active(`${adminBase}/staff`)?'selected':''} onClick={()=>go(`${adminBase}/staff`)}><UserPlus/>منشی و مسئولان</button><button className={active(`${adminBase}/programs`)?'selected':''} onClick={()=>go(`${adminBase}/programs`)}><ClipboardCheck/>همه برنامه‌ها</button><button className={active(`${adminBase}/chats`)?'selected':''} onClick={()=>go(`${adminBase}/chats`)}><ShieldCheck/>همه گفت‌وگوها</button><button className={active(`${adminBase}/messages`)?'selected':''} onClick={()=>go(`${adminBase}/messages`)}><MessageSquare/>پیام‌ها{!!alerts?.unread_messages&&<i className="nav-alert-dot"/>}</button><button className={active(`${adminBase}/terms`)?'selected':''} onClick={()=>go(`${adminBase}/terms`)}><FileQuestion/>شرایط ثبت‌نام</button></>}
     {!['student','advisor','support'].includes(user.role)&&<><button className={active(`${adminBase}/questions`)?'selected':''} onClick={()=>go(`${adminBase}/questions`)}><FileQuestion/>بانک سؤال</button><button className={active(`${adminBase}/exams`)?'selected':''} onClick={()=>go(`${adminBase}/exams`)}><BookOpen/>آزمون‌ها</button></>}
     {['finance','operations_admin','super_admin'].includes(user.role)&&<><button className={active(`${adminBase}/finance`)?'selected':''} onClick={()=>go(`${adminBase}/finance`)}><CreditCard/>تعرفه‌ها و اشتراک</button><button className={active(`${adminBase}/ledger`)?'selected':''} onClick={()=>go(`${adminBase}/ledger`)}><CreditCard/>واریزی‌ها و مانده اشتراک</button></>}
-    {!staffRole&&<button className={active(`${base}/settings`)?'selected':''} onClick={()=>go(`${base}/settings`)}><Settings/>تنظیمات</button>}
+    <button className={active(`${base}/settings`)?'selected':''} onClick={()=>go(`${base}/settings`)}><Settings/>تنظیمات</button>
   </nav><button className="sidebar-logout" onClick={logout}><LogOut/>خروج</button></aside><main className="app-main"><header className="app-header"><button className="app-menu" onClick={()=>setMobile(true)}><Menu/></button><div className="app-search"><Search/><input placeholder="جست‌وجو در مسیر هوشمند..."/></div><div className="app-user"><NotificationBell/><span className="avatar">{user.full_name[0]}</span><p><b>{user.full_name}</b><small>{roleLabels[user.role]}</small></p></div></header>{content}</main></div>
 }
 

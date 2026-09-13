@@ -1,4 +1,6 @@
+from app.api.onboarding_flow import router as onboarding_flow_router
 from app.api.exam_files import router as exam_files_router
+from app.api.passwords import router as passwords_router
 from contextlib import asynccontextmanager
 import logging
 import time
@@ -44,6 +46,8 @@ async def request_context(request: Request, call_next):
     except Exception:
         logger.exception("Unhandled error request_id=%s", request_id)
         raise
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -54,7 +58,11 @@ async def request_context(request: Request, call_next):
 
 @app.exception_handler(HTTPException)
 async def http_error(request: Request, exc: HTTPException):
-    return JSONResponse(status_code=exc.status_code, content={"success": False, "error": {"code": f"HTTP_{exc.status_code}", "message": str(exc.detail), "details": []}, "request_id": request.headers.get("X-Request-ID")})
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    return JSONResponse(status_code=exc.status_code, content={"success": False, "error": {
+        "code": detail.get("code", f"HTTP_{exc.status_code}"),
+        "message": detail.get("message", str(exc.detail)), "details": [],
+    }, "request_id": request.headers.get("X-Request-ID")}, headers={"Cache-Control": "no-store"})
 
 
 @app.exception_handler(RequestValidationError)
@@ -74,3 +82,6 @@ app.include_router(admin_students_router, prefix="/api/v1", dependencies=[Depend
 app.include_router(subscription_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(accounts_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(exam_files_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(passwords_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+
+app.include_router(onboarding_flow_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])

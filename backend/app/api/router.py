@@ -1,13 +1,15 @@
+from app.chat_access import chat_locked
 from datetime import datetime, timedelta, timezone
 import json
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from app.core.config import settings
-from app.core.security import create_token, current_account, current_user, hash_password, hash_token, new_csrf, new_refresh_token, roles, verify_password, verify_totp
+from app.core.security import active_subscription, subscription_state, create_token, current_account, current_user, hash_password, hash_token, new_csrf, new_refresh_token, roles, verify_password, verify_totp
 from app.db.session import get_db
 from app.models import Activity, AdvisorAssignment, AdvisorProfile, AuditLog, ChatLock, Exam, ExamAnswer, ExamSession, Insight, Message, Notification, Order, Question, RefreshToken, SiteSetting, StudentProfile, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
 from app.api.accounts_ext import finalize_student_registration
+from app.api.onboarding_flow import ensure_editable, reset_student_reviews, request_advisor, latest_order, paid_registration, approved_assignment, advance_student
 from app.schemas import AccountRegistration, ActivityUpdate, AdvisorAssign, AdvisorOnboardingProfile, AdvisorReferralCreate, AdvisorRegistration, AdvisorReview, AnswerUpdate, AssignmentDecision, ExamCreate, FreeSubscriptionCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PasswordLogin, PasswordReset, PaymentCallback, PlanCreate, ProfileUpdate, QuestionCreate, SCHOOL_DAYS, StaffCreate, StaffOTPVerify, StudentOnboardingProfile, StudentOnboardingSelection, StudentRegistration, SubscriptionPlanUpdate, TermsAccept, TermsUpdate, UserStatusUpdate
 from app.services import ai_provider, audit, otp_provider, payment_provider
 
@@ -34,15 +36,6 @@ def issue_session(response: Response, user: User, db: Session):
 
 def user_dict(user: User):
     return {"id": user.id, "phone": user.phone, "full_name": user.full_name, "role": user.role, "status": user.status, "onboarding_step": user.onboarding_step, "referred_by_advisor_id": user.referred_by_advisor_id}
-
-def active_subscription(db: Session, user_id: str):
-    now = utcnow()
-    items = db.scalars(select(Subscription).where(Subscription.user_id == user_id).order_by(Subscription.expires_at.desc())).all()
-    for item in items:
-        expires = item.expires_at if item.expires_at.tzinfo else item.expires_at.replace(tzinfo=timezone.utc)
-        if item.status == "active" and expires > now:
-            return item
-    return None
 
 def add_notification(db: Session, user_id: str, kind: str, title: str, body: str = "", link: str = "", actor_id: str | None = None, related_id: str | None = None):
     item = Notification(user_id=user_id, actor_id=actor_id, kind=kind, title=title, body=body, link=link, related_id=related_id)
@@ -248,7 +241,8 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
     if db.scalar(select(StudentProfile).where(StudentProfile.national_code == payload.national_code)):
         raise HTTPException(409, "این کد ملی قبلاً ثبت شده است")
     plan = db.get(SubscriptionPlan, payload.plan_id)
-    if not plan or not plan.active:
+    paid = paid_registration(db, user.id)
+    if not plan or (not plan.active and (not paid or paid.plan_id != plan.id)):
         raise HTTPException(404, "طرح انتخابی فعال نیست")
     preferred = None
     if payload.advisor_selection_mode == "self":
@@ -260,7 +254,7 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
             raise HTTPException(409, "مشاور انتخابی مربوط به مقطع تحصیلی دانش‌آموز نیست")
         if remaining <= 0:
             raise HTTPException(409, "ظرفیت این مشاور تکمیل شده است")
-    student = User(phone=payload.phone, full_name=payload.full_name, role="student", status="pending_payment")
+    student = User(phone=payload.phone, full_name=payload.full_name, role="student", status="pending_assignment", onboarding_step="advisor_confirmation" if preferred else "advisor_assignment")
     db.add(student)
     db.flush()
     db.add(StudentProfile(
@@ -278,12 +272,14 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
         idempotency_key=f"registration:{student.id}:{plan.id}")
     db.add(order)
     db.flush()
-    payment = payment_provider.create(order.id, order.amount)
-    order.provider_reference = payment["signature"]
+    order.status = "awaiting_advisor"
+    profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student.id))
+    if preferred:
+        request_advisor(db, student, profile, preferred.id)
     audit(db, student.id, "registration.student_created", "user", student.id,
         after={"plan_id": plan.id, "advisor_mode": payload.advisor_selection_mode})
     db.commit()
-    return ok({"user_id": student.id, "status": student.status, "order_id": order.id, **payment})
+    return ok({"user_id": student.id, "status": student.status, "order_id": order.id, "amount": order.amount, "next_step": student.onboarding_step})
 
 
 @router.post("/registrations/advisor")
@@ -312,6 +308,8 @@ def register_advisor(payload: AdvisorRegistration, db: Session = Depends(get_db)
 
 @router.post("/auth/register")
 def register_account(payload: AccountRegistration, db: Session = Depends(get_db)):
+    if settings.env not in {'development', 'test'}:
+        raise HTTPException(503, 'سرویس پیامک واقعی هنوز پیکربندی نشده است')
     if payload.sms_code != "123456":
         raise HTTPException(400, "کد پیامکی صحیح نیست؛ کد آزمایشی 123456 است")
     existing = db.scalar(select(User).where(User.phone == payload.phone))
@@ -339,7 +337,7 @@ def password_login(payload: PasswordLogin, response: Response, db: Session = Dep
     csrf = issue_session(response, user, db)
     audit(db, user.id, "auth.password_login", "user", user.id)
     db.commit()
-    return ok({"user": user_dict(user), "csrf_token": csrf})
+    return ok({"user": user_dict(user) | subscription_state(db, user), "csrf_token": csrf})
 
 @router.post("/auth/request-otp")
 def request_otp(payload: OTPRequest):
@@ -349,6 +347,8 @@ def request_otp(payload: OTPRequest):
 
 @router.post("/auth/verify-otp")
 def verify_otp(payload: OTPVerify, response: Response, db: Session = Depends(get_db)):
+    if settings.env not in {'development', 'test'}:
+        raise HTTPException(503, 'سرویس پیامک واقعی هنوز پیکربندی نشده است')
     if payload.code != "123456" and settings.env == "development":
         raise HTTPException(400, "کد واردشده صحیح نیست")
     allowed = {"student", "advisor", "content_editor", "reviewer", "exam_designer", "support", "finance", "operations_admin", "super_admin"}
@@ -374,7 +374,7 @@ def verify_otp(payload: OTPVerify, response: Response, db: Session = Depends(get
     response.set_cookie("csrf_cookie", csrf, httponly=False, samesite="lax", secure=settings.env == "production", max_age=settings.access_token_minutes * 60)
     audit(db, user.id, "auth.login", "user", user.id)
     db.commit()
-    return ok({"user": user_dict(user), "csrf_token": csrf})
+    return ok({"user": user_dict(user) | subscription_state(db, user), "csrf_token": csrf})
 
 
 @router.post("/auth/refresh")
@@ -396,18 +396,12 @@ def refresh_session(response: Response, refresh_token: str | None = Cookie(defau
     response.set_cookie("refresh_token", raw_refresh, httponly=True, samesite="lax", secure=settings.env == "production", max_age=settings.refresh_token_days * 86400)
     response.set_cookie("csrf_cookie", csrf, httponly=False, samesite="lax", secure=settings.env == "production", max_age=settings.access_token_minutes * 60)
     db.commit()
-    return ok({"user": user_dict(user), "csrf_token": csrf})
+    return ok({"user": user_dict(user) | subscription_state(db, user), "csrf_token": csrf})
 
 
 @router.get("/auth/me")
 def me(user: User = Depends(current_account), db: Session = Depends(get_db)):
-    data = user_dict(user)
-    if user.role == "student":
-        latest = db.scalar(select(Subscription).where(Subscription.user_id == user.id).order_by(Subscription.expires_at.desc()))
-        current = active_subscription(db, user.id)
-        data["subscription_expired"] = bool(latest and not current)
-        data["subscription"] = ({"expires_at": current.expires_at, "status": current.status} if current else None)
-    return ok(data)
+    return ok(user_dict(user) | subscription_state(db, user))
 
 
 @router.post("/auth/logout")
@@ -469,22 +463,42 @@ def onboarding_status(user: User = Depends(current_account), db: Session = Depen
     data = {"user": user_dict(user), "step": user.onboarding_step}
     if user.role == "student":
         profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
-        order = db.scalar(select(Order).where(Order.user_id == user.id).order_by(Order.created_at.desc()))
+        order = latest_order(db, user.id)
+        if user.onboarding_step == "dual_approval" or (user.onboarding_step == "payment" and profile and profile.advisor_approval_status != "approved"):
+            if profile and profile.advisor_approval_status == "rejected":
+                user.status, user.onboarding_step = "onboarding_selection", "selection"
+            elif profile and profile.advisor_approval_status != "approved":
+                reset_student_reviews(db, user, profile)
+                if profile.preferred_advisor_id:
+                    request_advisor(db, user, profile, profile.preferred_advisor_id)
+                else:
+                    user.status, user.onboarding_step = "pending_assignment", "advisor_assignment"
+            else:
+                advance_student(db, user, profile)
+            db.commit()
+            data.update(user=user_dict(user), step=user.onboarding_step)
+        data["selection"] = {"plan_id": order.plan_id, "advisor_selection_mode": profile.advisor_selection_mode if profile else "admin", "advisor_id": profile.preferred_advisor_id if profile else None} if order else None
+        data["paid"] = paid_registration(db, user.id) is not None
+        if data["paid"] and order:
+            paid_plan = db.get(SubscriptionPlan, order.plan_id)
+            data["paid_plan"] = {"id": paid_plan.id, "name": paid_plan.name, "price": order.amount, "referral_price": order.amount, "features": []}
+        data["rejected_advisor_ids"] = list(db.scalars(select(AdvisorAssignment.advisor_id).where(AdvisorAssignment.student_id == user.id, AdvisorAssignment.approval_status == "rejected")).all())
         data["profile"] = student_profile_dict(profile)
         if user.referred_by_advisor_id:
             referred_advisor = db.get(User, user.referred_by_advisor_id)
             data["referred_advisor"] = user_dict(referred_advisor) if referred_advisor else None
-        if order and order.status == "pending":
+        if order and order.status in {"pending", "failed"} and user.onboarding_step == "payment" and profile and profile.advisor_approval_status == "approved":
             data["payment"] = {"order_id": order.id, "amount": order.amount, "signature": order.provider_reference}
     elif user.role == "advisor":
         profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == user.id))
-        data["profile"] = advisor_profile_dict(db, profile) if profile else {}
+        data["profile"] = advisor_profile_dict(db, profile, include_documents=user.onboarding_step in {"profile", "rejected"}) if profile else {}
     return ok(data)
 
 
 @router.post("/onboarding/student/profile")
 def onboarding_student_profile(payload: StudentOnboardingProfile,
                                user: User = Depends(current_account), db: Session = Depends(get_db)):
+    ensure_editable(user)
     if user.role != "student":
         raise HTTPException(403, "این مرحله فقط برای دانش‌آموز است")
     duplicate = db.scalar(select(StudentProfile).where(
@@ -496,7 +510,8 @@ def onboarding_student_profile(payload: StudentOnboardingProfile,
         profile = StudentProfile(user_id=user.id)
         db.add(profile)
     was_correction = profile.registration_review_status == "rejected"
-    return_step = profile.correction_return_step if was_correction else "terms"
+    return_step = "terms"
+    reset_student_reviews(db, user, profile)
     user.full_name = payload.full_name
     for field in ("national_code", "birth_date", "parent_name", "parent_phone", "address", "grade",
                   "major", "school", "goal", "average_grade7", "average_grade8", "average_grade9", "average_grade10", "average_grade11", "average_grade12"):
@@ -517,6 +532,9 @@ def onboarding_student_profile(payload: StudentOnboardingProfile,
 @router.post("/onboarding/student/selection")
 def onboarding_student_selection(payload: StudentOnboardingSelection,
                                  user: User = Depends(current_account), db: Session = Depends(get_db)):
+    ensure_editable(user)
+    if user.onboarding_step != "selection" or not user.terms_accepted_version:
+        raise HTTPException(409, "ابتدا اطلاعات و شرایط ثبت‌نام را تکمیل کنید")
     if user.role != "student":
         raise HTTPException(403, "این مرحله فقط برای دانش‌آموز است")
     profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
@@ -527,7 +545,11 @@ def onboarding_student_selection(payload: StudentOnboardingSelection,
         raise HTTPException(404, "طرح انتخابی فعال نیست")
     preferred = None
     selection_mode = payload.advisor_selection_mode
-    if user.referred_by_advisor_id:
+    rejected_ids = set(db.scalars(select(AdvisorAssignment.advisor_id).where(AdvisorAssignment.student_id == user.id, AdvisorAssignment.approval_status == "rejected")).all())
+    if payload.advisor_id in rejected_ids:
+        raise HTTPException(409, "لطفاً مشاور دیگری انتخاب کنید")
+    referral_locked = bool(user.referred_by_advisor_id and user.referred_by_advisor_id not in rejected_ids)
+    if referral_locked:
         selection_mode = "self"
         preferred = db.get(User, user.referred_by_advisor_id)
         advisor_profile, _, _ = advisor_capacity(db, user.referred_by_advisor_id)
@@ -546,32 +568,35 @@ def onboarding_student_selection(payload: StudentOnboardingSelection,
             raise HTTPException(409, "ظرفیت این مشاور تکمیل شده است")
     profile.advisor_selection_mode = selection_mode
     profile.preferred_advisor_id = preferred.id if preferred else None
-    existing = db.scalar(select(Order).where(Order.user_id == user.id, Order.status == "pending").order_by(Order.created_at.desc()))
-    if existing:
-        existing.plan_id = plan.id
-        amount = plan.referral_price if user.referred_by_advisor_id else plan.price
-        existing.amount = amount
-        payment = payment_provider.create(existing.id, existing.amount)
-        existing.provider_reference = payment["signature"]
-        order = existing
+    paid = paid_registration(db, user.id)
+    if paid and paid.plan_id != plan.id:
+        raise HTTPException(409, "طرح پرداخت‌شده قابل تغییر نیست؛ اطلاعات و مشاور را می‌توانید تغییر دهید")
+    reset_student_reviews(db, user, profile)
+    profile.approval_note = ""
+    if paid:
+        order = db.get(Order, paid.order_id)
     else:
-        order = Order(user_id=user.id, plan_id=plan.id, amount=plan.referral_price if user.referred_by_advisor_id else plan.price,
-            idempotency_key=f"onboarding:{user.id}:{plan.id}:{utcnow().timestamp()}")
+        for old in db.scalars(select(Order).where(Order.user_id == user.id, Order.status.in_(["pending", "failed", "awaiting_advisor"]))).all():
+            old.status = "cancelled"
+            old.provider_reference = None
+        order = Order(user_id=user.id, plan_id=plan.id, amount=(plan.referral_price or plan.price) if user.referred_by_advisor_id else plan.price,
+            status="awaiting_advisor", idempotency_key=f"onboarding:{user.id}:{utcnow().timestamp()}")
         db.add(order)
-        db.flush()
-        payment = payment_provider.create(order.id, order.amount)
-        order.provider_reference = payment["signature"]
-    user.status = "pending_payment"
-    user.onboarding_step = "payment"
-    audit(db, user.id, "onboarding.student_selection_completed", "order", order.id,
+    if preferred:
+        request_advisor(db, user, profile, preferred.id)
+    else:
+        user.status, user.onboarding_step = "pending_assignment", "advisor_assignment"
+    audit(db, user.id, "onboarding.student_selection_completed", "user", user.id,
         after={"plan_id": plan.id, "advisor_mode": selection_mode, "advisor_id": preferred.id if preferred else None})
     db.commit()
-    return ok({"order_id": order.id, "amount": order.amount, **payment})
+    return ok({"order_id": order.id, "amount": order.amount, "next_step": user.onboarding_step})
+
 
 
 @router.post("/onboarding/advisor/profile")
 def onboarding_advisor_profile(payload: AdvisorOnboardingProfile,
                                user: User = Depends(current_account), db: Session = Depends(get_db)):
+    ensure_editable(user)
     if user.role != "advisor":
         raise HTTPException(403, "این مرحله فقط برای مشاور است")
     duplicate = db.scalar(select(AdvisorProfile).where(
@@ -623,9 +648,6 @@ def update_profile(payload: ProfileUpdate, user: User = Depends(current_user), d
             if value is not None:
                 setattr(profile, field, value)
         if payload.school_schedule is not None:
-            if profile.grade in {"دهم", "یازدهم", "دوازدهم"} and any(
-                len(payload.school_schedule.get(day, [])) != 4 for day in SCHOOL_DAYS):
-                raise HTTPException(400, "برای هر روز مدرسه باید چهار زنگ ثبت شود")
             profile.school_schedule_json = json.dumps(payload.school_schedule, ensure_ascii=False)
         if payload.extra_classes is not None:
             profile.extra_classes_json = json.dumps(payload.extra_classes, ensure_ascii=False)
@@ -770,10 +792,8 @@ def send_message(payload: MessageCreate, user: User = Depends(current_user), db:
     if not recipient or not can_communicate(db, user, recipient):
         raise HTTPException(403, "ارسال پیام به این کاربر مجاز نیست")
     if user.role != "super_admin" and recipient.role == "super_admin":
-        locked = db.scalar(select(ChatLock).where(
-            ChatLock.admin_id == recipient.id, ChatLock.user_id == user.id, ChatLock.locked.is_(True)))
-        if locked:
-            raise HTTPException(403, "مدیر این گفت‌وگو را قفل کرده است")
+        if chat_locked(db, recipient.id, user):
+            raise HTTPException(403, "گفت‌وگو با مدیریت قفل است؛ ابتدا درخواست فعال‌سازی ارسال کنید")
     msg = Message(sender_id=user.id, recipient_id=payload.recipient_id, body=payload.body, internal_note=payload.internal_note and user.role == "advisor")
     db.add(msg); db.flush()
     link = "/app/student/chat" if recipient.role == "student" else "/app/advisor/messages" if recipient.role == "advisor" else "/app/admin/messages" if recipient.role == "super_admin" else "/app/management/messages"
@@ -919,8 +939,13 @@ def subscription_plans(db: Session = Depends(get_db)):
 
 @router.post("/payments/orders")
 def create_order(payload: OrderCreate, user: User = Depends(current_account), db: Session = Depends(get_db)):
+    if user.role == "student" and user.status != "active":
+        raise HTTPException(409, "پرداخت ثبت‌نام فقط پس از تأیید مشاور و از مرحله پرداخت انجام می‌شود")
     duplicate = db.scalar(select(Order).where(Order.idempotency_key == payload.idempotency_key))
-    if duplicate: return ok({"order_id": duplicate.id, "status": duplicate.status, "duplicate": True})
+    if duplicate:
+        if duplicate.user_id != user.id:
+            raise HTTPException(409, "شناسه درخواست قبلاً استفاده شده است")
+        return ok({"order_id": duplicate.id, "status": duplicate.status, "signature": duplicate.provider_reference, "duplicate": True})
     plan = db.get(SubscriptionPlan, payload.plan_id)
     if not plan or not plan.active: raise HTTPException(404, "پلن فعال نیست")
     order = Order(user_id=user.id, plan_id=plan.id, amount=plan.referral_price if user.referred_by_advisor_id else plan.price, idempotency_key=payload.idempotency_key)
@@ -938,6 +963,13 @@ def payment_callback(payload: PaymentCallback, db: Session = Depends(get_db)):
         registered_user = db.get(User, order.user_id)
         return ok({"order_id": order.id, "subscription_id": existing.id, "duplicate": True,
             "user_status": registered_user.status if registered_user else None})
+    registered_user = db.get(User, order.user_id)
+    if order.status not in {"pending", "failed"}:
+        raise HTTPException(409, "این سفارش دیگر قابل پرداخت نیست")
+    if registered_user and registered_user.role == "student" and registered_user.status != "active":
+        profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == registered_user.id))
+        if registered_user.onboarding_step != "payment" or not profile or profile.advisor_approval_status != "approved" or not approved_assignment(db, registered_user):
+            raise HTTPException(409, "ابتدا مشاور باید درخواست ثبت‌نام را تأیید کند")
     if not payment_provider.verify(order.id, payload.success, payload.signature):
         order.status = "failed"
         db.commit()
@@ -957,22 +989,8 @@ def payment_callback(payload: PaymentCallback, db: Session = Depends(get_db)):
         sub.status = "pending_activation"
     db.add(sub)
     if registered_user and registered_user.role == "student" and registered_user.status != "active":
-        profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == registered_user.id))
-        if profile and profile.preferred_advisor_id:
-            advisor_profile, _, remaining = advisor_capacity(db, profile.preferred_advisor_id)
-            advisor = db.get(User, profile.preferred_advisor_id)
-            if advisor and advisor.status == "active" and advisor_profile and advisor_profile.approval_status == "approved" and remaining > 0:
-                existing_assignment = db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == advisor.id, AdvisorAssignment.student_id == registered_user.id))
-                if existing_assignment:
-                    existing_assignment.active = False; existing_assignment.approval_status = "pending"
-                    existing_assignment.assignment_source = "student"; existing_assignment.assigned_by = registered_user.id
-                else:
-                    db.add(AdvisorAssignment(advisor_id=advisor.id, student_id=registered_user.id, active=False,
-                        approval_status="pending", assignment_source="student", assigned_by=registered_user.id))
-                registered_user.onboarding_step = "dual_approval"
-            else: registered_user.onboarding_step = "dual_approval"
-        else: registered_user.onboarding_step = "dual_approval"
-        registered_user.status = "pending_approval"
+        db.flush()
+        advance_student(db, registered_user)
     audit(db, order.user_id, "payment.verified", "order", order.id,
         after={"subscription": sub.id, "user_status": registered_user.status if registered_user else None})
     db.commit()
@@ -1084,6 +1102,8 @@ def admin_review_advisor(advisor_id: str, payload: AdvisorReview,
         raise HTTPException(404, "پرونده مشاور یافت نشد")
     if payload.status == "rejected" and not payload.note.strip():
         raise HTTPException(422, "برای رد پرونده وارد کردن دلیل الزامی است")
+    if advisor.status != "active" and (advisor.onboarding_step != "manager_review" or profile.lead_approval_status != "approved"):
+        raise HTTPException(409, "ابتدا تأیید مسئول مقطع لازم است")
     before = profile.approval_status
     profile.admin_approval_status = payload.status
     profile.review_note = payload.note
@@ -1118,13 +1138,25 @@ def admin_assign_advisor(student_id: str, payload: AdvisorAssign,
     advisor_profile, _, remaining = advisor_capacity(db, payload.advisor_id)
     if not student or student.role != "student":
         raise HTTPException(404, "دانش‌آموز یافت نشد")
-    if student.status == "pending_payment":
-        raise HTTPException(409, "پرداخت دانش‌آموز هنوز تکمیل نشده است")
     if not advisor or advisor.role != "advisor" or advisor.status != "active" or not advisor_profile or advisor_profile.approval_status != "approved":
         raise HTTPException(404, "مشاور تأییدشده یافت نشد")
     student_profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student.id))
     if not student_profile or advisor_profile.education_level != student_profile.education_level:
         raise HTTPException(409, "مشاور و دانش‌آموز باید متعلق به یک مقطع باشند")
+    if student.status != "active":
+        if student.onboarding_step not in {"advisor_assignment", "advisor_confirmation", "selection", "dual_approval"}:
+            raise HTTPException(409, "دانش‌آموز در مرحله انتخاب مشاور نیست")
+        if db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.student_id == student.id, AdvisorAssignment.advisor_id == advisor.id, AdvisorAssignment.approval_status == "rejected")):
+            raise HTTPException(409, "لطفاً مشاور دیگری انتخاب کنید")
+        if remaining <= 0:
+            raise HTTPException(409, "ظرفیت مشاور تکمیل است")
+        if not latest_order(db, student.id):
+            raise HTTPException(409, "ابتدا دانش‌آموز باید طرح ثبت‌نام را انتخاب کند")
+        reset_student_reviews(db, student, student_profile)
+        student_profile.advisor_selection_mode = "admin"
+        request_advisor(db, student, student_profile, advisor.id, source="admin")
+        db.commit()
+        return ok({"student": user_dict(student), "advisor": user_dict(advisor)})
     current = db.scalar(select(AdvisorAssignment).where(
         AdvisorAssignment.student_id == student.id, AdvisorAssignment.active.is_(True)))
     if (not current or current.advisor_id != advisor.id) and remaining <= 0:
@@ -1203,6 +1235,8 @@ def update_advisor_activation(profile: AdvisorProfile, advisor: User):
 
 @router.post("/auth/staff-login")
 def staff_login(payload: StaffOTPVerify, response: Response, db: Session = Depends(get_db)):
+    if settings.env not in {'development', 'test'}:
+        raise HTTPException(503, 'سرویس پیامک واقعی هنوز پیکربندی نشده است')
     if settings.env == "development" and payload.code != "123456":
         raise HTTPException(400, "کد یکبار مصرف صحیح نیست")
     user = db.scalar(select(User).where(User.phone == payload.phone))
@@ -1213,7 +1247,7 @@ def staff_login(payload: StaffOTPVerify, response: Response, db: Session = Depen
     csrf = issue_session(response, user, db)
     audit(db, user.id, "auth.staff_otp_login", "user", user.id)
     db.commit()
-    return ok({"user": user_dict(user), "csrf_token": csrf})
+    return ok({"user": user_dict(user) | subscription_state(db, user), "csrf_token": csrf})
 
 
 @router.get("/admin/staff")
@@ -1308,6 +1342,8 @@ def lead_review_advisor(advisor_id: str, payload: AdvisorReview,
         raise HTTPException(403, "این مشاور متعلق به مقطع شما نیست")
     if payload.status == "rejected" and not payload.note.strip():
         raise HTTPException(422, "برای رد مدارک وارد کردن دلیل الزامی است")
+    if advisor.status != "active" and advisor.onboarding_step != "lead_review":
+        raise HTTPException(409, "پرونده هنوز برای بررسی ارسال نشده است")
     profile.lead_approval_status = payload.status
     profile.lead_reviewed_by = user.id
     profile.lead_reviewed_at = utcnow()
@@ -1340,6 +1376,8 @@ def advisor_assignment_decision(assignment_id: str, payload: AssignmentDecision,
     if not assignment or assignment.advisor_id != user.id or assignment.approval_status != "pending":
         raise HTTPException(404, "درخواست تخصیص یافت نشد")
     student = db.get(User, assignment.student_id)
+    if student.status != "active" and student.onboarding_step not in {"advisor_confirmation", "advisor_assignment", "dual_approval"}:
+        raise HTTPException(409, "دانش‌آموز در حال ویرایش درخواست است")
     if payload.decision == "approved":
         _, _, remaining = advisor_capacity(db, user.id)
         if remaining <= 0:
@@ -1361,8 +1399,8 @@ def advisor_assignment_decision(assignment_id: str, payload: AssignmentDecision,
         if profile:
             profile.advisor_approval_status = "rejected"
             profile.approval_note = payload.note
-        student.status = "pending_approval"
-        student.onboarding_step = "dual_approval"
+        student.status = "onboarding_selection"
+        student.onboarding_step = "selection"
     assignment.decided_at = utcnow()
     audit(db, user.id, "advisor.assignment_decided", "advisor_assignment", assignment.id,
         after={"decision": payload.decision}, reason=payload.note)

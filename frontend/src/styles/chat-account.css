@@ -30,3 +30,5 @@
 .dual-approval>div{display:grid;grid-template-columns:1fr 1fr;gap:12px}.dual-approval article{padding:15px;border:1px solid #e7e1f1;border-radius:12px;display:flex;justify-content:space-between}.dual-approval article.approved{background:#effaf4;color:#18834d}.dual-approval article.rejected{background:#fff1f3;color:#b83c50}
 @media(max-width:760px){.subscription-overview-grid,.dual-approval>div{grid-template-columns:1fr}.user-detail-backdrop{padding:8px}.user-detail-modal{padding:16px}.detail-row{grid-template-columns:1fr}.chat-lock-button{font-size:0}.chat-lock-button svg{width:18px}}
 .exam-send-success{display:flex;align-items:center;flex-wrap:wrap;gap:.55rem;padding:.8rem 1rem;border:1px solid #bfe4cc;border-radius:12px;background:#effaf3;color:#187343}.exam-send-success svg{width:20px}.exam-duration{display:flex;align-items:center;gap:.5rem;margin:0;color:#59407f}.exam-duration svg{width:18px}
+
+.chat-blocked{flex-wrap:wrap;gap:12px}.chat-blocked .btn{white-space:normal}.chat-blocked .btn:disabled{opacity:.55;cursor:not-allowed}

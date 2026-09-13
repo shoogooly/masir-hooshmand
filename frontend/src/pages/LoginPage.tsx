@@ -20,7 +20,7 @@ export default function LoginPage() {
     try {
       if (mode === 'staff' && !codeSent) { await auth.requestOtp(phone); setCodeSent(true); return }
       const result = mode === 'staff' ? await auth.staffLogin(phone, code) : await auth.login(phone, password)
-      queryClient.setQueryData(['me'], result.user); navigate('/app', { replace: true })
+      queryClient.clear(); queryClient.setQueryData(['me'], result.user); navigate(result.user.role === 'student' && result.user.subscription_expired ? '/app/renewal' : '/app', { replace: true })
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'ورود ناموفق بود.') }
     finally { setBusy(false) }
   }
@@ -31,5 +31,5 @@ export default function LoginPage() {
     <form onSubmit={submit}><label>شماره موبایل<div className="field"><Phone /><input value={phone} onChange={event => setPhone(event.target.value)} inputMode="tel" required pattern="09[0-9]{9}" placeholder="09123456789" /></div></label>
       {mode === 'password' ? <label>رمز عبور<div className="field"><KeyRound /><input value={password} onChange={event => setPassword(event.target.value)} type="password" minLength={8} required /></div></label> : codeSent ? <label>کد یکبار مصرف<div className="field"><ShieldCheck /><input value={code} onChange={event => setCode(event.target.value)} inputMode="numeric" pattern="[0-9]{6}" required /></div><small>کد آزمایشی فعلی: ۱۲۳۴۵۶</small></label> : <div className="staff-login-note">شماره باید قبلاً توسط مدیر سایت به‌عنوان منشی یا مسئول مقطع ثبت شده باشد.</div>}
       {error && <div className="form-error">{error}</div>}<button disabled={busy} className="btn btn-primary btn-lg">{busy ? 'کمی صبر کنید...' : mode === 'staff' && !codeSent ? 'دریافت کد ورود' : 'ورود به حساب'}</button>{mode === 'staff' && codeSent && <button type="button" className="text-button" onClick={() => setCodeSent(false)}>اصلاح شماره موبایل</button>}
-    </form><p className="login-register-link">حساب دانش‌آموز یا مشاور ندارید؟ <Link to="/register">ثبت‌نام</Link></p></main></div>
+    </form><p><Link to="/forgot-password">رمز ورود را فراموش کرده‌اید؟</Link></p><p className="login-register-link">حساب دانش‌آموز یا مشاور ندارید؟ <Link to="/register">ثبت‌نام</Link></p></main></div>
 }
