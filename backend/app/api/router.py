@@ -1,4 +1,6 @@
 from app.chat_access import chat_locked
+from app.study_reporting import ensure_report_editable, report_bounds
+from app.models import StudyReport
 from datetime import datetime, timedelta, timezone
 import json
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
@@ -749,8 +751,11 @@ def create_plan(payload: PlanCreate, user: User = Depends(roles("advisor", "supe
 def publish_plan(plan_id: str, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
     plan = db.get(WeeklyPlan, plan_id)
     if not plan or (user.role == "advisor" and plan.advisor_id != user.id): raise HTTPException(404, "برنامه یافت نشد")
+    if plan.status == "published":
+        return ok({"id":plan.id,"status":plan.status})
     before = plan.status; now = utcnow(); plan.status = "published"; plan.published_at = now
     plan.ends_at = now + timedelta(days=7)
+    plan.ends_at = report_bounds(plan)[1]
     plan.student_viewed_at = None
     plan.advisor_expiry_notified_at = None
     add_notification(db, plan.student_id, "plan_published", "برنامه هفتگی جدید", f"برنامه جدید شما توسط {user.full_name} منتشر شد.", "/app/student/plan", user.id, plan.id)
@@ -764,6 +769,9 @@ def update_activity(activity_id: str, payload: ActivityUpdate, user: User = Depe
     if not activity: raise HTTPException(404, "فعالیت یافت نشد")
     plan = db.get(WeeklyPlan, activity.plan_id)
     if not plan or plan.student_id != user.id: raise HTTPException(403, "این فعالیت متعلق به شما نیست")
+    ensure_report_editable(plan)
+    if db.get(StudyReport,(plan.id,'activity:'+activity.id)):
+        raise HTTPException(409,"برای تغییر این گزارش از فرم جدید گزارش کار استفاده کنید")
     duplicate = db.scalar(select(Activity).where(Activity.idempotency_key == payload.idempotency_key))
     if duplicate and duplicate.id != activity.id: return ok({"id": duplicate.id, "duplicate": True})
     activity.status, activity.actual_minutes, activity.test_count, activity.note, activity.idempotency_key = payload.status, payload.actual_minutes, payload.test_count, payload.note, payload.idempotency_key

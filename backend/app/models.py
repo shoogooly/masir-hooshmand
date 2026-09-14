@@ -184,6 +184,14 @@ class Activity(Base, TimeMixin):
     plan: Mapped[WeeklyPlan] = relationship(back_populates="activities")
 
 
+class StudyReport(Base, TimeMixin):
+    __tablename__ = "study_reports"
+    plan_id: Mapped[str] = mapped_column(ForeignKey("weekly_plans.id", ondelete="CASCADE"), primary_key=True)
+    scope: Mapped[str] = mapped_column(String(80), primary_key=True)
+    data_json: Mapped[str] = mapped_column(Text, default="{}")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class Message(Base, TimeMixin):
     __tablename__ = "messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
