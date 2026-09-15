@@ -1,6 +1,8 @@
+import AdvisorEvaluationPage from './AdvisorEvaluationPage'
 import TimeFields from '../components/TimeFields'
 import StudyReportPlan from './StudyReportPlan'
 import AdvisorPlanArchive from './AdvisorPlanArchive'
+import AIPlanDesigner from './AIPlanDesigner'
 import PasswordChange from '../components/PasswordChange'
 import { exportPlanPdf } from '../utils/planPdf'
 import '../styles/planner-readable.css'
@@ -88,10 +90,10 @@ export function StudentFilePage({user,studentId,tab}:{user:User;studentId:string
  const {data,isLoading,error}=useQuery({queryKey:['student-file',studentId],queryFn:()=>api<ReportData&{student:User}>(`/advisors/students/${studentId}/report`)})
  if(isLoading)return <State/>
  if(error||!data)return <ErrorBox error={error}/>
- const tabs=[['report','گزارش عملکرد'],['plan','برنامه هفتگی'],['study-reports','گزارش کار برنامه'],['exams','آزمون‌ها'],['chat','گفت‌وگو']]
+ const tabs=[['report','گزارش عملکرد'],['plan','برنامه هفتگی'],['study-reports','گزارش کار برنامه'],['exams','آزمون‌ها'],['chat','گفت‌وگو'],['evaluation','ارزیابی مشاور از دانش‌آموز']]
  return <div className="content-page"><PageHead back={()=>nav('/app/advisor/students')} title={data.student.full_name} subtitle="پرونده اختصاصی دانش‌آموز"/>
   <div className="file-tabs">{tabs.map(([key,label])=><button key={key} className={tab===key?'active':''} onClick={()=>nav(`/app/advisor/students/${studentId}/${key}`)}>{label}</button>)}</div>
-  {tab==='report'?<ProgressPage studentId={studentId}/>:tab==='plan'?<AdvisorPlanWorkspace key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name}/>:tab==='study-reports'?<AdvisorPlanArchive key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name} reports/>:tab==='exams'?<AdvisorAssignedExamsPage studentId={studentId}/>:<ChatPanel counterpart={data.student} currentUser={user}/>}
+  {tab==='report'?<ProgressPage studentId={studentId}/>:tab==='plan'?<AdvisorPlanWorkspace key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name}/>:tab==='study-reports'?<AdvisorPlanArchive key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name} reports/>:tab==='evaluation'?<AdvisorEvaluationPage key={studentId} studentId={studentId}/>:tab==='exams'?<AdvisorAssignedExamsPage studentId={studentId}/>:<ChatPanel counterpart={data.student} currentUser={user}/>}
  </div>
 }
 
@@ -195,7 +197,7 @@ function TimeSelect({value,onChange,min=0,max=1440,label}:{value:string;onChange
   return <TimeFields value={value} onChange={onChange} label={label}/>
 }
 
-function TimelineTrack({items,rangeStart,rangeEnd}:{items:{id:string;start_time:string;end_time:string;title:string}[];rangeStart:string;rangeEnd:string}){
+function TimelineTrack({items,rangeStart,rangeEnd,fit=false,onSelect}:{items:{id:string;start_time:string;end_time:string;title:string}[];rangeStart:string;rangeEnd:string;fit?:boolean;onSelect?:(id:string)=>void}){
   const track=useRef<HTMLDivElement>(null)
   const rangeMinutes=timeToMinutes(rangeEnd)-timeToMinutes(rangeStart)
   const valid=items.filter(item=>Number.isFinite(timeToMinutes(item.start_time))&&Number.isFinite(timeToMinutes(item.end_time))&&timeToMinutes(item.end_time)>timeToMinutes(item.start_time))
@@ -203,14 +205,39 @@ function TimelineTrack({items,rangeStart,rangeEnd}:{items:{id:string;start_time:
   const minWidth=Number.isFinite(shortest)&&rangeMinutes>0?Math.max(850,Math.ceil(rangeMinutes/shortest*150)):850
   const hourWidth=rangeMinutes>0?100/(rangeMinutes/60):100
   useEffect(()=>{
-    const element=track.current;if(!element)return
+    const element=track.current;if(!element||fit)return
     const resize=()=>{const height=Math.max(130,...Array.from(element.querySelectorAll<HTMLElement>('.timeline-block'),block=>block.offsetHeight+40));element.style.height=height+'px'}
     resize();if(typeof ResizeObserver==='undefined')return
     const observer=new ResizeObserver(resize)
     element.querySelectorAll('.timeline-block').forEach(block=>observer.observe(block))
     return ()=>observer.disconnect()
-  },[items,rangeStart,rangeEnd])
-  return <div className="timeline-scroll"><div ref={track} className="timeline-track inline-timeline" dir="rtl" style={{minWidth,backgroundSize:`${hourWidth}% 100%`}}><span className="timeline-edge start">{faDigits(rangeStart)}</span><span className="timeline-edge end">{faDigits(rangeEnd)}</span>{valid.map(item=><article className="timeline-block" key={item.id} style={timelinePosition(item.start_time,item.end_time,rangeStart,rangeEnd)}><b>{item.title}</b><small>{faDigits(item.start_time)} تا {faDigits(item.end_time)}</small></article>)}</div></div>
+  },[items,rangeStart,rangeEnd,fit])
+  return <div className={fit?"timeline-scroll timeline-fit":"timeline-scroll"}><div ref={track} className="timeline-track inline-timeline" dir="rtl" style={{minWidth:fit?0:minWidth,backgroundSize:`${hourWidth}% 100%`}}><span className="timeline-edge start">{faDigits(rangeStart)}</span><span className="timeline-edge end">{faDigits(rangeEnd)}</span>{valid.map(item=><article className="timeline-block" key={item.id} role={onSelect?"button":undefined} tabIndex={onSelect?0:undefined} aria-label={onSelect?"ویرایش بازه "+item.title:undefined} onClick={()=>onSelect?.(item.id)} onKeyDown={event=>{if(onSelect&&(event.key==="Enter"||event.key===" ")){event.preventDefault();onSelect(item.id)}}} title={item.title+" · "+faDigits(item.start_time)+" تا "+faDigits(item.end_time)} style={timelinePosition(item.start_time,item.end_time,rangeStart,rangeEnd)}><b>{item.title}</b><small>{faDigits(item.start_time)} تا {faDigits(item.end_time)}</small></article>)}</div></div>
+}
+
+
+function EditableDayTimeline({items,rangeStart,rangeEnd,day,onAdd,onChange,onDelete}:{items:TimelineDraft[];rangeStart:string;rangeEnd:string;day:string;onAdd:()=>string;onChange:(id:string,key:'start'|'end'|'title',value:string)=>void;onDelete:(id:string)=>void}){
+ const [selectedId,setSelectedId]=useState<string|null>(null)
+ const selected=items.find(item=>item.id===selectedId)
+ const host=useRef<HTMLDivElement>(null)
+ useEffect(()=>{if(selectedId)host.current?.querySelector<HTMLInputElement>('.on-chart-editor input')?.focus()},[selectedId])
+ const incomplete=items.filter(item=>!Number.isFinite(timeToMinutes(item.start))||!Number.isFinite(timeToMinutes(item.end))||timeToMinutes(item.end)<=timeToMinutes(item.start))
+ const issue=selected?validateTimeline(items,rangeStart,rangeEnd):null
+ return <div ref={host} className="editable-day-chart">
+  <div className="editable-chart-surface">
+   <TimelineTrack fit items={items.map(item=>({id:item.id,start_time:item.start,end_time:item.end,title:item.title||'برنامه جدید'}))} rangeStart={rangeStart} rangeEnd={rangeEnd} onSelect={setSelectedId}/>
+   {!items.length&&<span className="chart-empty-hint">برای شروع، دکمهٔ افزودن بازه را بزنید.</span>}
+   {incomplete.length>0&&<div className="chart-unscheduled">{incomplete.map((item,i)=><button key={item.id} type="button" onClick={()=>setSelectedId(item.id)}>بازهٔ بدون زمان {faDigits(String(i+1))}</button>)}</div>}
+   {selected&&<div className="on-chart-editor" role="dialog" aria-label={'ویرایش بازه '+day} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();setSelectedId(null)}}}>
+    <header><b>ویرایش بازه · {day}</b><button type="button" aria-label="بستن ویرایش بازه" onClick={()=>setSelectedId(null)}>×</button></header>
+    <div className="on-chart-times"><TimeSelect key={selected.id+'-start'} label="از" value={selected.start} onChange={value=>onChange(selected.id,'start',value)}/><TimeSelect key={selected.id+'-end'} label="تا" value={selected.end} onChange={value=>onChange(selected.id,'end',value)}/></div>
+    <label className="timeline-description">توضیحات (تا ۳ خط)<textarea rows={3} maxLength={180} value={selected.title} onChange={event=>onChange(selected.id,'title',event.target.value.replace(/\r/g,'').split('\n').slice(0,3).join('\n'))} placeholder="درس، فعالیت و هدف این بازه را بنویسید."/></label>
+    {issue&&<small className="timeline-error">{issue}</small>}
+    <div className="on-chart-actions"><button type="button" className="small-secondary" onClick={()=>{onDelete(selected.id);setSelectedId(null)}}><Trash2 size={16}/> حذف بازه</button><button type="button" className="btn btn-primary" onClick={()=>setSelectedId(null)}>ثبت بازه</button></div>
+   </div>}
+  </div>
+  <button type="button" className="add-chart-range" aria-label={'افزودن بازه برای '+day} onClick={()=>setSelectedId(onAdd())}><Plus/><span>افزودن بازه</span></button>
+ </div>
 }
 
 function ReadOnlyPlanTable({plan,studentName='—',advisorName='—',onUpdate,updating=false,tableRef}:{plan:WeeklyPlan;studentName?:string;advisorName?:string;onUpdate?:(item:PlanActivity,form:FormData)=>void;updating?:boolean;tableRef?:{current:HTMLDivElement|null}}){
@@ -247,13 +274,14 @@ function AdvisorSchoolReference({profile}:{profile:AdvisorSchoolProfile}){
 export function PlanBuilder({studentId}:{studentId:string}){
   const qc=useQueryClient();const [title,setTitle]=useState('برنامه هفتگی'),[week,setWeek]=useState(''),[startDate,setStartDate]=useState<JalaliSelection>(initialJalali)
   const [rangeStart,setRangeStart]=useState('08:00'),[rangeEnd,setRangeEnd]=useState('24:00'),[items,setItems]=useState<TimelineDraft[]>([])
-  const [mission,setMission]=useState('')
+  const [mission,setMission]=useState(''),[draftEpoch,setDraftEpoch]=useState(0)
+  const resetDraft=()=>{setTitle('برنامه هفتگی');setMission('');setItems([]);setStartDate(initialJalali());setRangeStart('08:00');setRangeEnd('24:00');setDraftEpoch(value=>value+1)}
   const tableDays=useMemo(()=>buildJalaliWeek(startDate),[startDate]);useEffect(()=>setWeek(`از ${tableDays[0].date} تا ${tableDays[6].date}`),[tableDays])
   const {data=[]}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')})
   const {data:studentFile}=useQuery({queryKey:['student-file-school',studentId],queryFn:()=>api<ReportData&{student:User;profile:AdvisorSchoolProfile}>(`/advisors/students/${studentId}/report`)})
-  const addItem=(dayId:string)=>setItems(current=>[...current,{id:crypto.randomUUID(),dayId,start:'',end:'',title:''}])
+  const addItem=(dayId:string)=>{const id=crypto.randomUUID();setItems(current=>[...current,{id,dayId,start:'',end:'',title:''}]);return id}
   const updateItem=(id:string,key:'start'|'end'|'title',value:string)=>setItems(current=>current.map(item=>item.id===id?{...item,[key]:value}:item))
   const error=validateTimeline(items,rangeStart,rangeEnd)
-  const create=useMutation({mutationFn:async()=>{if(error)throw new Error(error);const activities=items.map(item=>({day:tableDays.find(day=>day.id===item.dayId)!.label,subject:'برنامه',title:item.title.trim(),start_time:item.start,end_time:item.end}));const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,weekly_mission:mission,day_start_time:rangeStart,day_end_time:rangeEnd,days:tableDays.map(({label,date})=>({label,date})),time_slots:[],activities})});await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan},onSuccess:()=>qc.invalidateQueries({queryKey:['plans','advisor']})})
-  return <div className="table-planner timeline-planner">{studentFile&&<AdvisorSchoolReference profile={studentFile.profile}/>}<div className="planner-meta"><label>عنوان برنامه<input value={title} onChange={event=>setTitle(event.target.value)}/></label><label>عنوان یا بازه هفته<input value={week} onChange={event=>setWeek(event.target.value)}/></label><label className="mission-field">ماموریت هفته<textarea value={mission} maxLength={2000} onChange={event=>setMission(event.target.value)} placeholder="ماموریت و هدف اصلی این هفته را بنویسید..."/></label></div><div className="planner-calendar-row"><div><b>تاریخ شمسی شروع برنامه</b><p>روز و تاریخ تمام هفت روز خودکار محاسبه می‌شود.</p><PersianDateSelector value={startDate} onChange={setStartDate}/></div><div className="daily-range-fields"><TimeSelect label="شروع کل روز" value={rangeStart} max={timeToMinutes(rangeEnd)-1} onChange={setRangeStart}/><TimeSelect label="پایان کل روز" value={rangeEnd} min={timeToMinutes(rangeStart)+1} onChange={setRangeEnd}/></div></div><div className="timeline-editor-list">{tableDays.map(day=>{const dayItems=items.filter(item=>item.dayId===day.id);return <section className="timeline-editor-day" key={day.id}><header><b>{day.label}</b><span>{day.date}</span></header><div className="timeline-editor-body"><TimelineTrack items={dayItems.map(item=>({id:item.id,start_time:item.start,end_time:item.end,title:item.title||'برنامه جدید'}))} rangeStart={rangeStart} rangeEnd={rangeEnd}/><div className="timeline-item-editors">{dayItems.map(item=><div className="timeline-item-editor" key={item.id}><TimeSelect label="از" value={item.start} min={timeToMinutes(rangeStart)} max={timeToMinutes(rangeEnd)-1} onChange={value=>updateItem(item.id,'start',value)}/><TimeSelect label="تا" value={item.end} min={timeToMinutes(rangeStart)+1} max={timeToMinutes(rangeEnd)} onChange={value=>updateItem(item.id,'end',value)}/><label className="timeline-description">توضیحات (تا ۳ خط)<textarea rows={3} maxLength={180} value={item.title} onChange={event=>updateItem(item.id,'title',event.target.value.replace(/\r/g,'').split('\n').slice(0,3).join('\n'))} placeholder="مثلاً مطالعه فصل سوم ریاضی"/></label><button aria-label="حذف برنامه" onClick={()=>setItems(current=>current.filter(entry=>entry.id!==item.id))}><Trash2/></button></div>)}</div><button className="add-day-range" onClick={()=>addItem(day.id)}><Plus/> افزودن بازه برای {day.label}</button></div></section>})}</div><div className="planner-actions"><span className={error?'timeline-error':''}>{error||`${items.length} برنامه در بازه ${faDigits(rangeStart)} تا ${faDigits(rangeEnd)}`}</span><button className="btn btn-primary" disabled={create.isPending||Boolean(error)} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار برنامه</button></div>{create.isSuccess&&<div className="success-note">برنامه خط زمانی با موفقیت منتشر شد.</div>}{create.error&&<ErrorBox error={create.error}/>}</div>
+  const create=useMutation({mutationFn:async()=>{if(error)throw new Error(error);const activities=items.map(item=>({day:tableDays.find(day=>day.id===item.dayId)!.label,subject:'برنامه',title:item.title.trim(),start_time:item.start,end_time:item.end}));const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,weekly_mission:mission,day_start_time:rangeStart,day_end_time:rangeEnd,days:tableDays.map(({label,date})=>({label,date})),time_slots:[],activities})});await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan},onSuccess:()=>{resetDraft();void qc.invalidateQueries({queryKey:['plans','advisor']})}})
+  return <fieldset disabled={create.isPending} style={{border:0,padding:0,margin:0,minWidth:0}}><div className="table-planner timeline-planner">{studentFile&&<AdvisorSchoolReference profile={studentFile.profile}/>}<AIPlanDesigner key={draftEpoch} studentId={studentId} startDate={`${startDate.year}/${String(startDate.month).padStart(2,'0')}/${String(startDate.day).padStart(2,'0')}`} rangeStart={rangeStart} rangeEnd={rangeEnd} hasDraft={items.length>0||Boolean(mission)} onApply={draft=>{setTitle(draft.title);setMission(draft.weekly_mission);setItems(draft.activities.map(a=>({id:crypto.randomUUID(),dayId:tableDays.find(d=>d.label===a.day)!.id,start:a.start_time,end:a.end_time,title:a.title})));create.reset()}}/><div className="planner-meta"><label>عنوان برنامه<input value={title} onChange={event=>setTitle(event.target.value)}/></label><label>عنوان یا بازه هفته<input value={week} onChange={event=>setWeek(event.target.value)}/></label><label className="mission-field">ماموریت هفته<textarea value={mission} maxLength={2000} onChange={event=>setMission(event.target.value)} placeholder="ماموریت و هدف اصلی این هفته را بنویسید..."/></label></div><div className="planner-calendar-row"><div><b>تاریخ شمسی شروع برنامه</b><p>روز و تاریخ تمام هفت روز خودکار محاسبه می‌شود.</p><PersianDateSelector value={startDate} onChange={setStartDate}/></div><div className="daily-range-fields"><TimeSelect label="شروع کل روز" value={rangeStart} max={timeToMinutes(rangeEnd)-1} onChange={setRangeStart}/><TimeSelect label="پایان کل روز" value={rangeEnd} min={timeToMinutes(rangeStart)+1} onChange={setRangeEnd}/></div></div><div className="timeline-editor-list">{tableDays.map(day=>{const dayItems=items.filter(item=>item.dayId===day.id);return <section className="timeline-editor-day" key={day.id}><header><b>{day.label}</b><span>{day.date}</span></header><div className="timeline-editor-body"><EditableDayTimeline key={draftEpoch} items={dayItems} day={day.label} rangeStart={rangeStart} rangeEnd={rangeEnd} onAdd={()=>addItem(day.id)} onChange={updateItem} onDelete={id=>setItems(current=>current.filter(item=>item.id!==id))}/></div></section>})}</div><div className="planner-actions"><span className={error?'timeline-error':''}>{error||`${items.length} برنامه در بازه ${faDigits(rangeStart)} تا ${faDigits(rangeEnd)}`}</span><button className="small-secondary" disabled={create.isPending} onClick={()=>{resetDraft();create.reset()}}><Trash2/> پاک کردن پیش‌نویس</button><button className="btn btn-primary" disabled={create.isPending||Boolean(error)} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار برنامه</button></div>{create.isSuccess&&<div className="success-note">برنامه خط زمانی با موفقیت منتشر شد.</div>}{create.error&&<ErrorBox error={create.error}/>}</div></fieldset>
 }

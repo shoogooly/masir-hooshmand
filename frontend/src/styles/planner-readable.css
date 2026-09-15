@@ -62,3 +62,41 @@
 .inline-timeline .timeline-block{height:auto;min-height:108px;top:8px;padding:10px 8px;gap:8px;overflow:visible}
 .inline-timeline .timeline-block b{display:block;font-size:16px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;overflow:visible;font-weight:600}
 .inline-timeline .timeline-block small{display:block;flex-shrink:0;white-space:nowrap;font-size:13px;opacity:1}
+@media(max-width:650px){.timeline-planner .planner-meta{grid-template-columns:minmax(0,1fr)}.timeline-planner .planner-meta label,.timeline-planner .planner-meta input,.timeline-planner .planner-meta textarea{min-width:0;max-width:100%;width:100%;box-sizing:border-box}}
+
+/* The builder always previews the complete day within the available width. */
+.timeline-planner .timeline-editor-list{min-width:0;width:100%;overflow:visible}
+.timeline-planner .timeline-editor-day{min-width:0;grid-template-columns:120px minmax(0,1fr)}
+.timeline-planner .timeline-editor-body{min-width:0}
+.timeline-fit{width:100%;min-width:0;overflow:hidden}
+.timeline-fit .inline-timeline{width:100%;min-width:0;height:150px;box-sizing:border-box}
+.timeline-fit .inline-timeline .timeline-block{height:112px;min-height:0;min-width:0;padding:4px 1px;gap:4px;overflow:hidden;container-type:inline-size}
+.timeline-fit .inline-timeline .timeline-block b{font-size:clamp(6px,14cqi,16px);line-height:1.35;min-width:0;overflow:hidden}
+.timeline-fit .inline-timeline .timeline-block small{font-size:clamp(5px,12cqi,12px);white-space:normal;overflow-wrap:anywhere;max-width:100%;line-height:1.3}
+@media(max-width:850px){
+ .timeline-planner .timeline-editor-day{grid-template-columns:minmax(0,1fr)}
+ .timeline-planner .timeline-editor-day>header{flex-direction:row;border-left:0;border-bottom:1px solid #e2deea}
+ .timeline-planner .timeline-item-editor{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 34px}
+ .timeline-planner .timeline-item-editor .timeline-description{grid-column:1/3;grid-row:2}
+ .timeline-planner .timeline-item-editor>button{grid-column:3;grid-row:2}
+}
+
+.editable-day-chart{display:grid;grid-template-columns:minmax(0,1fr) 68px;gap:10px;align-items:center;direction:rtl;min-width:0}
+.editable-chart-surface{position:relative;min-width:0}
+.timeline-planner .timeline-editor-day:has(.on-chart-editor){position:relative;z-index:20}
+.timeline-fit .timeline-block[role=button]{cursor:pointer}
+.timeline-fit .timeline-block[role=button]:focus-visible{outline:3px solid #43237c;outline-offset:1px}
+.add-chart-range{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;align-self:stretch;border:1px dashed #9976d8;border-radius:10px;background:#f4edff;color:#6940a4;font:inherit;font-size:12px;padding:8px;cursor:pointer}
+.chart-empty-hint{position:absolute;inset:45px 10px auto;text-align:center;color:#8b779e;font-size:12px;pointer-events:none}
+.chart-unscheduled{position:absolute;right:4px;left:4px;top:4px;display:flex;flex-wrap:wrap;gap:4px;max-height:110px;overflow:auto;pointer-events:none}
+.chart-unscheduled button{pointer-events:auto;border:1px dashed #8157ba;border-radius:6px;color:#654191;background:#f3eafa;padding:5px;font:inherit;font-size:11px;cursor:pointer}
+.on-chart-editor{position:absolute;z-index:10;top:0;right:0;width:min(430px,100%);box-sizing:border-box;padding:16px;background:white;border:1px solid #b99ada;border-radius:12px;box-shadow:0 12px 36px #34204435;display:grid;gap:12px;color:#43285f}
+.on-chart-editor header{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:15px}
+.on-chart-editor header button{border:0;background:#f2eafa;color:#644287;width:30px;height:30px;border-radius:8px;font-size:24px;cursor:pointer}
+.on-chart-times{display:flex;gap:18px;flex-wrap:wrap}
+.on-chart-editor .time-field{display:grid;gap:6px;font-size:14px}
+.on-chart-editor .timeline-description{display:grid;gap:7px;font-size:14px}
+.on-chart-editor .timeline-description textarea{min-height:90px}
+.on-chart-editor .on-chart-actions{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.on-chart-editor .on-chart-actions button{font-size:13px;padding:9px 12px}
+@media(max-width:650px){.editable-day-chart{grid-template-columns:minmax(0,1fr) 48px;gap:6px}.add-chart-range{padding:4px;font-size:10px}.on-chart-editor{width:calc(100% + 54px);padding:12px}.on-chart-times{gap:12px}.on-chart-editor .split-clock{width:114px}.on-chart-editor .split-clock input{width:48px}}

@@ -2,6 +2,11 @@ from app.api.onboarding_flow import router as onboarding_flow_router
 from app.api.exam_files import router as exam_files_router
 from app.api.passwords import router as passwords_router
 from app.api.study_reports import router as study_reports_router
+from app.api.ai import router as ai_router
+from app.api.ai_planner import router as ai_planner_router
+from app.api.advisor_evaluation import router as advisor_evaluation_router
+from app.ai_jobs import worker as ai_worker
+from threading import Event, Thread
 from contextlib import asynccontextmanager
 import logging
 import time
@@ -31,7 +36,14 @@ async def lifespan(_app: FastAPI):
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed_database(db)
-    yield
+    ai_stop = Event()
+    ai_thread = Thread(target=ai_worker, args=(ai_stop,), daemon=True, name="weekly-ai")
+    ai_thread.start()
+    try:
+        yield
+    finally:
+        ai_stop.set()
+        ai_thread.join(timeout=2)
 
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
@@ -63,7 +75,7 @@ async def http_error(request: Request, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"success": False, "error": {
         "code": detail.get("code", f"HTTP_{exc.status_code}"),
         "message": detail.get("message", str(exc.detail)), "details": [],
-    }, "request_id": request.headers.get("X-Request-ID")}, headers={"Cache-Control": "no-store"})
+    }, "request_id": request.headers.get("X-Request-ID")}, headers={**(exc.headers or {}), "Cache-Control": "no-store"})
 
 
 @app.exception_handler(RequestValidationError)
@@ -85,5 +97,8 @@ app.include_router(accounts_router, prefix="/api/v1", dependencies=[Depends(csrf
 app.include_router(exam_files_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(passwords_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(study_reports_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(ai_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(ai_planner_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(advisor_evaluation_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 
 app.include_router(onboarding_flow_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])

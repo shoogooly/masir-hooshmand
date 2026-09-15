@@ -445,7 +445,9 @@ def advisor_dashboard(user: User = Depends(roles("advisor", "super_admin")), db:
     assignments = db.scalars(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == user.id, AdvisorAssignment.active.is_(True))).all() if user.role == "advisor" else db.scalars(select(AdvisorAssignment)).all()
     student_ids = [a.student_id for a in assignments]
     students = db.scalars(select(User).where(User.id.in_(student_ids))).all() if student_ids else []
-    pending = db.scalar(select(func.count(Insight.id)).where(Insight.student_id.in_(student_ids), Insight.status == "pending_review")) if student_ids else 0
+    from app.ai_models import AIAnalysis
+    pending = db.scalar(select(func.count(func.distinct(AIAnalysis.student_id))).where(
+        AIAnalysis.student_id.in_(student_ids), AIAnalysis.advisor_id == user.id, AIAnalysis.status == "completed")) if student_ids else 0
     student_rows = []
     for x in students:
         report = report_data(db, x.id)
@@ -922,18 +924,20 @@ def insights(user: User = Depends(current_user), db: Session = Depends(get_db)):
 
 @router.post("/ai-suggestions/{student_id}")
 def create_suggestion(student_id: str, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
-    plans = db.scalars(select(WeeklyPlan).where(WeeklyPlan.student_id == student_id)).all(); plan_ids = [p.id for p in plans]
-    activities = db.scalars(select(Activity).where(Activity.plan_id.in_(plan_ids))).all() if plan_ids else []
-    completion = round(sum(a.status == "completed" for a in activities) / len(activities) * 100) if activities else 0
-    generated = ai_provider.suggest({"completion": completion})
-    insight = Insight(student_id=student_id, kind="ai_plan", title=generated["title"], evidence=generated["evidence"], recommendation=generated["recommendation"], confidence=generated["confidence"])
-    db.add(insight); audit(db, user.id, "ai.generated", "insight", insight.id, after={"provider": generated["provider"]}); db.commit(); return ok({"id": insight.id, **generated, "status": insight.status})
+    from app.ai_service import require_student
+    from app.ai_jobs import run_analysis, analysis_dict
+    require_student(db, student_id, user)
+    if user.role != "advisor":
+        raise HTTPException(403, "بررسی دانش‌آموز از پنل مشاور انجام می‌شود")
+    return ok(analysis_dict(run_analysis(db, student_id, user.id)))
 
 
 @router.patch("/ai-suggestions/{insight_id}")
 def review_suggestion(insight_id: str, payload: InsightReview, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
     insight = db.get(Insight, insight_id)
     if not insight: raise HTTPException(404, "پیشنهاد یافت نشد")
+    from app.ai_service import require_student
+    require_student(db, insight.student_id, user)
     insight.status, insight.reviewer_id, insight.review_reason = payload.status, user.id, payload.reason
     if payload.recommendation: insight.recommendation = payload.recommendation
     audit(db, user.id, "ai.reviewed", "insight", insight.id, after={"status": payload.status}, reason=payload.reason); db.commit(); return ok({"id": insight.id, "status": insight.status})
