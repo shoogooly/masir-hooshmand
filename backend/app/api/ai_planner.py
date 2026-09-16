@@ -36,6 +36,8 @@ class DraftRequest(BaseModel):
         return [{"label":DAYS[(first+timedelta(days=i)).weekday()],"date":(first+timedelta(days=i)).strftime("%Y/%m/%d")} for i in range(7)]
 
 class DraftActivity(BaseModel):
+    book_topic_id: str = Field(default="",max_length=36)
+    book_question_count: int = Field(default=0,ge=0,le=10000)
     day: Literal["شنبه","یکشنبه","دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه"]
     title: str = Field(min_length=1,max_length=180)
     start_time: str = Field(pattern=TIME)
@@ -101,10 +103,23 @@ def generate_draft(student_id:str,payload:DraftRequest,user=Depends(roles("advis
             "Prioritize next-week progression from previous plans; avoid blindly repeating completed tasks. "
             "Account for all seven dates, allowing a rest/light day. If exact school times or syllabus are unknown, do not invent them: "
             "make a conservative draft and list assumptions and necessary advisor checks in cautions. "
+            "Use available_books to assign question practice only from books this student owns. "
+            "For each book exercise set book_topic_id to the exact supplied topic id and book_question_count to the assigned count. "
+            "Never exceed the topic available count across all seven days combined; skip exhausted topics. "
+            "Completed and reserved questions are unavailable. Do not invent book IDs, topics or question stocks. "
+            "For reading or non-book study use empty book_topic_id and zero book_question_count. "
             "Do not fabricate exam dates, textbook pages or chapters. Provide Persian rationale and a weekly mission. "
             "This response will be reviewed and edited by the human advisor; nothing is published.",
             {"student_context":context,"requested_week":payload.days(),"daily_start":payload.day_start_time,
              "daily_end":payload.day_end_time,"advisor_preferences":payload.instructions},DraftResult,6500)
+        from app.book_service import validate_allocations,inventory
+        validate_allocations(db,student_id,[a.model_dump() for a in result.activities])
+        topics={t["id"]:(b,t) for b in inventory(db,student_id) for t in b["topics"]}
+        for activity in result.activities:
+            if activity.book_topic_id:
+                book,topic=topics[activity.book_topic_id]
+                kind="تست" if topic["question_type"]=="test" else "سؤال تشریحی"
+                activity.title=f"حل {activity.book_question_count} {kind} از مبحث {topic['title']}\nاز کتاب {book['title']}"
         validate_draft(result,payload)
         ai.require_student(db,student_id,user)
         audit(db,user.id,"ai.plan_draft","user",student_id,after={"activities":len(result.activities),"start_date":payload.start_date})

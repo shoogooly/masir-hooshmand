@@ -100,3 +100,11 @@
 .on-chart-editor .on-chart-actions{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .on-chart-editor .on-chart-actions button{font-size:13px;padding:9px 12px}
 @media(max-width:650px){.editable-day-chart{grid-template-columns:minmax(0,1fr) 48px;gap:6px}.add-chart-range{padding:4px;font-size:10px}.on-chart-editor{width:calc(100% + 54px);padding:12px}.on-chart-times{gap:12px}.on-chart-editor .split-clock{width:114px}.on-chart-editor .split-clock input{width:48px}}
+
+.detected-subject{display:flex;align-items:center;gap:7px;color:#645172;font-size:12px}.detected-subject>span{width:13px;height:13px;border-radius:4px;flex-shrink:0}
+
+.subject-color-choice{display:grid;gap:10px;background:#f6f0fb;border-radius:9px;padding:12px;font-size:13px}.subject-color-choice>div{display:flex;flex-wrap:wrap;gap:8px}.subject-color-choice button{border:0;border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer}
+
+.manual-color{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.manual-color label{display:flex;align-items:center;gap:10px;font-size:13px}.manual-color input[type=color]{width:48px;height:32px;padding:2px;border:1px solid #ccb9dd;border-radius:7px;background:#fff;cursor:pointer}.manual-color button{font-size:11px;padding:6px 9px}
+
+.activity-book-fields{display:grid;gap:8px;font-size:12px}.activity-book-fields label{display:grid;gap:6px}.activity-book-fields select,.activity-book-fields input{width:100%;min-width:0;box-sizing:border-box;font:inherit;border:1px solid #d7c8e4;border-radius:7px;padding:8px}.on-chart-editor{max-height:75vh;overflow-y:auto}

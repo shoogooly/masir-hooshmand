@@ -18,13 +18,15 @@ def analysis_dict(row):
 
 def run_analysis(db, student_id, advisor_id, kind="manual"):
     config=ai.configuration(db); ai.require_ready(config)
-    ai.access_row(db,student_id); db.commit()
+    access=ai.access_row(db,student_id); db.commit()
+    if kind=="weekly" and not access.weekly_auto_enabled:raise HTTPException(409,"تحلیل خودکار این دانش‌آموز خاموش است")
     now=utcnow(); week,_,_=ai.week_bounds(now); token=uid()
     auto_key=f"{student_id}:{advisor_id}:{week}" if kind=="weekly" else None
     old=db.scalar(select(AIAnalysis).where(AIAnalysis.automatic_key==auto_key)) if auto_key else None
     if old and (old.status=="completed" or old.attempts>=3 or (old.retry_at and ai.aware(old.retry_at)>now)):
         return old
     criteria=[AIStudentAccess.student_id==student_id,or_(AIStudentAccess.analysis_until.is_(None),AIStudentAccess.analysis_until<now)]
+    if kind=="weekly":criteria.append(AIStudentAccess.weekly_auto_enabled.is_(True))
     if kind=="manual":
         criteria.append(or_(AIStudentAccess.last_manual_at.is_(None),AIStudentAccess.last_manual_at<now-timedelta(seconds=60)))
     changed=db.execute(update(AIStudentAccess).execution_options(synchronize_session='fetch').where(*criteria).values(analysis_token=token,analysis_until=now+timedelta(minutes=2),
@@ -82,6 +84,7 @@ def weekly_tick(stop=None):
         if stop and stop.is_set():break
         try:
             with SessionLocal() as db:
+                if not ai.access_row(db,student_id).weekly_auto_enabled:continue
                 advisor=db.get(User,advisor_id)
                 if not advisor or advisor.status!="active":continue
                 ai.require_student(db,student_id,advisor)

@@ -28,6 +28,7 @@ class AIStudentAccess(Base, TimeMixin):
     __tablename__ = "ai_student_access"
     student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     weekly_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weekly_auto_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     locked: Mapped[bool] = mapped_column(Boolean, default=False)
     locked_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     chat_token: Mapped[str] = mapped_column(String(36), default="")

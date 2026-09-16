@@ -20,3 +20,7 @@
 .mh-price-featured ul{border-color:#7347e82e}
 .mh-price-featured .mh-btn{color:#fff}
 .mh-price-popular{position:absolute;top:-16px;left:24px;border:1px solid #bd9cff;border-radius:20px;padding:5px 17px;background:var(--primary);color:#fff;font-size:13px;font-weight:700;box-shadow:0 5px 15px #32126822}
+
+/* Keep the preview hint static while matching the planner card's perspective. */
+.mh-scene-caption{transform:rotateY(-11deg) rotateX(9deg) rotateZ(4deg)}
+@media(max-width:580px){.mh-scene-caption{transform:rotateY(-6deg) rotateX(5deg) rotateZ(3deg)}}

@@ -82,7 +82,7 @@ def usage(db, student_id):
         (AITurn.status=="pending") & (AITurn.created_at>utcnow()-timedelta(minutes=3))))) or 0
     limit=access.weekly_limit if access.weekly_limit is not None else config.weekly_limit
     return {"limit":limit,"used":used,"remaining":max(0,limit-used),"reset_at":reset,
-            "locked":access.locked,"enabled":config.enabled and bool(config.token_encrypted),
+            "weekly_auto_enabled":access.weekly_auto_enabled,"locked":access.locked,"enabled":config.enabled and bool(config.token_encrypted),
             "override":access.weekly_limit,"default_limit":config.weekly_limit}
 
 def parse(raw, fallback):
@@ -179,6 +179,8 @@ def student_context(db, student_id, advisor_id=None):
                 "dated_milestones":parse(evaluation.milestones_json,[]),
                 "date_system":"Jalali YYYY/MM/DD",
                 "updated_at":evaluation.updated_at.isoformat()}
+    from app.book_service import inventory
+    context["available_books"]=inventory(db,student_id)
     return context,coverage
 
 class Topic(BaseModel):

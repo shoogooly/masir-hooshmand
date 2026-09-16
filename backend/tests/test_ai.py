@@ -148,6 +148,8 @@ def test_parallel_messages_cannot_exceed_quota(env,monkeypatch):
 
 def test_weekly_once_retry_and_persisted_history(env,monkeypatch):
     s,a,m,sh,ah,mh,sid,aid=env
+    assert m.put(f"/api/v1/ai/students/{sid}/weekly-review",headers=mh,json={"enabled":True}).status_code==200
+    s,a,m,sh,ah,mh,sid,aid=env
     calls=[]
     def run(c,ctx):calls.append(ctx);return RESULT
     monkeypatch.setattr(ai,"analyze",run)
@@ -263,6 +265,8 @@ def test_gapgpt_http_contract_and_invalid_responses(env,monkeypatch):
 
 def test_weekly_scheduler_runs_without_advisor_opening_page(env,monkeypatch):
     s,a,m,sh,ah,mh,sid,aid=env
+    assert m.put(f"/api/v1/ai/students/{sid}/weekly-review",headers=mh,json={"enabled":True}).status_code==200
+    s,a,m,sh,ah,mh,sid,aid=env
     seen=[]
     monkeypatch.setattr(ai,"analyze",lambda config,context:seen.append(context["student_identity"]["id"]) or RESULT)
     ai_jobs.weekly_tick()
@@ -291,6 +295,8 @@ def test_provider_rate_limit_is_explicit_and_preserves_student_quota(env,monkeyp
     assert s.get("/api/v1/ai/chat").json()["data"]["usage"]["used"]==0
 
 def test_weekly_batch_stops_on_organization_rate_limit(env,monkeypatch):
+    s,a,m,sh,ah,mh,sid,aid=env
+    assert m.put(f"/api/v1/ai/students/{sid}/weekly-review",headers=mh,json={"enabled":True}).status_code==200
     calls=[]
     def limited(*args):
         calls.append(1)
@@ -368,3 +374,16 @@ def test_advisor_evaluation_persists_is_scoped_and_informs_draft(env,monkeypatch
     with SessionLocal() as db:
         db.execute(delete(AdvisorEvaluation).where(AdvisorEvaluation.student_id==sid,AdvisorEvaluation.advisor_id==aid))
         db.commit()
+
+def test_plan_subject_and_custom_color_survive_publication(env):
+    s,a,m,sh,ah,mh,sid,aid=env
+    payload={"student_id":sid,"title":"برنامه رنگی","week_label":"هفته رنگی","days":[{"label":"شنبه","date":"1405/06/21"}],
+        "activities":[{"day":"شنبه","subject":"ریاضی","title":"فیزیک و ریاضی","start_time":"08:00","end_time":"09:00","color":"#ffff00"}]}
+    response=a.post("/api/v1/plans",headers=ah,json=payload)
+    assert response.status_code==200,response.text
+    plan_id=response.json()["data"]["id"]
+    assert a.post(f"/api/v1/plans/{plan_id}/publish",headers=ah).status_code==200
+    activity=s.get(f"/api/v1/plans/{plan_id}").json()["data"]["activities"][0]
+    assert activity["subject"]=="ریاضی" and activity["color"]=="#ffff00"
+    payload["activities"][0]["color"]="url(https://invalid.example)"
+    assert a.post("/api/v1/plans",headers=ah,json=payload).status_code==422

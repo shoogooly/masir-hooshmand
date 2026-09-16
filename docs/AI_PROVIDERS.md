@@ -34,3 +34,9 @@
 
 ## راهنمای مشاور در طراحی
 کادر چندخطی اختیاری (حداکثر ۱۵۰۰ نویسه) برای زمان‌های استراحت، اولویت درس‌ها و اهداف هفته است. متن همراه پرونده اختصاصی همان دانش‌آموز به سرویس فعال ارسال می‌شود. مدل موظف است محدودیت‌های آموزشی را رعایت و موارد متعارض را برای بررسی مشاور اعلام کند. پیش‌نویس پس از تأیید وارد فرم قابل ویرایش می‌شود و خودکار منتشر نمی‌شود.
+
+## Student books and automatic reviews
+
+Automatic weekly analysis is disabled by default for existing and new students. A super administrator can opt each student in from AI settings; manual advisor reviews remain independent.
+
+The books catalog stores publication year and per-topic test/written question counts. Student ownership is persistent. AI drafts include structured topic IDs and assigned counts, validated again on publication against that student's available inventory. Completed reports consume the reported question count, or the assigned count when no count was entered. Editing a report recomputes consumption; repeated saves and deselecting/reselecting a book do not reset or double-count it. Pending activities in active published plans reserve questions. Historical unlinked activities cannot consume catalog inventory automatically.

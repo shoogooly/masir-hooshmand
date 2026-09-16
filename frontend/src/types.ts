@@ -5,7 +5,7 @@ export interface ApiResponse<T> { success: boolean; data: T; meta: Record<string
 export interface Activity { id: string; day: string; subject: string; title: string; planned_minutes: number; actual_minutes: number; status: string }
 export interface Insight { id: string; kind: string; title: string; evidence: string; recommendation: string; confidence: number; status: string }
 
-export interface PlanActivity extends Activity { start_time:string; end_time:string; test_count:number; note:string }
+export interface PlanActivity extends Activity { color?:string; start_time:string; end_time:string; test_count:number; note:string }
 export interface PlanDay { label:string; date:string }
 export interface TimeSlot { start:string; end:string }
 export interface WeeklyPlan { id:string; student_id:string; title:string; week_label:string; version:number; status:string; published_at?:string; day_start_time?:string; day_end_time?:string; weekly_mission?:string; days:PlanDay[]; time_slots:TimeSlot[]; activities:PlanActivity[] }

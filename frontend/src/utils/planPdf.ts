@@ -1,3 +1,4 @@
+import {subjectBlockStyle} from './subjectColors'
 import type { WeeklyPlan } from '../types'
 
 // Always one A4 landscape page; fit the complete measured sheet in both dimensions.
@@ -12,18 +13,18 @@ export function timelineSegments(plan:WeeklyPlan,day:string){
  // Keep the same scale for every day and include any older activity outside the configured bounds.
  const start=Math.min(minutes(plan.day_start_time||'08:00'),...plan.activities.map(item=>minutes(item.start_time)))
  const end=Math.max(minutes(plan.day_end_time||'24:00'),...plan.activities.map(item=>minutes(item.end_time)))
- const segments:{start:number;end:number;title:string;rest:boolean}[]=[]
+ const segments:{start:number;end:number;title:string;rest:boolean;subject?:string;color?:string}[]=[]
  let cursor=start
  for(const item of items){
   const from=minutes(item.start_time),to=minutes(item.end_time)
   if(from>cursor)segments.push({start:cursor,end:from,title:'.......',rest:true})
-  if(to>from)segments.push({start:from,end:to,title:item.title,rest:false})
+  if(to>from)segments.push({start:from,end:to,title:item.title,rest:false,subject:item.subject,color:item.color})
   cursor=Math.max(cursor,to)
  }
  if(cursor<end)segments.push({start:cursor,end,title:'.......',rest:true})
  return segments
 }
-export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan){
+export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=false){
  const sheet=node('section','planner-pdf-sheet');sheet.dir='rtl'
  const header=node('header','print-plan-header')
  const identity=node('div','print-plan-identity')
@@ -39,24 +40,33 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan){
   for(const item of items){
    const card=node('article','print-plan-card'+(item.rest?' print-plan-rest':''))
    card.dataset.minutes=String(item.end-item.start)
+   if(colored&&!item.rest)Object.assign(card.style,subjectBlockStyle(item.title,item.subject,item.color))
    const text=node('div','print-plan-card-content')
    const time=node('small','')
    time.append(node('span','',clock(item.start)),document.createTextNode(' تا '),node('span','',clock(item.end)))
    text.append(node('p','',item.title),time)
+   if(colored&&!item.rest){
+    const style=subjectBlockStyle(item.title,item.subject,item.color)
+    text.style.color=style.color
+    for(const child of text.children)(child as HTMLElement).style.color=style.color
+   }
    card.append(text);cards.append(card)
   }
   row.append(cards);table.append(row)
  }
  const mission=node('aside','print-plan-mission');mission.append(node('h2','','مأموریت هفته'),node('p','',plan.weekly_mission?.trim()||'مأموریتی ثبت نشده است.'))
- main.append(table,mission);sheet.append(main,node('footer','print-plan-footer','مسیر هوشمند · برنامه هفتگی'))
+ main.append(table,mission);sheet.append(main,node('footer','print-plan-footer','مسیر هوشمند · برنامه هفتگی'+(colored?' · نسخه رنگی':'')))
  return sheet
 }
-export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan){
+export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false){
  const [{default:html2canvas},{jsPDF}]=await Promise.all([import('html2canvas'),import('jspdf')])
  await document.fonts.ready
- const host=node('div','print-plan-host'),sheet=createPrintSheet(element,plan)
+ const host=node('div','print-plan-host'),sheet=createPrintSheet(element,plan,colored)
  host.append(sheet);document.body.append(host)
  try{
+  // Inserting the sheet can load fonts not used elsewhere on the page.
+  sheet.getBoundingClientRect()
+  await document.fonts.ready
   fitPrintText(sheet)
   const width=sheet.offsetWidth,height=sheet.scrollHeight
   const page=singlePageSize(width,height)
@@ -89,7 +99,7 @@ export function fitPrintText(sheet:HTMLElement){
  let size=16
  while(mission.scrollHeight>mission.clientHeight&&size>1){size-=.25;body.style.fontSize=size+'px'}
 }
-export async function exportPlanPdf(element:HTMLElement,plan:WeeklyPlan){
- const pdf=await buildPlanPdf(element,plan)
- pdf.save(`برنامه-${plan.week_label.replace(/[\\/:*?"<>|]/g,'-')}.pdf`)
+export async function exportPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false){
+ const pdf=await buildPlanPdf(element,plan,colored)
+ pdf.save(`برنامه-${colored?'رنگی-':'ساده-'}${plan.week_label.replace(/[\\/:*?"<>|]/g,'-')}.pdf`)
 }

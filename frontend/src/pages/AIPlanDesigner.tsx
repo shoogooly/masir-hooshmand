@@ -4,7 +4,7 @@ import { BrainCircuit, CheckCircle2 } from 'lucide-react'
 import { api } from '../api'
 import '../styles/ai-plan-designer.css'
 
-export type AIPlanDraft={student_id:string;student_name:string;start_date:string;title:string;weekly_mission:string;rationale:string;cautions:string[];days:{label:string;date:string}[];day_start_time:string;day_end_time:string;activities:{day:string;title:string;start_time:string;end_time:string}[]}
+export type AIPlanDraft={student_id:string;student_name:string;start_date:string;title:string;weekly_mission:string;rationale:string;cautions:string[];days:{label:string;date:string}[];day_start_time:string;day_end_time:string;activities:{book_topic_id?:string;book_question_count?:number;day:string;title:string;start_time:string;end_time:string}[]}
 export default function AIPlanDesigner({studentId,startDate,rangeStart,rangeEnd,hasDraft,onApply}:{studentId:string;startDate:string;rangeStart:string;rangeEnd:string;hasDraft:boolean;onApply:(draft:AIPlanDraft)=>void}){
  const [instructions,setInstructions]=useState(''),[applied,setApplied]=useState(false)
  const generate=useMutation({mutationFn:async(requestedInstructions:string)=>{

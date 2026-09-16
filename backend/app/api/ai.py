@@ -181,3 +181,12 @@ def analyses(student_id:str,user=Depends(roles("advisor","super_admin")),db=Depe
 def generate_analysis(student_id:str,user=Depends(roles("advisor")),db=Depends(get_db)):
     ai.require_student(db,student_id,user)
     return ok(analysis_dict(run_analysis(db,student_id,user.id)))
+
+class WeeklyReviewInput(BaseModel):
+    enabled: bool
+@router.put("/students/{student_id}/weekly-review")
+def weekly_review(student_id:str,payload:WeeklyReviewInput,user=Depends(roles("super_admin")),db=Depends(get_db)):
+    ai.require_student(db,student_id,user)
+    access=ai.access_row(db,student_id);access.weekly_auto_enabled=payload.enabled
+    audit(db,user.id,"ai.weekly_review","user",student_id,after={"enabled":payload.enabled})
+    db.commit();return ok(ai.usage(db,student_id))

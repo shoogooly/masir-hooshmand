@@ -1,3 +1,4 @@
+import re
 from app.chat_access import chat_locked
 from app.study_reporting import ensure_report_editable, report_bounds
 from app.models import StudyReport
@@ -127,7 +128,7 @@ def advisor_student_profile_dict(profile: StudentProfile | None):
 
 
 def activity_dict(item: Activity):
-    return {"id": item.id, "day": item.day, "subject": item.subject, "title": item.title,
+    return {"id": item.id, "day": item.day, "subject": item.subject, "title": item.title, "color": item.color,"book_topic_id":item.book_topic_id,"book_question_count":item.book_question_count,
             "start_time": item.start_time, "end_time": item.end_time, "planned_minutes": item.planned_minutes,
             "actual_minutes": item.actual_minutes, "test_count": item.test_count, "status": item.status, "note": item.note}
 
@@ -732,6 +733,8 @@ def get_plan(plan_id: str, user: User = Depends(current_user), db: Session = Dep
 def create_plan(payload: PlanCreate, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
     if user.role == "advisor" and not db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == user.id, AdvisorAssignment.student_id == payload.student_id, AdvisorAssignment.active.is_(True))):
         raise HTTPException(403, "دانش‌آموز به شما تخصیص داده نشده است")
+    from app.book_service import validate_allocations
+    validate_allocations(db,payload.student_id,payload.activities)
     previous = db.scalar(select(WeeklyPlan).where(WeeklyPlan.student_id == payload.student_id).order_by(WeeklyPlan.version.desc()))
     plan = WeeklyPlan(student_id=payload.student_id, advisor_id=user.id, title=payload.title, week_label=payload.week_label,
         schedule_days_json=json.dumps(payload.days, ensure_ascii=False), time_slots_json=json.dumps(payload.time_slots, ensure_ascii=False),
@@ -740,10 +743,13 @@ def create_plan(payload: PlanCreate, user: User = Depends(roles("advisor", "supe
         version=(previous.version + 1 if previous else 1))
     db.add(plan); db.flush()
     for item in payload.activities:
+        color=item.get("color","")
+        if not isinstance(color,str) or (color and not re.fullmatch(r"#[0-9a-fA-F]{6}",color)):
+            raise HTTPException(422,"رنگ بازه معتبر نیست")
         start, end = item.get("start_time", "08:00"), item.get("end_time", "09:00")
         sh, sm = map(int, start.split(":")); eh, em = map(int, end.split(":"))
         db.add(Activity(plan_id=plan.id, day=item.get("day", "شنبه"), subject=item.get("subject", "عمومی"), title=item.get("title", "فعالیت"),
-            start_time=start, end_time=end, planned_minutes=(eh * 60 + em) - (sh * 60 + sm)))
+            book_topic_id=item.get("book_topic_id") or "",book_question_count=item.get("book_question_count",0),color=color, start_time=start, end_time=end, planned_minutes=(eh * 60 + em) - (sh * 60 + sm)))
     audit(db, user.id, "plan.created", "weekly_plan", plan.id, after={"version": plan.version})
     db.commit()
     return ok({"id": plan.id, "version": plan.version, "status": plan.status})
@@ -755,6 +761,8 @@ def publish_plan(plan_id: str, user: User = Depends(roles("advisor", "super_admi
     if not plan or (user.role == "advisor" and plan.advisor_id != user.id): raise HTTPException(404, "برنامه یافت نشد")
     if plan.status == "published":
         return ok({"id":plan.id,"status":plan.status})
+    from app.book_service import validate_allocations
+    validate_allocations(db,plan.student_id,[{"book_topic_id":a.book_topic_id,"book_question_count":a.book_question_count} for a in plan.activities],lock=True)
     before = plan.status; now = utcnow(); plan.status = "published"; plan.published_at = now
     plan.ends_at = now + timedelta(days=7)
     plan.ends_at = report_bounds(plan)[1]
