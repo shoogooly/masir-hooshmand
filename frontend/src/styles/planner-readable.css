@@ -70,9 +70,12 @@
 .timeline-planner .timeline-editor-body{min-width:0}
 .timeline-fit{width:100%;min-width:0;overflow:hidden}
 .timeline-fit .inline-timeline{width:100%;min-width:0;height:150px;box-sizing:border-box}
-.timeline-fit .inline-timeline .timeline-block{height:112px;min-height:0;min-width:0;padding:4px 1px;gap:4px;overflow:hidden;container-type:inline-size}
-.timeline-fit .inline-timeline .timeline-block b{font-size:clamp(6px,14cqi,16px);line-height:1.35;min-width:0;overflow:hidden}
-.timeline-fit .inline-timeline .timeline-block small{font-size:clamp(5px,12cqi,12px);white-space:normal;overflow-wrap:anywhere;max-width:100%;line-height:1.3}
+.timeline-fit .inline-timeline .timeline-block{height:128px;min-height:0;min-width:0;padding:0;gap:4px;overflow:visible;container-type:inline-size;justify-content:flex-start;border:0;border-radius:0;background:transparent;color:#25232a;box-shadow:none}
+.timeline-fit .inline-timeline .timeline-block b{display:flex;align-items:center;justify-content:center;flex:1;width:100%;max-width:100%;min-height:0;box-sizing:border-box;padding:6px 3px;border:1px solid;border-radius:8px;font-family:Vazirmatn,Tahoma,sans-serif;font-size:clamp(11px,19cqi,17px);line-height:1.3;text-align:center;overflow:hidden;white-space:pre-wrap;overflow-wrap:normal;word-break:normal;font-weight:500}
+.timeline-fit .inline-timeline .timeline-block small{order:-1;display:flex;align-items:center;justify-content:center;flex-wrap:nowrap;gap:1px;flex:0 0 auto;width:100%;max-width:100%;min-height:28px;box-sizing:border-box;padding:4px 1px;border:1px solid #555;border-radius:7px;background:#e5e5e5;color:#242424;font-family:Vazirmatn,Tahoma,sans-serif;font-size:clamp(5px,13cqi,13px);white-space:nowrap;overflow:hidden;line-height:1.1;font-weight:500;opacity:1}
+.timeline-fit .inline-timeline .timeline-block small span{white-space:nowrap}
+@container (max-width:70px){.timeline-fit .timeline-block b{padding:4px 1px;font-size:clamp(9px,25cqi,14px);line-height:1.22}.timeline-fit .timeline-block small{min-height:26px;padding:3px 1px;font-size:clamp(5px,13cqi,10px)}}
+@container (max-width:42px){.timeline-fit .timeline-block b{font-size:clamp(7px,27cqi,12px);line-height:1.18}.timeline-fit .timeline-block small{min-height:24px;font-size:clamp(4px,12cqi,7px)}}
 @media(max-width:850px){
  .timeline-planner .timeline-editor-day{grid-template-columns:minmax(0,1fr)}
  .timeline-planner .timeline-editor-day>header{flex-direction:row;border-left:0;border-bottom:1px solid #e2deea}

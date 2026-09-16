@@ -1,4 +1,5 @@
 import {subjectBlockStyle} from './subjectColors'
+import {timelineWeight} from './softTimeline'
 import type { WeeklyPlan } from '../types'
 
 // Always one A4 landscape page; fit the complete measured sheet in both dimensions.
@@ -10,7 +11,7 @@ const minutes=(time:string)=>{const [h,m]=time.split(':').map(Number);return h*6
 const clock=(value:number)=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(value%60).padStart(2,'0')}`
 export function timelineSegments(plan:WeeklyPlan,day:string){
  const items=plan.activities.filter(item=>item.day===day).sort((a,b)=>minutes(a.start_time)-minutes(b.start_time))
- // Keep the same scale for every day and include any older activity outside the configured bounds.
+ // Keep shared time bounds and include older activities outside the configured bounds.
  const start=Math.min(minutes(plan.day_start_time||'08:00'),...plan.activities.map(item=>minutes(item.start_time)))
  const end=Math.max(minutes(plan.day_end_time||'24:00'),...plan.activities.map(item=>minutes(item.end_time)))
  const segments:{start:number;end:number;title:string;rest:boolean;subject?:string;color?:string}[]=[]
@@ -36,7 +37,7 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
   label.append(node('b','',day.label),node('span','',day.date||''));row.append(label)
   const items=timelineSegments(plan,day.label)
   const cards=node('div','print-plan-cards')
-  cards.style.gridTemplateColumns=items.map(item=>`minmax(0,${item.end-item.start}fr)`).join(' ')
+  cards.style.gridTemplateColumns=items.map(item=>`minmax(0,${timelineWeight(item.end-item.start)}fr)`).join(' ')
   for(const item of items){
    const card=node('article','print-plan-card'+(item.rest?' print-plan-rest':''))
    card.dataset.minutes=String(item.end-item.start)

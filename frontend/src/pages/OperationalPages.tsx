@@ -1,4 +1,5 @@
 import BooksPage, {type LibraryBook} from './BooksPage'
+import {softTimelinePositions} from '../utils/softTimeline'
 import {detectSubjectColor,detectSubjects,subjectBlockStyle} from '../utils/subjectColors'
 import AdvisorEvaluationPage from './AdvisorEvaluationPage'
 import TimeFields from '../components/TimeFields'
@@ -206,15 +207,43 @@ function TimelineTrack({items,rangeStart,rangeEnd,fit=false,onSelect}:{items:{id
   const shortest=Math.min(...valid.map(item=>timeToMinutes(item.end_time)-timeToMinutes(item.start_time)))
   const minWidth=Number.isFinite(shortest)&&rangeMinutes>0?Math.max(850,Math.ceil(rangeMinutes/shortest*150)):850
   const hourWidth=rangeMinutes>0?100/(rangeMinutes/60):100
+  const softPositions=fit?softTimelinePositions(valid,rangeStart,rangeEnd):null
   useEffect(()=>{
-    const element=track.current;if(!element||fit)return
+    const element=track.current;if(!element)return
+    if(fit){
+      let frame=0
+      const resize=()=>{
+        cancelAnimationFrame(frame)
+        frame=requestAnimationFrame(()=>element.querySelectorAll<HTMLElement>('.timeline-block').forEach(block=>{
+          const description=block.querySelector<HTMLElement>('b'),time=block.querySelector<HTMLElement>('small')
+          const shrink=(node:HTMLElement|null,minimum:number)=>{
+            if(!node)return
+            node.style.fontSize=''
+            let size=parseFloat(getComputedStyle(node).fontSize),attempts=0
+            while(size>minimum&&attempts++<40&&(node.scrollHeight>node.clientHeight+1||node.scrollWidth>node.clientWidth+1)){
+              size=Math.max(minimum,size-.5)
+              node.style.fontSize=size+'px'
+            }
+          }
+          shrink(time,2)
+          shrink(description,4)
+        }))
+      }
+      resize()
+      void document.fonts?.ready.then(resize)
+      if(typeof ResizeObserver==='undefined')return ()=>cancelAnimationFrame(frame)
+      const observer=new ResizeObserver(resize)
+      observer.observe(element)
+      element.querySelectorAll('.timeline-block').forEach(block=>observer.observe(block))
+      return ()=>{cancelAnimationFrame(frame);observer.disconnect()}
+    }
     const resize=()=>{const height=Math.max(130,...Array.from(element.querySelectorAll<HTMLElement>('.timeline-block'),block=>block.offsetHeight+40));element.style.height=height+'px'}
     resize();if(typeof ResizeObserver==='undefined')return
     const observer=new ResizeObserver(resize)
     element.querySelectorAll('.timeline-block').forEach(block=>observer.observe(block))
     return ()=>observer.disconnect()
   },[items,rangeStart,rangeEnd,fit])
-  return <div className={fit?"timeline-scroll timeline-fit":"timeline-scroll"}><div ref={track} className="timeline-track inline-timeline" dir="rtl" style={{minWidth:fit?0:minWidth,backgroundSize:`${hourWidth}% 100%`}}><span className="timeline-edge start">{faDigits(rangeStart)}</span><span className="timeline-edge end">{faDigits(rangeEnd)}</span>{valid.map(item=><article className="timeline-block" key={item.id} role={onSelect?"button":undefined} tabIndex={onSelect?0:undefined} aria-label={onSelect?"ویرایش بازه "+item.title:undefined} onClick={()=>onSelect?.(item.id)} onKeyDown={event=>{if(onSelect&&(event.key==="Enter"||event.key===" ")){event.preventDefault();onSelect(item.id)}}} title={item.title+" · "+faDigits(item.start_time)+" تا "+faDigits(item.end_time)} style={{...timelinePosition(item.start_time,item.end_time,rangeStart,rangeEnd),...(fit?subjectBlockStyle(item.title,item.subject,item.color):{})}}><b>{item.title}</b><small>{faDigits(item.start_time)} تا {faDigits(item.end_time)}</small></article>)}</div></div>
+  return <div className={fit?"timeline-scroll timeline-fit":"timeline-scroll"}><div ref={track} className="timeline-track inline-timeline" dir="rtl" style={{minWidth:fit?0:minWidth,backgroundSize:`${hourWidth}% 100%`}}><span className="timeline-edge start">{faDigits(rangeStart)}</span><span className="timeline-edge end">{faDigits(rangeEnd)}</span>{valid.map(item=><article className="timeline-block" key={item.id} role={onSelect?"button":undefined} tabIndex={onSelect?0:undefined} aria-label={onSelect?"ویرایش بازه "+item.title:undefined} onClick={()=>onSelect?.(item.id)} onKeyDown={event=>{if(onSelect&&(event.key==="Enter"||event.key===" ")){event.preventDefault();onSelect(item.id)}}} title={item.title+" · "+faDigits(item.start_time)+" تا "+faDigits(item.end_time)} style={softPositions?.get(item.id)??timelinePosition(item.start_time,item.end_time,rangeStart,rangeEnd)}><b style={fit?{...subjectBlockStyle(item.title,item.subject,item.color),borderColor:'rgba(45,35,55,.55)'}:undefined}>{item.title}</b><small><span>{faDigits(item.start_time)}</span><span>تا</span><span>{faDigits(item.end_time)}</span></small></article>)}</div></div>
 }
 
 
