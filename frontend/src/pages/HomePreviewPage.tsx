@@ -94,7 +94,7 @@ export default function HomePreviewPage() {
     <header className="mh-header mh-wrap">
       <a href="#preview-top" aria-label="مسیر هوشمند، صفحه اصلی"><Brand light /></a>
       <nav id="mh-navigation" className={menu ? 'is-open' : ''} aria-label="منوی اصلی">
-        {[['#preview-services', 'خدمات ما'], ['#preview-path', 'چطور شروع کنم؟'], ['#preview-audiences', 'برای چه کسانی؟'], ['#preview-pricing', 'تعرفه‌ها']].map(([href, text]) => <a key={href} href={href} onClick={() => setMenu(false)}>{text}</a>)}
+        <Link to="/advisors" onClick={() => setMenu(false)}>معرفی مشاورین</Link><Link to="/articles" onClick={() => setMenu(false)}>مقالات</Link>{[['#preview-services', 'خدمات ما'], ['#preview-path', 'چطور شروع کنم؟'], ['#preview-pricing', 'تعرفه‌ها']].map(([href, text]) => <a key={href} href={href} onClick={() => setMenu(false)}>{text}</a>)}
       </nav>
       <div className="mh-header-actions"><Link to="/login">ورود</Link><Link className="mh-btn mh-btn-small" to="/register">شروع مسیر <ArrowUpLeft size={17} /></Link></div>
       <button className="mh-menu" aria-label={menu ? 'بستن منو' : 'باز کردن منو'} aria-expanded={menu} aria-controls="mh-navigation" onClick={() => setMenu(!menu)}>{menu ? <X /> : <Menu />}</button>

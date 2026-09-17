@@ -27,7 +27,13 @@ class User(Base, TimeMixin):
     full_name: Mapped[str] = mapped_column(String(120), default="کاربر مسیر هوشمند")
     role: Mapped[str] = mapped_column(String(32), default="student", index=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    restore_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_phone: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    status_before_deletion: Mapped[str | None] = mapped_column(String(20), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), default="")
+    profile_photo_json: Mapped[str] = mapped_column(Text, default="")
+    pending_profile_photo_json: Mapped[str] = mapped_column(Text, default="")
     onboarding_step: Mapped[str] = mapped_column(String(40), default="completed")
     is_admin_mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -113,6 +119,7 @@ class AdvisorProfile(Base, TimeMixin):
     education_field: Mapped[str] = mapped_column(String(120), default="")
     experience_years: Mapped[int] = mapped_column(Integer, default=0)
     education_level: Mapped[str] = mapped_column(String(20), default="upper_secondary", index=True)
+    work_levels_json: Mapped[str] = mapped_column(Text, default='["upper_secondary"]')
     bio: Mapped[str] = mapped_column(Text, default="")
     support_capacity: Mapped[int] = mapped_column(Integer, default=20)
     academic_year: Mapped[str] = mapped_column(String(20), default="1405-1406")
@@ -236,6 +243,18 @@ class Notification(Base, TimeMixin):
     link: Mapped[str] = mapped_column(String(255), default="")
     related_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Article(Base, TimeMixin):
+    __tablename__ = "articles"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(180), index=True)
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 class Question(Base, TimeMixin):
     __tablename__ = "questions"

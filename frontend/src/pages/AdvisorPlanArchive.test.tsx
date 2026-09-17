@@ -7,7 +7,7 @@ import { AdvisorPlanWorkspace } from './OperationalPages'
 import { api } from '../api'
 import { exportStudyReportPdf } from '../utils/studyReportPdf'
 const plans=[1,2].map(n=>({id:'p'+n,student_id:'s',title:'برنامه '+n,week_label:'هفته '+n,version:n,status:'published',activities:[],days:[],time_slots:[]}))
-vi.mock('../api',()=>({api:vi.fn(async(path:string)=>path==='/plans'?plans:path.endsWith('/report')?{profile:{}}:{activities:{},days:{}})}))
+vi.mock('../api',()=>({api:vi.fn(async(path:string)=>path==='/plans'||path.startsWith('/plans?')?plans:path.endsWith('/books')?[]:path.endsWith('/report')?{profile:{}}:{activities:{},days:{}})}))
 vi.mock('../utils/studyReportPdf',()=>({exportStudyReportPdf:vi.fn(async()=>{})}))
 vi.mock('./StudyReportPlan',()=>({default:({plan}:any)=><div>گزارش {plan.id}</div>}))
 let client:QueryClient

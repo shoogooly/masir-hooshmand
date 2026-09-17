@@ -1,4 +1,5 @@
 from typing import Any, Literal
+import base64
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -21,7 +22,30 @@ class RegistrationDocument(BaseModel):
     content_base64: str = Field(min_length=16, max_length=5_600_000)
 
 
+class ProfilePhoto(BaseModel):
+    content_type: Literal["image/jpeg", "image/png", "image/webp"]
+    content_base64: str = Field(min_length=32, max_length=1_700_000)
+
+    @model_validator(mode="after")
+    def validate_image(self):
+        try:
+            raw = base64.b64decode(self.content_base64, validate=True)
+        except Exception as exc:
+            raise ValueError("تصویر پرسنلی معتبر نیست") from exc
+        if len(raw) > 1_250_000:
+            raise ValueError("حجم تصویر پرسنلی بیش از حد مجاز است")
+        signatures = {
+            "image/jpeg": raw.startswith(b"\xff\xd8\xff"),
+            "image/png": raw.startswith(b"\x89PNG\r\n\x1a\n"),
+            "image/webp": raw.startswith(b"RIFF") and raw[8:12] == b"WEBP",
+        }
+        if not signatures[self.content_type]:
+            raise ValueError("نوع واقعی تصویر با فایل انتخابی سازگار نیست")
+        return self
+
+
 class StudentRegistration(OTPRequest):
+    profile_photo: ProfilePhoto | None = None
     full_name: str = Field(min_length=3, max_length=120)
     national_code: str = Field(pattern=r"^\d{10}$")
     birth_date: str = Field(min_length=8, max_length=10)
@@ -60,6 +84,8 @@ class StudentRegistration(OTPRequest):
 
 
 class AdvisorRegistration(OTPRequest):
+    work_levels: list[Literal["lower_secondary", "upper_secondary"]] = Field(min_length=1, max_length=2)
+    profile_photo: ProfilePhoto
     full_name: str = Field(min_length=3, max_length=120)
     national_code: str = Field(pattern=r"^\d{10}$")
     birth_date: str = Field(min_length=8, max_length=10)
@@ -80,7 +106,15 @@ class AdvisorReview(BaseModel):
 class StaffCreate(BaseModel):
     phone: str = Field(pattern=r"^09\d{9}$")
     full_name: str = Field(min_length=3, max_length=120)
-    role: Literal["secretary", "upper_secondary_manager", "lower_secondary_manager"]
+    role: Literal["secretary", "expert", "super_admin"]
+
+
+class StaffAccessUpdate(BaseModel):
+    matrix: dict[str, dict[str, Literal["none", "view", "edit"]]]
+
+
+class ExpertAdvisorUpdate(BaseModel):
+    advisor_ids: list[str] = Field(default_factory=list, max_length=1000)
 
 
 class StaffOTPVerify(OTPRequest):
@@ -139,6 +173,7 @@ class PasswordReset(OTPRequest):
 
 
 class StudentOnboardingProfile(BaseModel):
+    profile_photo: ProfilePhoto | None = None
     full_name: str = Field(min_length=3, max_length=120)
     national_code: str = Field(pattern=r"^\d{10}$")
     birth_date: str = Field(min_length=8, max_length=10)
@@ -184,7 +219,8 @@ class StudentOnboardingSelection(BaseModel):
 
 
 class AdvisorOnboardingProfile(BaseModel):
-    education_level: Literal["lower_secondary", "upper_secondary"]
+    work_levels: list[Literal["lower_secondary", "upper_secondary"]] = Field(min_length=1, max_length=2)
+    profile_photo: ProfilePhoto
     full_name: str = Field(min_length=3, max_length=120)
     national_code: str = Field(pattern=r"^\d{10}$")
     birth_date: str = Field(min_length=8, max_length=10)
@@ -196,6 +232,20 @@ class AdvisorOnboardingProfile(BaseModel):
     support_capacity: int = Field(ge=1, le=500)
     academic_year: str = Field(min_length=7, max_length=20)
     documents: list[RegistrationDocument] = Field(min_length=2, max_length=8)
+
+    @field_validator("work_levels")
+    @classmethod
+    def unique_work_levels(cls, levels):
+        if len(levels) != len(set(levels)):
+            raise ValueError("مقطع‌های فعالیت باید یکتا باشند")
+        return levels
+
+    @field_validator("work_levels")
+    @classmethod
+    def unique_levels(cls, levels):
+        if len(levels) != len(set(levels)):
+            raise ValueError("مقطع‌های فعالیت باید یکتا باشند")
+        return levels
 
 
 
@@ -274,6 +324,8 @@ class MessageCreate(BaseModel):
 
 class ProfileUpdate(BaseModel):
     full_name: str = Field(min_length=2, max_length=120)
+    profile_photo: ProfilePhoto | None = None
+    work_levels: list[Literal["lower_secondary", "upper_secondary"]] | None = Field(default=None, min_length=1, max_length=2)
     grade: str | None = Field(default=None, max_length=40)
     major: str | None = Field(default=None, max_length=40)
     school: str | None = Field(default=None, max_length=120)
@@ -297,6 +349,13 @@ class ProfileUpdate(BaseModel):
     bio: str | None = Field(default=None, max_length=2000)
     support_capacity: int | None = Field(default=None, ge=1, le=500)
     academic_year: str | None = Field(default=None, max_length=20)
+
+    @field_validator("work_levels")
+    @classmethod
+    def unique_profile_levels(cls, levels):
+        if levels is not None and len(levels) != len(set(levels)):
+            raise ValueError("مقطع‌های فعالیت باید یکتا باشند")
+        return levels
 
 
 class QuestionCreate(BaseModel):

@@ -1,6 +1,7 @@
-export type Role = 'student' | 'advisor' | 'secretary' | 'upper_secondary_manager' | 'lower_secondary_manager' | 'content_editor' | 'reviewer' | 'exam_designer' | 'support' | 'finance' | 'operations_admin' | 'super_admin'
+export type Role = 'student' | 'advisor' | 'secretary' | 'expert' | 'content_editor' | 'reviewer' | 'exam_designer' | 'support' | 'finance' | 'operations_admin' | 'super_admin'
 
-export interface User { id: string; phone: string; full_name: string; role: Role; status: string; onboarding_step?: string; referred_by_advisor_id?:string; subscription_expired?:boolean; server_time?:string; subscription?:{expires_at:string;status:string}|null }
+export interface ProfilePhoto {content_type:'image/jpeg'|'image/png'|'image/webp';content_base64:string}
+export interface User { id: string; phone: string; full_name: string; role: Role; status: string; onboarding_step?: string; referred_by_advisor_id?:string; profile_photo?:ProfilePhoto|null; pending_profile_photo?:ProfilePhoto|null; profile_photo_pending?:boolean; subscription_expired?:boolean; server_time?:string; subscription?:{expires_at:string;status:string}|null }
 export interface ApiResponse<T> { success: boolean; data: T; meta: Record<string, unknown>; error?: { message: string; code?: string } }
 export interface Activity { id: string; day: string; subject: string; title: string; planned_minutes: number; actual_minutes: number; status: string }
 export interface Insight { id: string; kind: string; title: string; evidence: string; recommendation: string; confidence: number; status: string }
@@ -20,6 +21,7 @@ export interface Profile extends User {
   parent_name?:string; parent_phone?:string; address?:string
   average_grade7?:number|null; average_grade8?:number|null; average_grade9?:number|null; average_grade10?:number|null; average_grade11?:number|null; average_grade12?:number|null
   education_level?:'lower_secondary'|'upper_secondary';lead_approval_status?:string;admin_approval_status?:string
+  work_levels?:('lower_secondary'|'upper_secondary')[]
   registration_review_status?:string;registration_review_note?:string;correction_return_step?:string
   lead_reviewed_by?:string;admin_reviewed_by?:string
   review_note?:string
@@ -33,6 +35,7 @@ export interface SubscriptionPlanOption { id:string;name:string;period:string;pr
 export interface AdvisorOption extends User {
   education_degree?:string;education_field?:string;experience_years?:number;bio?:string
   education_level?:'lower_secondary'|'upper_secondary'
+  work_levels?:('lower_secondary'|'upper_secondary')[]
   support_capacity:number;assigned_students:number;remaining_capacity:number;is_full:boolean
 }
 export interface RegistrationOptions { plans:SubscriptionPlanOption[];advisors:AdvisorOption[];school_days:string[] }

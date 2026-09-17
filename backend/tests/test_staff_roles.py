@@ -3,11 +3,12 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-def admin_login(client: TestClient) -> str:
-    response = client.post("/api/v1/auth/verify-otp", json={
-        "phone": "09120000003", "code": "123456", "role": "super_admin", "mfa_code": "654321",
+def admin_login(client: TestClient, phone: str = "09399506609") -> str:
+    response = client.post("/api/v1/auth/staff-login", json={
+        "phone": phone, "code": "123456",
     })
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["user"]["role"] == "super_admin"
     return response.json()["data"]["csrf_token"]
 
 
@@ -15,83 +16,61 @@ def create_staff(client: TestClient, csrf: str, phone: str, role: str):
     response = client.post("/api/v1/admin/staff", headers={"X-CSRF-Token": csrf}, json={
         "phone": phone, "full_name": f"کاربر آزمایشی {role}", "role": role,
     })
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     return response.json()["data"]
 
 
-def test_admin_creates_staff_and_role_is_inferred_from_phone():
+def test_primary_manager_and_added_managers_use_otp_only():
     with TestClient(app) as admin:
         csrf = admin_login(admin)
-        create_staff(admin, csrf, "09127770001", "secretary")
-        create_staff(admin, csrf, "09127770002", "upper_secondary_manager")
+        created = create_staff(admin, csrf, "09127770009", "super_admin")
+        assert created["role"] == "super_admin"
 
-    with TestClient(app) as secretary:
-        assert secretary.post("/api/v1/auth/request-otp", json={"phone": "09127770001"}).status_code == 200
-        login = secretary.post("/api/v1/auth/staff-login", json={"phone": "09127770001", "code": "123456"})
-        assert login.status_code == 200
-        assert login.json()["data"]["user"]["role"] == "secretary"
-        assert secretary.get("/api/v1/plans").status_code == 200
-        assert secretary.get("/api/v1/management/conversations").status_code == 403
-
-    with TestClient(app) as manager:
-        login = manager.post("/api/v1/auth/staff-login", json={"phone": "09127770002", "code": "123456"})
-        assert login.status_code == 200
-        assert manager.get("/api/v1/management/conversations").status_code == 200
-        advisors = manager.get("/api/v1/management/advisors").json()["data"]
-        assert all(item["profile"]["education_level"] == "upper_secondary" for item in advisors)
-
-    with TestClient(app) as unknown:
-        assert unknown.post("/api/v1/auth/staff-login", json={"phone": "09127779999", "code": "123456"}).status_code == 403
-
-
-def test_advisor_requires_level_manager_and_admin_approval():
-    advisor_phone = "09127770003"
-    with TestClient(app) as advisor:
-        registered = advisor.post("/api/v1/auth/register", json={
-            "phone": advisor_phone, "role": "advisor", "sms_code": "123456",
-            "password": "Advisor123", "password_confirm": "Advisor123",
+    with TestClient(app) as added_manager:
+        denied = added_manager.post("/api/v1/auth/login", json={
+            "phone": "09127770009", "password": "Any-password-123",
         })
-        assert registered.status_code == 200
-        advisor_id = registered.json()["data"]["user"]["id"]
-        login = advisor.post("/api/v1/auth/login", json={"phone": advisor_phone, "password": "Advisor123"})
-        csrf = login.json()["data"]["csrf_token"]
-        document = {"kind": "مدرک", "name": "file.pdf", "content_type": "application/pdf", "content_base64": "ZmlsZS1jb250ZW50LXRlc3Q="}
-        submitted = advisor.post("/api/v1/onboarding/advisor/profile", headers={"X-CSRF-Token": csrf}, json={
-            "full_name": "مشاور متوسطه اول", "national_code": "1122334455", "birth_date": "1375/01/01",
-            "address": "نشانی کامل مشاور متوسطه اول آزمایشی", "education_level": "lower_secondary",
-            "education_degree": "کارشناسی ارشد", "education_field": "مشاوره", "experience_years": 4,
-            "bio": "سابقه کامل مشاوره و برنامه ریزی برای دانش آموزان متوسطه اول",
-            "support_capacity": 20, "academic_year": "1405-1406",
-            "documents": [document, {**document, "name": "resume.pdf"}],
+        assert denied.status_code == 403
+        assert admin_login(added_manager, "09127770009")
+
+
+def test_expert_is_limited_to_assigned_advisors_and_configured_permissions():
+    with TestClient(app) as admin:
+        csrf = admin_login(admin)
+        expert = create_staff(admin, csrf, "09127770002", "expert")
+        advisors = admin.get("/api/v1/admin/advisors").json()["data"]
+        advisor_id = next(item["id"] for item in advisors if item["phone"] == "09120000002")
+        assigned = admin.put(
+            f"/api/v1/admin/experts/{expert['id']}/advisors",
+            headers={"X-CSRF-Token": csrf},
+            json={"advisor_ids": [advisor_id]},
+        )
+        assert assigned.status_code == 200, assigned.text
+
+    with TestClient(app) as expert_client:
+        login = expert_client.post("/api/v1/auth/staff-login", json={
+            "phone": "09127770002", "code": "123456",
         })
-        assert submitted.status_code == 200
-        assert submitted.json()["data"]["next_step"] == "terms"
-        version = advisor.get("/api/v1/terms/advisor").json()["data"]["version"]
-        assert advisor.post("/api/v1/onboarding/terms/accept", headers={"X-CSRF-Token": csrf}, json={"version": version, "accepted": True}).status_code == 200
+        assert login.status_code == 200
+        assert expert_client.post("/api/v1/auth/login", json={
+            "phone": "09127770002", "password": "Any-password-123",
+        }).status_code == 403
+        visible = expert_client.get("/api/v1/management/advisors")
+        assert visible.status_code == 200
+        assert [item["id"] for item in visible.json()["data"]] == [advisor_id]
+        assert expert_client.get("/api/v1/management/students").status_code == 200
+        assert expert_client.get("/api/v1/management/conversations").status_code == 200
 
     with TestClient(app) as admin:
         csrf = admin_login(admin)
-        create_staff(admin, csrf, "09127770004", "lower_secondary_manager")
+        access = admin.get("/api/v1/admin/staff-access").json()["data"]
+        matrix = access["matrix"]
+        matrix["expert"]["chats"] = "none"
+        changed = admin.put("/api/v1/admin/staff-access", headers={"X-CSRF-Token": csrf}, json={"matrix": matrix})
+        assert changed.status_code == 200
 
-    with TestClient(app) as wrong_manager:
-        login = wrong_manager.post("/api/v1/auth/staff-login", json={"phone": "09127770002", "code": "123456"})
-        csrf = login.json()["data"]["csrf_token"]
-        forbidden = wrong_manager.patch(f"/api/v1/management/advisors/{advisor_id}/review", headers={"X-CSRF-Token": csrf}, json={"status": "approved", "note": "wrong scope"})
-        assert forbidden.status_code == 403
-
-    with TestClient(app) as manager:
-        login = manager.post("/api/v1/auth/staff-login", json={"phone": "09127770004", "code": "123456"})
-        csrf = login.json()["data"]["csrf_token"]
-        approved = manager.patch(f"/api/v1/management/advisors/{advisor_id}/review", headers={"X-CSRF-Token": csrf}, json={"status": "approved", "note": "مدارک مقطع تأیید شد"})
-        assert approved.status_code == 200
-        data = approved.json()["data"]
-        assert data["status"] == "pending_approval"
-        assert data["profile"]["lead_approval_status"] == "approved"
-        assert data["profile"]["admin_approval_status"] == "pending"
-
-    with TestClient(app) as admin:
-        csrf = admin_login(admin)
-        approved = admin.patch(f"/api/v1/admin/advisors/{advisor_id}/review", headers={"X-CSRF-Token": csrf}, json={"status": "approved", "note": "تأیید نهایی"})
-        assert approved.status_code == 200
-        assert approved.json()["data"]["status"] == "active"
-        assert approved.json()["data"]["onboarding_step"] == "completed"
+    with TestClient(app) as expert_client:
+        assert expert_client.post("/api/v1/auth/staff-login", json={
+            "phone": "09127770002", "code": "123456",
+        }).status_code == 200
+        assert expert_client.get("/api/v1/management/conversations").status_code == 403

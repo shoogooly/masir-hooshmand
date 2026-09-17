@@ -1,8 +1,9 @@
 import { useMutation } from '@tanstack/react-query'
 import { type ReactNode, useRef, useState } from 'react'
-import { FileUp, ArrowRight, X } from 'lucide-react'
+import { FileUp, ArrowRight, X, Camera } from 'lucide-react'
 import { api } from '../api'
-import type { AdvisorDocument, SchoolSchedule } from '../types'
+import type { AdvisorDocument, ProfilePhoto, SchoolSchedule } from '../types'
+import { photoUrl, prepareProfilePhoto } from '../utils/profilePhoto'
 import BirthDateInput from '../components/BirthDateInput'
 import '../styles/onboarding-flow.css'
 
@@ -16,13 +17,16 @@ export function StudentProfileForm({refresh,initial={},onPartChange}:Props){
   const first=useRef<HTMLFieldSetElement>(null)
   const [schedule,setSchedule]=useState(()=>normalizeSchedule(initial.school_schedule))
   const [extras,setExtras]=useState<Record<string,string>>(()=>initial.extra_classes as Record<string,string>||{})
+  const [photo,setPhoto]=useState<ProfilePhoto|undefined>(()=>initial.profile_photo as ProfilePhoto|undefined)
+  const [photoError,setPhotoError]=useState('')
   const save=useMutation({mutationFn:(body:Record<string,unknown>)=>api('/onboarding/student/profile',{method:'POST',body:JSON.stringify(body)}),onSuccess:refresh})
   const bind=(name:string)=>({name,value:data[name]||'',onChange:(e:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>)=>setData({...data,[name]:e.target.value})})
   const lower=['هفتم','هشتم','نهم'].includes(data.grade)
   function next(){for(const node of first.current?.querySelectorAll<HTMLInputElement>('input,textarea,select')||[])if(!node.reportValidity())return;setPart(2);onPartChange?.(2)}
-  function submit(e:React.FormEvent){e.preventDefault();if(part===1){next();return}const body:Record<string,unknown>={...data,major:lower?'عمومی':data.major,school_schedule:data.grade==='پشت کنکوری'?{}:schedule,extra_classes:extras};for(const n of [7,8,9,10,11,12])body['average_grade'+n]=data['average_grade'+n]?Number(data['average_grade'+n]):null;save.mutate(body)}
+  function submit(e:React.FormEvent){e.preventDefault();if(part===1){next();return}const body:Record<string,unknown>={...data,profile_photo:photo,major:lower?'عمومی':data.major,school_schedule:data.grade==='پشت کنکوری'?{}:schedule,extra_classes:extras};for(const n of [7,8,9,10,11,12])body['average_grade'+n]=data['average_grade'+n]?Number(data['average_grade'+n]):null;save.mutate(body)}
   return <form className="registration-form onboarding-card" onSubmit={submit}><Title title={part===1?'اطلاعات فردی دانش‌آموز':'سوابق تحصیلی و برنامه کلاسی'} text="اطلاعات ذخیره‌شده در بازگشت به مراحل قبلی حفظ می‌شود."/>
     <fieldset ref={first} hidden={part!==1} disabled={part!==1} className="onboarding-fieldset"><div className="form-grid">
+      <div className="wide"><PhotoPicker photo={photo} optional error={photoError} onSelect={async file=>{setPhotoError('');try{setPhoto(await prepareProfilePhoto(file))}catch(e){setPhotoError(e instanceof Error?e.message:'عکس معتبر نیست')}}}/></div>
       <Field label="نام و نام خانوادگی"><input {...bind('full_name')} required minLength={3}/></Field><Field label="کد ملی"><input {...bind('national_code')} required pattern="[0-9]{10}"/></Field>
       <BirthDateInput value={data.birth_date||''} onChange={birth_date=>setData({...data,birth_date})}/>
       <Field label="نام ولی"><input {...bind('parent_name')} required minLength={3}/></Field><Field label="موبایل ولی"><input {...bind('parent_phone')} required pattern="09[0-9]{9}"/></Field><Field label="نشانی" wide><textarea {...bind('address')} required minLength={10}/></Field>
@@ -36,22 +40,24 @@ export function StudentProfileForm({refresh,initial={},onPartChange}:Props){
   </form>
 }
 export function AdvisorProfileForm({refresh,initial={},onPartChange}:Props){
-  const [data,setData]=useState<Record<string,string>>(()=>({support_capacity:'20',academic_year:'۱۴۰۵-۱۴۰۶',education_level:'upper_secondary',...values(initial)}))
+  const [data,setData]=useState<Record<string,string>>(()=>({support_capacity:'20',academic_year:'۱۴۰۵-۱۴۰۶',...values(initial)}))
   const [part,setPart]=useState(1)
   const first=useRef<HTMLFieldSetElement>(null)
   const [documents,setDocuments]=useState<AdvisorDocument[]>(()=>initial.documents as AdvisorDocument[]||[])
+  const [photo,setPhoto]=useState<ProfilePhoto|undefined>(()=>initial.profile_photo as ProfilePhoto|undefined)
+  const [levels,setLevels]=useState<string[]>(()=>initial.work_levels as string[]||[String(initial.education_level||'upper_secondary')])
   const [fileError,setFileError]=useState('')
   const save=useMutation({mutationFn:(body:Record<string,unknown>)=>api('/onboarding/advisor/profile',{method:'POST',body:JSON.stringify(body)}),onSuccess:refresh})
   const bind=(name:string)=>({name,value:data[name]||'',onChange:(e:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>)=>setData({...data,[name]:e.target.value})})
   function next(){for(const node of first.current?.querySelectorAll<HTMLInputElement>('input,textarea,select')||[])if(!node.reportValidity())return;setPart(2);onPartChange?.(2)}
   async function files(selected:FileList|null){setFileError('');try{const result:AdvisorDocument[]=[];for(const file of Array.from(selected||[])){if(file.size>4*1024*1024)throw new Error('حجم هر فایل باید کمتر از ۴ مگابایت باشد.');const content_base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=reject;reader.readAsDataURL(file)});result.push({kind:'مدرک هویتی یا تحصیلی',name:file.name,content_type:file.type,content_base64})}if(documents.length+result.length>8)throw new Error('حداکثر ۸ مدرک مجاز است.');setDocuments([...documents,...result])}catch(error){setFileError(error instanceof Error?error.message:'فایل معتبر نیست')}}
-  return <form className="registration-form onboarding-card" onSubmit={e=>{e.preventDefault();if(part===1){next();return}save.mutate({...data,experience_years:Number(data.experience_years),support_capacity:Number(data.support_capacity),documents})}}><Title title={part===1?'اطلاعات فردی مشاور':'سوابق و مدارک مشاور'} text="اطلاعات و مدارک پس از پذیرش شرایط، برای تأیید مسئول مقطع و سپس مدیر ارسال می‌شود."/>
-    <fieldset ref={first} hidden={part!==1} disabled={part!==1} className="onboarding-fieldset"><div className="form-grid"><Field label="نام و نام خانوادگی"><input {...bind('full_name')} required minLength={3}/></Field><Field label="کد ملی"><input {...bind('national_code')} required pattern="[0-9]{10}"/></Field><BirthDateInput value={data.birth_date||''} initialYear={1370} onChange={birth_date=>setData({...data,birth_date})}/><Field label="نشانی" wide><textarea {...bind('address')} required minLength={10}/></Field></div></fieldset>
+  return <form className="registration-form onboarding-card" onSubmit={e=>{e.preventDefault();if(part===1){next();return}if(!photo){setFileError('بارگذاری عکس پرسنلی الزامی است.');return}save.mutate({...data,work_levels:levels,profile_photo:photo,experience_years:Number(data.experience_years),support_capacity:Number(data.support_capacity),documents})}}><Title title={part===1?'اطلاعات فردی مشاور':'سوابق و مدارک مشاور'} text="اطلاعات و مدارک پس از پذیرش شرایط، برای تأیید مسئول مقطع و سپس مدیر ارسال می‌شود."/>
+    <fieldset ref={first} hidden={part!==1} disabled={part!==1} className="onboarding-fieldset"><div className="form-grid"><div className="wide"><PhotoPicker photo={photo} error={fileError} onSelect={async file=>{setFileError('');try{setPhoto(await prepareProfilePhoto(file))}catch(e){setFileError(e instanceof Error?e.message:'عکس معتبر نیست')}}}/></div><Field label="نام و نام خانوادگی"><input {...bind('full_name')} required minLength={3}/></Field><Field label="کد ملی"><input {...bind('national_code')} required pattern="[0-9]{10}"/></Field><BirthDateInput value={data.birth_date||''} initialYear={1370} onChange={birth_date=>setData({...data,birth_date})}/><Field label="نشانی" wide><textarea {...bind('address')} required minLength={10}/></Field></div></fieldset>
     <fieldset hidden={part!==2} disabled={part!==2} className="onboarding-fieldset"><div className="form-grid">
-      <Field label="مقطع فعالیت"><select {...bind('education_level')}><option value="upper_secondary">متوسطه دوم</option><option value="lower_secondary">متوسطه اول</option></select></Field>
+      <div className="wide work-levels"><span>مقطع فعالیت (یک یا هر دو مورد)</span><label><input type="checkbox" checked={levels.includes('lower_secondary')} onChange={e=>setLevels(e.target.checked?[...levels,'lower_secondary']:levels.filter(x=>x!=='lower_secondary'))}/> متوسطه اول</label><label><input type="checkbox" checked={levels.includes('upper_secondary')} onChange={e=>setLevels(e.target.checked?[...levels,'upper_secondary']:levels.filter(x=>x!=='upper_secondary'))}/> متوسطه دوم</label>{levels.length===0&&<small>حداقل یک مقطع را انتخاب کنید.</small>}</div>
       <Field label="مدرک تحصیلی"><input {...bind('education_degree')} required/></Field><Field label="رشته تحصیلی"><input {...bind('education_field')} required/></Field><Field label="سابقه کار (سال)"><input {...bind('experience_years')} type="number" min="0" max="60" required/></Field><Field label="ظرفیت سالانه"><input {...bind('support_capacity')} type="number" min="1" max="500" required/></Field><Field label="سال تحصیلی"><input {...bind('academic_year')} required/></Field><Field label="معرفی و سابقه" wide><textarea {...bind('bio')} required minLength={20}/></Field>
       <div className="wide"><label className="file-drop"><FileUp/><b>افزودن مدارک هویتی، تحصیلی و سابقه</b><small>حداقل دو فایل؛ حداکثر ۴ مگابایت برای هر فایل</small><input type="file" multiple accept=".pdf,image/jpeg,image/png,image/webp" onChange={e=>{void files(e.target.files);e.target.value=''}}/></label><ul className="onboarding-documents">{documents.map((doc,i)=><li key={i}>{doc.name}<button type="button" aria-label={'حذف '+doc.name} onClick={()=>setDocuments(documents.filter((_,index)=>index!==i))}><X size={16}/></button></li>)}</ul></div>
-    </div></fieldset>{fileError&&<div className="form-error">{fileError}</div>}{save.error&&<ErrorText error={save.error}/>}<div className="onboarding-actions">{part===1?<button type="button" className="btn btn-primary" onClick={next}>مرحله بعد: سوابق و مدارک</button>:<><button type="button" className="btn btn-outline" onClick={()=>{setPart(1);onPartChange?.(1)}}><ArrowRight/> مرحله قبل</button><button className="btn btn-primary" disabled={save.isPending||documents.length<2}>ذخیره و مرحله بعد</button></>}</div>
+    </div></fieldset>{fileError&&part===2&&<div className="form-error">{fileError}</div>}{save.error&&<ErrorText error={save.error}/>}<div className="onboarding-actions">{part===1?<button type="button" className="btn btn-primary" onClick={next}>مرحله بعد: سوابق و مدارک</button>:<><button type="button" className="btn btn-outline" onClick={()=>{setPart(1);onPartChange?.(1)}}><ArrowRight/> مرحله قبل</button><button className="btn btn-primary" disabled={save.isPending||documents.length<2||!photo||levels.length===0}>ذخیره و مرحله بعد</button></>}</div>
   </form>
 }
 function AverageFields({grade,data,onChange}:{grade:string;data:Record<string,string>;onChange:(name:string,value:string)=>void}){
@@ -62,3 +68,4 @@ function AverageFields({grade,data,onChange}:{grade:string;data:Record<string,st
 function Field({label,wide,children}:{label:string;wide?:boolean;children:ReactNode}){return <label className={wide?'wide':''}><span>{label}</span>{children}</label>}
 function Title({title,text}:{title:string;text:string}){return <div className="form-title"><div><h2>{title}</h2><p>{text}</p></div></div>}
 function ErrorText({error}:{error:unknown}){return <div className="form-error">{error instanceof Error?error.message:'خطایی رخ داد'}</div>}
+function PhotoPicker({photo,optional,error,onSelect}:{photo?:ProfilePhoto;optional?:boolean;error:string;onSelect:(file:File)=>void}){return <div className="profile-photo-picker"><div className="profile-photo-preview">{photo?<img src={photoUrl(photo)} alt="پیش‌نمایش عکس پرسنلی"/>:<Camera/>}</div><label className="btn btn-outline"><Camera size={18}/>{photo?'تغییر عکس':'انتخاب عکس پرسنلی'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const file=e.target.files?.[0];if(file)void onSelect(file);e.target.value=''}}/></label><small>{optional?'اختیاری؛ برای نمایش در بالای پنل شما':'الزامی؛ پس از تأیید در معرفی مشاوران نمایش داده می‌شود'}</small>{error&&<em>{error}</em>}</div>}

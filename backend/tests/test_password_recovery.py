@@ -76,7 +76,7 @@ def test_recovery_limits_expiry_validation_and_unknown_users(account):
     assert unknown['message'] == code['message']
     assert complete(client, unknown).status_code == 400
 
-@pytest.mark.parametrize('role', ['student','advisor','super_admin','secretary'])
+@pytest.mark.parametrize('role', ['student','advisor'])
 def test_change_password_requires_old_and_confirmation_for_every_role(account, role):
     client, (user_id, phone) = account
     with SessionLocal() as db:
@@ -126,7 +126,9 @@ def test_admin_never_receives_password_or_recovery_code(account):
     with SessionLocal() as db:
         admin=User(phone='09999999882',role='super_admin',password_hash=hash_password(OLD))
         db.add(admin);db.commit()
-    headers=login(client,'09999999882')
+    staff_login = client.post(BASE+'staff-login', json={'phone':'09999999882','code':'123456'})
+    assert staff_login.status_code == 200
+    headers={'X-CSRF-Token':staff_login.json()['data']['csrf_token']}
     detail=client.get('/api/v1/admin/users/'+user_id+'/detail')
     assert detail.status_code == 200
     assert 'password_hash' not in detail.text and OLD not in detail.text

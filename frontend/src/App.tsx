@@ -10,6 +10,8 @@ const PasswordRecoveryPage = lazy(() => import('./pages/PasswordRecoveryPage'))
 const WorkspacePage = lazy(() => import('./pages/WorkspacePage'))
 const RegistrationPage = lazy(() => import('./pages/RegistrationPage'))
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'))
+const PublicAdvisorsPage = lazy(() => import('./pages/PublicAdvisorsPage'))
+const PublicArticlesPage = lazy(() => import('./pages/PublicArticlesPage'))
 function Protected() {
   const { data, isLoading, isError } = useQuery({ queryKey: ['me'], queryFn: auth.me, retry: false })
   if (isLoading) return <div className="screen-loader"><span className="brand-mark" /> در حال آماده‌سازی مسیر هوشمند...</div>
@@ -26,6 +28,8 @@ export default function App() {
     <Route path="/login" element={<LoginPage />} />
     <Route path="/forgot-password" element={<PasswordRecoveryPage />} />
     <Route path="/register" element={<RegistrationPage />} />
+    <Route path="/advisors" element={<PublicAdvisorsPage />} />
+    <Route path="/articles" element={<PublicArticlesPage />} />
     <Route path="/app/*" element={<Protected />} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes></SubscriptionBoundary></Suspense>

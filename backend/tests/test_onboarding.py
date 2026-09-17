@@ -99,7 +99,8 @@ def test_advisor_steps_end_in_manager_review():
             "address": "نشانی کامل مشاور آزمایشی", "education_degree": "کارشناسی ارشد", "education_field": "مشاوره",
             "experience_years": 5, "bio": "سابقه کامل مشاوره و برنامه ریزی تحصیلی", "support_capacity": 25,
             "academic_year": "1405-1406", "documents": [document, {**document, "name": "resume.pdf"}],
-            "education_level": "upper_secondary",
+            "work_levels": ["upper_secondary"],
+            "profile_photo": {"content_type": "image/png", "content_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="},
         })
         assert submitted.status_code == 200
         assert submitted.json()["data"]["next_step"] == "terms"

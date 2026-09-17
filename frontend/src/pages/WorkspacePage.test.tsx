@@ -38,7 +38,7 @@ test('student sidebar opens the real plan route',async()=>{
   expect(screen.getByText(/مشاور و برنامه‌ریز.*مریم احمدی/)).toBeTruthy()
   expect(screen.getByText(/مرور کامل فصل سوم/)).toBeTruthy()
   expect(screen.getByText('مطالعه ریاضی').closest('.study-activity')).toBeTruthy()
-  expect(screen.getByRole('button',{name:/دانلود PDF/})).toBeTruthy()
+  expect(screen.getAllByRole('button',{name:/دانلود PDF/})).toHaveLength(2)
   expect(screen.getByRole('button',{name:/برنامه من/}).className).toContain('selected')
 })
 

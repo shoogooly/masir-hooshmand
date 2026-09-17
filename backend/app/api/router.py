@@ -13,8 +13,9 @@ from app.db.session import get_db
 from app.models import Activity, AdvisorAssignment, AdvisorProfile, AuditLog, ChatLock, Exam, ExamAnswer, ExamSession, Insight, Message, Notification, Order, Question, RefreshToken, SiteSetting, StudentProfile, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
 from app.api.accounts_ext import finalize_student_registration
 from app.api.onboarding_flow import ensure_editable, reset_student_reviews, request_advisor, latest_order, paid_registration, approved_assignment, advance_student
-from app.schemas import AccountRegistration, ActivityUpdate, AdvisorAssign, AdvisorOnboardingProfile, AdvisorReferralCreate, AdvisorRegistration, AdvisorReview, AnswerUpdate, AssignmentDecision, ExamCreate, FreeSubscriptionCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PasswordLogin, PasswordReset, PaymentCallback, PlanCreate, ProfileUpdate, QuestionCreate, SCHOOL_DAYS, StaffCreate, StaffOTPVerify, StudentOnboardingProfile, StudentOnboardingSelection, StudentRegistration, SubscriptionPlanUpdate, TermsAccept, TermsUpdate, UserStatusUpdate
+from app.schemas import AccountRegistration, ActivityUpdate, AdvisorAssign, AdvisorOnboardingProfile, AdvisorReferralCreate, AdvisorRegistration, AdvisorReview, AnswerUpdate, AssignmentDecision, ExamCreate, ExpertAdvisorUpdate, FreeSubscriptionCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PasswordLogin, PasswordReset, PaymentCallback, PlanCreate, ProfileUpdate, QuestionCreate, SCHOOL_DAYS, StaffAccessUpdate, StaffCreate, StaffOTPVerify, StudentOnboardingProfile, StudentOnboardingSelection, StudentRegistration, SubscriptionPlanUpdate, TermsAccept, TermsUpdate, UserStatusUpdate
 from app.services import ai_provider, audit, otp_provider, payment_provider
+from app.staff_access import ACCESS_AREAS, access_matrix, expert_advisor_ids, expert_can_view_advisor, expert_can_view_student, require_access, save_access_matrix, save_expert_advisors
 
 
 router = APIRouter()
@@ -38,7 +39,18 @@ def issue_session(response: Response, user: User, db: Session):
 
 
 def user_dict(user: User):
-    return {"id": user.id, "phone": user.phone, "full_name": user.full_name, "role": user.role, "status": user.status, "onboarding_step": user.onboarding_step, "referred_by_advisor_id": user.referred_by_advisor_id}
+    return {"id": user.id, "phone": user.phone, "full_name": user.full_name, "role": user.role, "status": user.status, "onboarding_step": user.onboarding_step, "referred_by_advisor_id": user.referred_by_advisor_id, "profile_photo": json_value(user.profile_photo_json, None), "pending_profile_photo": json_value(user.pending_profile_photo_json, None), "profile_photo_pending": bool(user.pending_profile_photo_json)}
+
+
+def admin_user_dict(user: User):
+    deadline = user.restore_until
+    aware_deadline = deadline if not deadline or deadline.tzinfo else deadline.replace(tzinfo=timezone.utc)
+    return user_dict(user) | {
+        "phone": user.deleted_phone if user.status == "deleted" and user.deleted_phone else user.phone,
+        "deleted_at": user.deleted_at,
+        "restore_until": user.restore_until,
+        "can_restore": bool(user.status == "deleted" and aware_deadline and aware_deadline >= utcnow()),
+    }
 
 def add_notification(db: Session, user_id: str, kind: str, title: str, body: str = "", link: str = "", actor_id: str | None = None, related_id: str | None = None):
     item = Notification(user_id=user_id, actor_id=actor_id, kind=kind, title=title, body=body, link=link, related_id=related_id)
@@ -94,7 +106,7 @@ def advisor_profile_dict(db: Session, profile: AdvisorProfile | None, include_do
         "education_degree": profile.education_degree, "education_field": profile.education_field,
         "experience_years": profile.experience_years, "bio": profile.bio,
         "support_capacity": profile.support_capacity, "academic_year": profile.academic_year,
-        "education_level": profile.education_level,
+        "education_level": profile.education_level, "work_levels": advisor_levels(profile),
         "lead_approval_status": profile.lead_approval_status,
         "admin_approval_status": profile.admin_approval_status,
         "lead_reviewed_by": profile.lead_reviewed_by,
@@ -107,6 +119,13 @@ def advisor_profile_dict(db: Session, profile: AdvisorProfile | None, include_do
     if include_documents:
         data["documents"] = json_value(profile.documents_json, [])
     return data
+
+
+def advisor_levels(profile: AdvisorProfile | None):
+    if not profile:
+        return []
+    levels = json_value(profile.work_levels_json, [])
+    return levels if levels else [profile.education_level]
 
 def advisor_student_profile_dict(profile: StudentProfile | None):
     if not profile:
@@ -177,6 +196,8 @@ def manager_level(user: User):
 def can_view_student(db: Session, viewer: User, student_id: str):
     if viewer.role in {"super_admin", "operations_admin", "secretary"}:
         return True
+    if viewer.role == "expert":
+        return expert_can_view_student(db, viewer, student_id)
     level = manager_level(viewer)
     student = db.get(User, student_id)
     return bool(level and student and student.role == "student" and user_education_level(db, student) == level)
@@ -187,8 +208,16 @@ def can_communicate(db: Session, sender: User, recipient: User):
         return True
     if sender.role == "student" and recipient.role == "advisor": return bool(assignment_for(db, recipient.id, sender.id))
     if sender.role == "advisor" and recipient.role == "student": return bool(assignment_for(db, sender.id, recipient.id))
-    if sender.role == "secretary": return recipient.role in {"advisor", "super_admin"}
+    if sender.role == "secretary":
+        return recipient.role in {"advisor", "super_admin"} and bool(require_access(db, sender, "messages", edit=True) is None)
     if recipient.role == "secretary": return sender.role in {"advisor", "super_admin"}
+    if sender.role == "expert":
+        require_access(db, sender, "messages", edit=True)
+        return ((recipient.role == "advisor" and expert_can_view_advisor(db, sender, recipient.id)) or
+                (recipient.role == "student" and expert_can_view_student(db, sender, recipient.id)) or recipient.role == "super_admin")
+    if recipient.role == "expert":
+        return ((sender.role == "advisor" and expert_can_view_advisor(db, recipient, sender.id)) or
+                (sender.role == "student" and expert_can_view_student(db, recipient, sender.id)) or sender.role == "super_admin")
     sender_level, recipient_level = manager_level(sender), manager_level(recipient)
     if sender_level and recipient.role == "advisor": return user_education_level(db, recipient) == sender_level
     if recipient_level and sender.role == "advisor": return user_education_level(db, sender) == recipient_level
@@ -220,11 +249,15 @@ def report_data(db: Session, student_id: str):
 
 
 @router.get("/registrations/options")
-def registration_options(db: Session = Depends(get_db)):
+def registration_options(education_level: str | None = None, db: Session = Depends(get_db)):
+    if education_level not in {None, "lower_secondary", "upper_secondary"}:
+        raise HTTPException(422, "مقطع تحصیلی معتبر نیست")
     plans = db.scalars(select(SubscriptionPlan).where(SubscriptionPlan.active.is_(True)).order_by(SubscriptionPlan.price)).all()
     advisor_profiles = db.scalars(select(AdvisorProfile).where(AdvisorProfile.approval_status == "approved")).all()
     advisors = []
     for profile in advisor_profiles:
+        if education_level and education_level not in advisor_levels(profile):
+            continue
         advisor = db.get(User, profile.user_id)
         if not advisor or advisor.status != "active":
             continue
@@ -253,11 +286,12 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
         profile, _, remaining = advisor_capacity(db, payload.advisor_id or "")
         if not preferred or preferred.role != "advisor" or preferred.status != "active" or not profile or profile.approval_status != "approved":
             raise HTTPException(404, "مشاور انتخابی در دسترس نیست")
-        if profile.education_level != ("lower_secondary" if payload.grade in {"هفتم", "هشتم", "نهم"} else "upper_secondary"):
+        if ("lower_secondary" if payload.grade in {"هفتم", "هشتم", "نهم"} else "upper_secondary") not in advisor_levels(profile):
             raise HTTPException(409, "مشاور انتخابی مربوط به مقطع تحصیلی دانش‌آموز نیست")
         if remaining <= 0:
             raise HTTPException(409, "ظرفیت این مشاور تکمیل شده است")
-    student = User(phone=payload.phone, full_name=payload.full_name, role="student", status="pending_assignment", onboarding_step="advisor_confirmation" if preferred else "advisor_assignment")
+    student = User(phone=payload.phone, full_name=payload.full_name, role="student", status="pending_assignment", onboarding_step="advisor_confirmation" if preferred else "advisor_assignment",
+                   profile_photo_json=json.dumps(payload.profile_photo.model_dump(), ensure_ascii=False) if payload.profile_photo else "")
     db.add(student)
     db.flush()
     db.add(StudentProfile(
@@ -291,13 +325,15 @@ def register_advisor(payload: AdvisorRegistration, db: Session = Depends(get_db)
         raise HTTPException(409, "این شماره موبایل قبلاً ثبت شده است")
     if db.scalar(select(AdvisorProfile).where(AdvisorProfile.national_code == payload.national_code)):
         raise HTTPException(409, "این کد ملی قبلاً ثبت شده است")
-    advisor = User(phone=payload.phone, full_name=payload.full_name, role="advisor", status="pending_approval")
+    advisor = User(phone=payload.phone, full_name=payload.full_name, role="advisor", status="pending_approval",
+                   profile_photo_json=json.dumps(payload.profile_photo.model_dump(), ensure_ascii=False))
     db.add(advisor)
     db.flush()
     profile = AdvisorProfile(
         user_id=advisor.id, national_code=payload.national_code, birth_date=payload.birth_date,
         address=payload.address, education_degree=payload.education_degree,
         education_field=payload.education_field, experience_years=payload.experience_years,
+        education_level=payload.work_levels[0], work_levels_json=json.dumps(payload.work_levels, ensure_ascii=False),
         bio=payload.bio, support_capacity=payload.support_capacity, academic_year=payload.academic_year,
         documents_json=json.dumps([item.model_dump() for item in payload.documents], ensure_ascii=False),
         approval_status="pending",
@@ -333,6 +369,8 @@ def register_account(payload: AccountRegistration, db: Session = Depends(get_db)
 @router.post("/auth/login")
 def password_login(payload: PasswordLogin, response: Response, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.phone == payload.phone))
+    if user and user.role in {"super_admin", "operations_admin", "expert", "secretary", "upper_secondary_manager", "lower_secondary_manager"}:
+        raise HTTPException(403, "ورود مدیریت و کارکنان فقط با کد یک‌بارمصرف انجام می‌شود")
     if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
         raise HTTPException(401, "شماره موبایل یا رمز ورود صحیح نیست")
     if user.status == "suspended":
@@ -391,6 +429,10 @@ def refresh_session(response: Response, refresh_token: str | None = Cookie(defau
     if expires_at <= utcnow():
         raise HTTPException(401, "نشست منقضی شده است")
     user = db.get(User, token.user_id)
+    if not user or user.status in {"suspended", "deleted"}:
+        token.revoked_at = utcnow()
+        db.commit()
+        raise HTTPException(401, "حساب کاربری در دسترس نیست")
     token.revoked_at = utcnow()
     raw_refresh = new_refresh_token()
     db.add(RefreshToken(user_id=user.id, token_hash=hash_token(raw_refresh), expires_at=utcnow() + timedelta(days=settings.refresh_token_days)))
@@ -518,6 +560,8 @@ def onboarding_student_profile(payload: StudentOnboardingProfile,
     return_step = "terms"
     reset_student_reviews(db, user, profile)
     user.full_name = payload.full_name
+    if payload.profile_photo is not None:
+        user.profile_photo_json = json.dumps(payload.profile_photo.model_dump(), ensure_ascii=False)
     for field in ("national_code", "birth_date", "parent_name", "parent_phone", "address", "grade",
                   "major", "school", "goal", "average_grade7", "average_grade8", "average_grade9", "average_grade10", "average_grade11", "average_grade12"):
         setattr(profile, field, getattr(payload, field))
@@ -560,14 +604,14 @@ def onboarding_student_selection(payload: StudentOnboardingSelection,
         advisor_profile, _, _ = advisor_capacity(db, user.referred_by_advisor_id)
         if not preferred or preferred.role != "advisor" or preferred.status != "active" or not advisor_profile or advisor_profile.approval_status != "approved":
             raise HTTPException(409, "مشاور معرفی‌کننده در حال حاضر فعال نیست؛ با پشتیبانی تماس بگیرید")
-        if advisor_profile.education_level != profile.education_level:
+        if profile.education_level not in advisor_levels(advisor_profile):
             raise HTTPException(409, "مقطع تحصیلی شما با حوزه فعالیت مشاور معرفی‌کننده سازگار نیست")
     elif selection_mode == "self":
         preferred = db.get(User, payload.advisor_id)
         advisor_profile, _, remaining = advisor_capacity(db, payload.advisor_id or "")
         if not preferred or preferred.role != "advisor" or preferred.status != "active" or not advisor_profile or advisor_profile.approval_status != "approved":
             raise HTTPException(404, "مشاور انتخابی در دسترس نیست")
-        if advisor_profile.education_level != profile.education_level:
+        if profile.education_level not in advisor_levels(advisor_profile):
             raise HTTPException(409, "مشاور انتخابی مربوط به مقطع تحصیلی شما نیست")
         if remaining <= 0:
             raise HTTPException(409, "ظرفیت این مشاور تکمیل شده است")
@@ -613,7 +657,10 @@ def onboarding_advisor_profile(payload: AdvisorOnboardingProfile,
         profile = AdvisorProfile(user_id=user.id)
         db.add(profile)
     user.full_name = payload.full_name
-    for field in ("national_code", "birth_date", "address", "education_degree", "education_field", "education_level",
+    user.profile_photo_json = json.dumps(payload.profile_photo.model_dump(), ensure_ascii=False)
+    profile.work_levels_json = json.dumps(payload.work_levels, ensure_ascii=False)
+    profile.education_level = payload.work_levels[0]
+    for field in ("national_code", "birth_date", "address", "education_degree", "education_field",
                   "experience_years", "bio", "support_capacity", "academic_year"):
         setattr(profile, field, getattr(payload, field))
     profile.documents_json = json.dumps([item.model_dump() for item in payload.documents], ensure_ascii=False)
@@ -624,7 +671,7 @@ def onboarding_advisor_profile(payload: AdvisorOnboardingProfile,
     user.status = "onboarding_profile"
     user.onboarding_step = "terms"
     audit(db, user.id, "onboarding.advisor_profile_submitted", "advisor_profile", profile.id,
-        after={"documents": len(payload.documents), "capacity": payload.support_capacity})
+        after={"documents": len(payload.documents), "capacity": payload.support_capacity, "work_levels": payload.work_levels})
     db.commit()
     return ok({"user": user_dict(user), "next_step": "terms"})
 
@@ -642,6 +689,13 @@ def get_profile(user: User = Depends(current_user), db: Session = Depends(get_db
 @router.patch("/profile")
 def update_profile(payload: ProfileUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)):
     user.full_name = payload.full_name
+    if payload.profile_photo is not None and user.role in {"student", "advisor"}:
+        user.pending_profile_photo_json = json.dumps(payload.profile_photo.model_dump(), ensure_ascii=False)
+        admins = db.scalars(select(User).where(User.role == "super_admin", User.status == "active")).all()
+        for admin in admins:
+            add_notification(db, admin.id, "profile_photo_review", "درخواست تغییر عکس پرسنلی",
+                             f"{user.full_name} درخواست تغییر عکس پرسنلی خود را ثبت کرده است.",
+                             "/app/admin/photo-reviews", actor_id=user.id, related_id=user.id)
     if user.role == "student":
         profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
         if not profile:
@@ -663,11 +717,15 @@ def update_profile(payload: ProfileUpdate, user: User = Depends(current_user), d
         _, assigned, _ = advisor_capacity(db, user.id)
         if payload.support_capacity is not None and payload.support_capacity < assigned:
             raise HTTPException(409, "ظرفیت نمی‌تواند از تعداد دانش‌آموزان فعال کمتر باشد")
+        if payload.work_levels is not None:
+            profile.work_levels_json = json.dumps(payload.work_levels, ensure_ascii=False)
+            profile.education_level = payload.work_levels[0]
         for field in ("education_degree", "education_field", "experience_years", "bio", "support_capacity", "academic_year", "address", "birth_date"):
             value = getattr(payload, field)
             if value is not None:
                 setattr(profile, field, value)
-    audit(db, user.id, "profile.updated", "user", user.id)
+    audit(db, user.id, "profile.updated", "user", user.id,
+          after={"work_levels": payload.work_levels, "profile_photo_requested": payload.profile_photo is not None})
     db.commit()
     return ok({"updated": True})
 
@@ -699,7 +757,7 @@ def advisor_students(advisor_id: str, user: User = Depends(current_user), db: Se
     if user.role == "advisor" and user.id != advisor_id:
         raise HTTPException(403, "دسترسی به دانش‌آموزان مشاور دیگر مجاز نیست")
     assignments = db.scalars(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == advisor_id, AdvisorAssignment.active.is_(True))).all()
-    students = db.scalars(select(User).where(User.id.in_([a.student_id for a in assignments]))).all() if assignments else []
+    students = db.scalars(select(User).where(User.id.in_([a.student_id for a in assignments]), User.status != "deleted")).all() if assignments else []
     return ok([user_dict(x) for x in students])
 
 
@@ -708,10 +766,15 @@ def list_plans(user: User = Depends(current_user), db: Session = Depends(get_db)
     stmt = select(WeeklyPlan).order_by(WeeklyPlan.created_at.desc())
     if user.role == "student": stmt = stmt.where(WeeklyPlan.student_id == user.id, WeeklyPlan.status == "published")
     elif user.role == "advisor": stmt = stmt.where(WeeklyPlan.advisor_id == user.id)
+    elif user.role == "expert":
+        require_access(db, user, "plans")
+        stmt = stmt.where(WeeklyPlan.advisor_id.in_(expert_advisor_ids(db, user.id)))
     elif manager_level(user):
         profiles = db.scalars(select(StudentProfile).where(StudentProfile.education_level == manager_level(user))).all()
         stmt = stmt.where(WeeklyPlan.student_id.in_([profile.user_id for profile in profiles]))
-    elif user.role not in {"secretary", "super_admin", "operations_admin"}:
+    elif user.role == "secretary":
+        require_access(db, user, "plans")
+    elif user.role not in {"super_admin", "operations_admin"}:
         raise HTTPException(403, "دسترسی به برنامه‌ها مجاز نیست")
     plans = db.scalars(stmt).all()
     return ok([plan_dict(plan) for plan in plans])
@@ -721,8 +784,11 @@ def list_plans(user: User = Depends(current_user), db: Session = Depends(get_db)
 def get_plan(plan_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     plan = db.get(WeeklyPlan, plan_id)
     if not plan: raise HTTPException(404, "برنامه یافت نشد")
+    if user.role in {"expert", "secretary"}:
+        require_access(db, user, "plans")
     allowed = ((user.role == "student" and plan.student_id == user.id and plan.status == "published") or
         (user.role == "advisor" and plan.advisor_id == user.id) or
+        (user.role == "expert" and expert_can_view_advisor(db, user, plan.advisor_id)) or
         user.role in {"secretary", "super_admin", "operations_admin"} or
         (manager_level(user) is not None and can_view_student(db, user, plan.student_id)))
     if not allowed: raise HTTPException(403, "دسترسی به برنامه مجاز نیست")
@@ -1039,7 +1105,7 @@ def admin_dashboard(user: User = Depends(roles("support", "finance", "operations
 @router.get("/admin/users")
 def admin_users(user: User = Depends(roles("operations_admin", "super_admin")), db: Session = Depends(get_db)):
     items = db.scalars(select(User).order_by(User.created_at.desc()).limit(500)).all()
-    return ok([user_dict(item) | {"created_at": item.created_at} for item in items])
+    return ok([admin_user_dict(item) | {"created_at": item.created_at} for item in items])
 
 
 @router.patch("/admin/users/{user_id}/status")
@@ -1048,6 +1114,12 @@ def admin_update_user_status(user_id: str, payload: UserStatusUpdate,
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(404, "کاربر یافت نشد")
+    if target.phone == "09399506609" and payload.status != "active":
+        raise HTTPException(403, "حساب مدیر اصلی قابل غیرفعال‌سازی نیست")
+    if target.id == user.id and target.role == "super_admin" and payload.status != "active":
+        raise HTTPException(409, "نمی‌توانید حساب مدیریتی فعلی خود را غیرفعال کنید")
+    if target.status == "deleted":
+        raise HTTPException(409, "برای فعال‌کردن حساب حذف‌شده از گزینه بازگردانی استفاده کنید")
     if target.role == "student" and target.status == "pending_payment" and payload.status == "active":
         raise HTTPException(409, "دانش‌آموز پیش از فعال‌سازی باید پرداخت را تکمیل کند")
     before = target.status
@@ -1056,6 +1128,59 @@ def admin_update_user_status(user_id: str, payload: UserStatusUpdate,
         before={"status": before}, after={"status": target.status})
     db.commit()
     return ok(user_dict(target))
+
+
+@router.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: str, user: User = Depends(roles("super_admin")), db: Session = Depends(get_db)):
+    target = db.get(User, user_id)
+    if not target or target.role not in {"student", "advisor", "expert", "super_admin"}:
+        raise HTTPException(404, "حساب قابل حذف یافت نشد")
+    if target.phone == "09399506609" or target.deleted_phone == "09399506609":
+        raise HTTPException(403, "حساب مدیر اصلی قابل حذف نیست")
+    if target.id == user.id:
+        raise HTTPException(409, "برای امنیت سامانه نمی‌توانید حساب مدیریتی فعلی خود را حذف کنید")
+    if target.status == "deleted":
+        raise HTTPException(409, "این حساب قبلاً حذف شده است")
+    now = utcnow()
+    target.deleted_phone = target.phone
+    target.phone = "~" + target.id.replace("-", "")[:15]
+    target.status_before_deletion = target.status
+    target.status = "deleted"
+    target.deleted_at = now
+    target.restore_until = now + timedelta(days=3)
+    for token in db.scalars(select(RefreshToken).where(
+        RefreshToken.user_id == target.id, RefreshToken.revoked_at.is_(None))).all():
+        token.revoked_at = now
+    audit(db, user.id, "admin.user_deleted", "user", target.id,
+        before={"status": target.status_before_deletion}, after={"status": "deleted", "restore_until": target.restore_until.isoformat()})
+    db.commit()
+    return ok(admin_user_dict(target))
+
+
+@router.post("/admin/users/{user_id}/restore")
+def admin_restore_user(user_id: str, user: User = Depends(roles("super_admin")), db: Session = Depends(get_db)):
+    target = db.get(User, user_id)
+    if not target or target.role not in {"student", "advisor", "expert", "super_admin"} or target.status != "deleted":
+        raise HTTPException(404, "حساب حذف‌شده یافت نشد")
+    deadline = target.restore_until
+    deadline = deadline if not deadline or deadline.tzinfo else deadline.replace(tzinfo=timezone.utc)
+    if not deadline or deadline < utcnow():
+        raise HTTPException(410, "مهلت سه‌روزه بازگردانی این حساب تمام شده است")
+    if not target.deleted_phone:
+        raise HTTPException(409, "شماره اصلی حساب برای بازگردانی موجود نیست")
+    duplicate = db.scalar(select(User.id).where(User.phone == target.deleted_phone, User.id != target.id))
+    if duplicate:
+        raise HTTPException(409, "با این شماره حساب تازه‌ای ثبت شده و بازگردانی حساب قبلی ممکن نیست")
+    restored_phone = target.deleted_phone
+    target.phone = restored_phone
+    target.status = target.status_before_deletion or "active"
+    target.deleted_phone = None
+    target.deleted_at = None
+    target.restore_until = None
+    target.status_before_deletion = None
+    audit(db, user.id, "admin.user_restored", "user", target.id, after={"status": target.status})
+    db.commit()
+    return ok(admin_user_dict(target))
 
 
 def admin_student_data(db: Session, student: User):
@@ -1077,7 +1202,7 @@ def admin_student_data(db: Session, student: User):
 
 @router.get("/admin/students")
 def admin_students(user: User = Depends(roles("operations_admin", "super_admin")), db: Session = Depends(get_db)):
-    students = db.scalars(select(User).where(User.role == "student").order_by(User.created_at.desc())).all()
+    students = db.scalars(select(User).where(User.role == "student", User.status != "deleted").order_by(User.created_at.desc())).all()
     return ok([admin_student_data(db, item) for item in students])
 
 
@@ -1092,7 +1217,7 @@ def admin_student(student_id: str, user: User = Depends(roles("operations_admin"
 
 @router.get("/admin/advisors")
 def admin_advisors(user: User = Depends(roles("operations_admin", "super_admin")), db: Session = Depends(get_db)):
-    advisors = db.scalars(select(User).where(User.role == "advisor").order_by(User.created_at.desc())).all()
+    advisors = db.scalars(select(User).where(User.role == "advisor", User.status != "deleted").order_by(User.created_at.desc())).all()
     return ok([user_dict(item) | {"created_at": item.created_at,
         "profile": advisor_profile_dict(db, db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == item.id)))}
         for item in advisors])
@@ -1161,7 +1286,7 @@ def admin_assign_advisor(student_id: str, payload: AdvisorAssign,
     if not advisor or advisor.role != "advisor" or advisor.status != "active" or not advisor_profile or advisor_profile.approval_status != "approved":
         raise HTTPException(404, "مشاور تأییدشده یافت نشد")
     student_profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student.id))
-    if not student_profile or advisor_profile.education_level != student_profile.education_level:
+    if not student_profile or student_profile.education_level not in advisor_levels(advisor_profile):
         raise HTTPException(409, "مشاور و دانش‌آموز باید متعلق به یک مقطع باشند")
     if student.status != "active":
         if student.onboarding_step not in {"advisor_assignment", "advisor_confirmation", "selection", "dual_approval"}:
@@ -1231,7 +1356,8 @@ def audit_logs(user: User = Depends(roles("operations_admin", "super_admin")), d
     return ok([{"id": x.id, "actor_id": x.actor_id, "action": x.action, "resource_type": x.resource_type, "resource_id": x.resource_id, "reason": x.reason, "created_at": x.created_at} for x in items])
 
 
-STAFF_ROLES = {"secretary", "upper_secondary_manager", "lower_secondary_manager"}
+STAFF_ROLES = {"secretary", "expert"}
+OTP_ONLY_ROLES = STAFF_ROLES | {"super_admin", "operations_admin"}
 
 
 def update_advisor_activation(profile: AdvisorProfile, advisor: User):
@@ -1260,8 +1386,8 @@ def staff_login(payload: StaffOTPVerify, response: Response, db: Session = Depen
     if settings.env == "development" and payload.code != "123456":
         raise HTTPException(400, "کد یکبار مصرف صحیح نیست")
     user = db.scalar(select(User).where(User.phone == payload.phone))
-    if not user or user.role not in STAFF_ROLES:
-        raise HTTPException(403, "این شماره به عنوان منشی یا مسئول مقطع ثبت نشده است")
+    if not user or user.role not in OTP_ONLY_ROLES:
+        raise HTTPException(403, "این شماره به عنوان مدیر، کارشناس یا منشی ثبت نشده است")
     if user.status != "active":
         raise HTTPException(403, "دسترسی این حساب توسط مدیر بسته شده است")
     csrf = issue_session(response, user, db)
@@ -1272,7 +1398,9 @@ def staff_login(payload: StaffOTPVerify, response: Response, db: Session = Depen
 
 @router.get("/admin/staff")
 def admin_staff(user: User = Depends(roles("super_admin")), db: Session = Depends(get_db)):
-    items = db.scalars(select(User).where(User.role.in_(STAFF_ROLES)).order_by(User.created_at.desc())).all()
+    items = db.scalars(select(User).where(
+        User.role.in_(STAFF_ROLES | {"super_admin"}), User.status != "deleted"
+    ).order_by(User.created_at.desc())).all()
     return ok([user_dict(item) | {"created_at": item.created_at} for item in items])
 
 
@@ -1288,22 +1416,73 @@ def admin_create_staff(payload: StaffCreate, user: User = Depends(roles("super_a
     return ok(user_dict(staff))
 
 
+@router.get("/admin/staff-access")
+def admin_staff_access(user: User = Depends(roles("super_admin")), db: Session = Depends(get_db)):
+    return ok({"areas": ACCESS_AREAS, "matrix": access_matrix(db)})
+
+
+@router.put("/admin/staff-access")
+def admin_update_staff_access(payload: StaffAccessUpdate, user: User = Depends(roles("super_admin")),
+                              db: Session = Depends(get_db)):
+    matrix = save_access_matrix(db, payload.matrix, user.id)
+    audit(db, user.id, "admin.staff_access_updated", "site_setting", "staff_access_matrix", after=matrix)
+    db.commit()
+    return ok({"areas": ACCESS_AREAS, "matrix": matrix})
+
+
+@router.get("/admin/experts/{expert_id}/advisors")
+def admin_expert_advisors(expert_id: str, user: User = Depends(roles("super_admin")),
+                          db: Session = Depends(get_db)):
+    expert = db.get(User, expert_id)
+    if not expert or expert.role != "expert":
+        raise HTTPException(404, "کارشناس یافت نشد")
+    selected = expert_advisor_ids(db, expert.id)
+    advisors = db.scalars(select(User).where(User.role == "advisor").order_by(User.full_name)).all()
+    return ok({"expert": user_dict(expert), "selected_ids": list(selected), "advisors": [user_dict(item) for item in advisors]})
+
+
+@router.put("/admin/experts/{expert_id}/advisors")
+def admin_update_expert_advisors(expert_id: str, payload: ExpertAdvisorUpdate,
+                                 user: User = Depends(roles("super_admin")),
+                                 db: Session = Depends(get_db)):
+    expert = db.get(User, expert_id)
+    if not expert or expert.role != "expert":
+        raise HTTPException(404, "کارشناس یافت نشد")
+    selected = save_expert_advisors(db, expert.id, payload.advisor_ids, user.id)
+    audit(db, user.id, "admin.expert_advisors_updated", "user", expert.id, after={"advisor_ids": selected})
+    db.commit()
+    return ok({"expert_id": expert.id, "advisor_ids": selected})
+
+
+@router.get("/management/access")
+def management_access(user: User = Depends(roles("secretary", "expert", "super_admin")),
+                      db: Session = Depends(get_db)):
+    role = "expert" if user.role == "expert" else user.role
+    levels = {area: ("edit" if user.role == "super_admin" else access_matrix(db).get(role, {}).get(area, "none"))
+              for area in ACCESS_AREAS}
+    return ok({"areas": ACCESS_AREAS, "levels": levels})
+
+
 @router.get("/management/contacts")
-def management_contacts(user: User = Depends(roles("secretary", "upper_secondary_manager", "lower_secondary_manager", "super_admin")), db: Session = Depends(get_db)):
+def management_contacts(user: User = Depends(roles("secretary", "expert", "super_admin")), db: Session = Depends(get_db)):
+    require_access(db, user, "messages", edit=True)
     if user.role == "super_admin":
         items = db.scalars(select(User).where(User.id != user.id, User.status == "active").order_by(User.full_name)).all()
     elif user.role == "secretary":
         items = db.scalars(select(User).where(User.role.in_(["advisor", "super_admin"]), User.status == "active").order_by(User.full_name)).all()
     else:
-        level = manager_level(user)
-        profiles = db.scalars(select(AdvisorProfile).where(AdvisorProfile.education_level == level, AdvisorProfile.approval_status == "approved")).all()
-        ids = [profile.user_id for profile in profiles]
-        items = db.scalars(select(User).where(or_(User.id.in_(ids), User.role == "super_admin"), User.status == "active").order_by(User.full_name)).all()
+        advisor_ids = expert_advisor_ids(db, user.id)
+        student_ids = db.scalars(select(AdvisorAssignment.student_id).where(
+            AdvisorAssignment.advisor_id.in_(advisor_ids), AdvisorAssignment.active.is_(True))).all() if advisor_ids else []
+        items = db.scalars(select(User).where(
+            or_(User.id.in_(advisor_ids), User.id.in_(student_ids), User.role == "super_admin"),
+            User.status == "active").order_by(User.full_name)).all()
     return ok([user_dict(item) for item in items])
 
 
 @router.get("/management/conversations")
-def management_conversations(user: User = Depends(roles("upper_secondary_manager", "lower_secondary_manager", "super_admin")), db: Session = Depends(get_db)):
+def management_conversations(user: User = Depends(roles("secretary", "expert", "super_admin")), db: Session = Depends(get_db)):
+    require_access(db, user, "chats")
     assignments = db.scalars(select(AdvisorAssignment).where(AdvisorAssignment.active.is_(True))).all()
     rows = []
     for assignment in assignments:
@@ -1320,8 +1499,9 @@ def management_conversations(user: User = Depends(roles("upper_secondary_manager
 
 @router.get("/management/messages")
 def management_messages(first_id: str, second_id: str,
-                        user: User = Depends(roles("upper_secondary_manager", "lower_secondary_manager", "super_admin")),
+                        user: User = Depends(roles("secretary", "expert", "super_admin")),
                         db: Session = Depends(get_db)):
+    require_access(db, user, "chats")
     first, second = db.get(User, first_id), db.get(User, second_id)
     if not first or not second:
         raise HTTPException(404, "کاربر یافت نشد")
@@ -1337,29 +1517,32 @@ def management_messages(first_id: str, second_id: str,
 
 
 @router.get("/management/advisors")
-def management_advisors(user: User = Depends(roles("upper_secondary_manager", "lower_secondary_manager", "super_admin")), db: Session = Depends(get_db)):
+def management_advisors(user: User = Depends(roles("secretary", "expert", "super_admin")), db: Session = Depends(get_db)):
+    require_access(db, user, "advisors")
     stmt = select(AdvisorProfile).order_by(AdvisorProfile.created_at.desc())
-    if user.role != "super_admin":
-        stmt = stmt.where(AdvisorProfile.education_level == manager_level(user))
     profiles = db.scalars(stmt).all()
+    if user.role == "expert":
+        selected = expert_advisor_ids(db, user.id)
+        profiles = [profile for profile in profiles if profile.user_id in selected]
     rows = []
     for profile in profiles:
         advisor = db.get(User, profile.user_id)
-        if advisor:
+        if advisor and advisor.status != "deleted":
             rows.append(user_dict(advisor) | {"profile": advisor_profile_dict(db, profile, include_documents=True)})
     return ok(rows)
 
 
 @router.patch("/management/advisors/{advisor_id}/review")
 def lead_review_advisor(advisor_id: str, payload: AdvisorReview,
-                        user: User = Depends(roles("upper_secondary_manager", "lower_secondary_manager")),
+                        user: User = Depends(roles("expert", "super_admin")),
                         db: Session = Depends(get_db)):
+    require_access(db, user, "advisor_reviews", edit=True)
     advisor = db.get(User, advisor_id)
     profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == advisor_id))
     if not advisor or not profile:
         raise HTTPException(404, "پرونده مشاور یافت نشد")
-    if profile.education_level != manager_level(user):
-        raise HTTPException(403, "این مشاور متعلق به مقطع شما نیست")
+    if user.role == "expert" and not expert_can_view_advisor(db, user, advisor_id):
+        raise HTTPException(403, "این مشاور تحت نظر شما نیست")
     if payload.status == "rejected" and not payload.note.strip():
         raise HTTPException(422, "برای رد مدارک وارد کردن دلیل الزامی است")
     if advisor.status != "active" and advisor.onboarding_step != "lead_review":
@@ -1429,11 +1612,12 @@ def advisor_assignment_decision(assignment_id: str, payload: AssignmentDecision,
 
 
 @router.get("/management/students")
-def management_students(user: User = Depends(roles("secretary", "upper_secondary_manager", "lower_secondary_manager", "super_admin")), db: Session = Depends(get_db)):
-    students = db.scalars(select(User).where(User.role == "student").order_by(User.full_name)).all()
+def management_students(user: User = Depends(roles("secretary", "expert", "super_admin")), db: Session = Depends(get_db)):
+    require_access(db, user, "students")
+    students = db.scalars(select(User).where(User.role == "student", User.status != "deleted").order_by(User.full_name)).all()
     rows = []
     for student in students:
-        if user.role != "secretary" and not can_view_student(db, user, student.id):
+        if user.role == "expert" and not can_view_student(db, user, student.id):
             continue
         profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student.id))
         assignment = db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.student_id == student.id, AdvisorAssignment.active.is_(True)))
@@ -1444,8 +1628,9 @@ def management_students(user: User = Depends(roles("secretary", "upper_secondary
 
 @router.patch("/management/students/{student_id}/review")
 def review_student_registration(student_id: str, payload: AdvisorReview,
-                                user: User = Depends(roles("upper_secondary_manager", "lower_secondary_manager", "super_admin")),
+                                user: User = Depends(roles("secretary", "expert", "super_admin")),
                                 db: Session = Depends(get_db)):
+    require_access(db, user, "students", edit=True)
     student = db.get(User, student_id)
     profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student_id))
     if not student or student.role != "student" or not profile:

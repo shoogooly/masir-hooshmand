@@ -11,7 +11,7 @@ export default function AdvisorPlanArchive({studentId,studentName,advisorName,re
  const {data=[],isLoading,error,refetch}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')})
  const [open,setOpen]=useState(''),[busy,setBusy]=useState(''),[failure,setFailure]=useState<{id:string;message:string}|null>(null)
  const qc=useQueryClient()
- const plans=data.filter(plan=>plan.student_id===studentId)
+ const plans=(Array.isArray(data)?data:[]).filter(plan=>plan.student_id===studentId)
  async function download(plan:WeeklyPlan){
   setBusy(plan.id);setFailure(null)
   try{

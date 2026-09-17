@@ -75,8 +75,20 @@ def audit(db: Session, actor_id: str | None, action: str, resource_type: str, re
 
 def seed_database(db: Session):
     if db.scalar(select(User.id).limit(1)):
-        advisors = db.scalars(select(User).where(User.role == "advisor")).all()
         changed = False
+        primary_admin = db.scalar(select(User).where(User.phone == "09399506609"))
+        if not primary_admin:
+            db.add(User(phone="09399506609", full_name="فرید رضازاده", role="super_admin",
+                        status="active", onboarding_step="completed", is_admin_mfa_enabled=False))
+            changed = True
+        elif primary_admin.role != "super_admin" or primary_admin.status != "active" or primary_admin.full_name != "فرید رضازاده":
+            primary_admin.full_name = "فرید رضازاده"
+            primary_admin.role = "super_admin"
+            primary_admin.status = "active"
+            primary_admin.onboarding_step = "completed"
+            primary_admin.is_admin_mfa_enabled = False
+            changed = True
+        advisors = db.scalars(select(User).where(User.role == "advisor")).all()
         for advisor in advisors:
             if not db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == advisor.id)):
                 db.add(AdvisorProfile(user_id=advisor.id, support_capacity=20,
@@ -91,8 +103,10 @@ def seed_database(db: Session):
     student = User(phone="09120000001", full_name="پارسا رضایی", role="student")
     advisor = User(phone="09120000002", full_name="دکتر آرمان بهرامی", role="advisor")
     admin = User(phone="09120000003", full_name="مدیر مسیر هوشمند", role="super_admin", is_admin_mfa_enabled=True, totp_secret="JBSWY3DPEHPK3PXP")
+    primary_admin = User(phone="09399506609", full_name="فرید رضازاده", role="super_admin",
+                         status="active", onboarding_step="completed", is_admin_mfa_enabled=False)
     editor = User(phone="09120000004", full_name="سارا محتوایی", role="content_editor")
-    db.add_all([student, advisor, admin, editor])
+    db.add_all([student, advisor, admin, primary_admin, editor])
     db.flush()
     db.add(StudentProfile(user_id=student.id, advisor_approval_status="approved", admin_approval_status="approved"))
     db.add(AdvisorAssignment(advisor_id=advisor.id, student_id=student.id))

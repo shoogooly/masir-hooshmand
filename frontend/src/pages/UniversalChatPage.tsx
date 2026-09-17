@@ -5,7 +5,7 @@ import { api } from '../api'
 import type { Message, User } from '../types'
 import { formatJalaliDateTime } from '../utils/jalali'
 type Contact=User&{last_message?:string;locked:boolean;chat_request_allowed?:boolean;chat_requested_today?:boolean}
-const roleName:Record<string,string>={student:'دانش‌آموز',advisor:'مشاور',secretary:'منشی',upper_secondary_manager:'مسئول متوسطه دوم',lower_secondary_manager:'مسئول متوسطه اول',finance:'مدیر مالی',operations_admin:'مدیر عملیات',super_admin:'مدیر سایت',support:'پشتیبان',content_editor:'کارشناس محتوا',reviewer:'بازبین علمی',exam_designer:'طراح آزمون'}
+const roleName:Record<string,string>={student:'دانش‌آموز',advisor:'مشاور',secretary:'منشی',expert:'کارشناس',finance:'مدیر مالی',operations_admin:'مدیر عملیات',super_admin:'مدیر سایت',support:'پشتیبان',content_editor:'کارشناس محتوا',reviewer:'بازبین علمی',exam_designer:'طراح آزمون'}
 export default function UniversalChatPage({user}:{user:User}){
  const qc=useQueryClient(),[selection,setSelected]=useState<Contact>(),[search,setSearch]=useState('')
  const contacts=useQuery({queryKey:['chat-contacts'],queryFn:()=>api<Contact[]>('/chat/contacts'),refetchInterval:5000})

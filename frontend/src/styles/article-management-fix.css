@@ -1,0 +1,23 @@
+.content-editor > div,
+.article-actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.managed-articles article {
+  overflow: hidden;
+}
+
+.article-actions {
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid #ebe7f1;
+  background: transparent;
+}
+
+.managed-articles .article-actions .btn {
+  width: auto;
+  min-width: 132px;
+  justify-content: center;
+}

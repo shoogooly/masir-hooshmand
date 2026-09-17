@@ -10,6 +10,8 @@ import './styles/notifications.css'
 import './styles/admin-control.css'
 import './styles/subscription-management.css'
 import './styles/chat-account.css'
+import './styles/profile-photo.css'
+import './styles/settings-photo.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } })
 

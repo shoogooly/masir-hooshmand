@@ -6,6 +6,7 @@ from app.api.study_reports import router as study_reports_router
 from app.api.ai import router as ai_router
 from app.api.ai_planner import router as ai_planner_router
 from app.api.advisor_evaluation import router as advisor_evaluation_router
+from app.api.content import router as content_router
 from app.ai_jobs import worker as ai_worker
 from threading import Event, Thread
 from contextlib import asynccontextmanager
@@ -102,5 +103,6 @@ app.include_router(books_router, prefix="/api/v1", dependencies=[Depends(csrf_gu
 app.include_router(ai_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(ai_planner_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(advisor_evaluation_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(content_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 
 app.include_router(onboarding_flow_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])

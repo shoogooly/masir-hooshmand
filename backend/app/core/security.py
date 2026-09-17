@@ -107,7 +107,7 @@ def current_account(request: Request, access_token: str | None = Cookie(default=
         raise HTTPException(401, "ابتدا وارد شوید")
     payload = decode_token(access_token)
     user = db.get(User, payload["sub"])
-    if not user or user.status == "suspended":
+    if not user or user.status in {"suspended", "deleted"}:
         raise HTTPException(401, "حساب کاربری در دسترس نیست")
     if not secrets.compare_digest(payload.get('credential_tag', ''), credential_tag(user)):
         raise HTTPException(401, "رمز حساب تغییر کرده است؛ دوباره وارد شوید")

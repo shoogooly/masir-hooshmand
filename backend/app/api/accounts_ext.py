@@ -16,6 +16,7 @@ from app.db.session import get_db
 from app.models import AdvisorAssignment, AdvisorProfile, ChatLock, Message, Notification, Order, StudentProfile, Subscription, SubscriptionPlan, User, utcnow
 from app.services import audit
 from app.api.onboarding_flow import advance_student, paid_registration
+from app.staff_access import expert_advisor_ids, expert_can_view_student, require_access
 
 router = APIRouter()
 
@@ -23,7 +24,14 @@ def ok(data=None):
     return {"success": True, "data": data, "meta": {}}
 
 def basic(user: User):
-    return {"id": user.id, "phone": user.phone, "full_name": user.full_name, "role": user.role, "status": user.status, "onboarding_step": user.onboarding_step}
+    def photo(value: str):
+        try:
+            return json.loads(value or "")
+        except (TypeError, json.JSONDecodeError):
+            return None
+    return {"id": user.id, "phone": user.phone, "full_name": user.full_name, "role": user.role, "status": user.status, "onboarding_step": user.onboarding_step,
+            "profile_photo": photo(user.profile_photo_json), "pending_profile_photo": photo(user.pending_profile_photo_json),
+            "profile_photo_pending": bool(user.pending_profile_photo_json)}
 
 def plan_days(plan: SubscriptionPlan):
     return 365 if plan.period == "yearly" else 90 if plan.period in {"quarterly", "three_months"} else 30
@@ -40,6 +48,30 @@ class StudentApprovalUpdate(BaseModel):
     note: str = ""
     approve_as_advisor: bool = False
 
+
+class ProfilePhotoReview(BaseModel):
+    status: Literal["approved", "rejected"]
+
+@router.get("/admin/profile-photo-requests")
+def profile_photo_requests(admin: User = Depends(roles("super_admin", "operations_admin")),
+                           db: Session = Depends(get_db)):
+    users = db.scalars(
+        select(User)
+        .where(User.role.in_({"student", "advisor"}), User.pending_profile_photo_json != "")
+        .order_by(User.updated_at.desc())
+    ).all()
+    return ok([basic(item) for item in users])
+
+@router.get("/admin/profile-photo-requests")
+def profile_photo_requests(admin: User = Depends(roles("super_admin", "operations_admin")),
+                           db: Session = Depends(get_db)):
+    users = db.scalars(
+        select(User)
+        .where(User.role.in_({"student", "advisor"}), User.pending_profile_photo_json != "")
+        .order_by(User.updated_at.desc())
+    ).all()
+    return ok([basic(item) for item in users])
+
 @router.get("/chat/contacts")
 def chat_contacts(user: User = Depends(current_user), db: Session = Depends(get_db)):
     if user.role == "super_admin":
@@ -53,8 +85,14 @@ def chat_contacts(user: User = Depends(current_user), db: Session = Depends(get_
                 related = bool(db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.student_id == user.id, AdvisorAssignment.advisor_id == item.id, AdvisorAssignment.active.is_(True))))
             elif user.role == "advisor" and item.role == "student":
                 related = bool(db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == user.id, AdvisorAssignment.student_id == item.id, AdvisorAssignment.active.is_(True))))
-            elif user.role in {"secretary", "upper_secondary_manager", "lower_secondary_manager"}:
+            elif user.role == "secretary":
+                require_access(db, user, "messages", edit=True)
                 related = item.role in {"advisor", "super_admin"}
+            elif user.role == "expert":
+                require_access(db, user, "messages", edit=True)
+                related = ((item.role == "advisor" and item.id in expert_advisor_ids(db, user.id)) or
+                           (item.role == "student" and expert_can_view_student(db, user, item.id)) or
+                           item.role == "super_admin")
             has_messages = bool(db.scalar(select(Message.id).where(or_(
                 (Message.sender_id == user.id) & (Message.recipient_id == item.id),
                 (Message.sender_id == item.id) & (Message.recipient_id == user.id))).limit(1)))
@@ -153,10 +191,37 @@ def admin_user_detail(user_id: str, admin: User = Depends(roles("super_admin", "
     plans = {item.id:item for item in db.scalars(select(SubscriptionPlan).where(SubscriptionPlan.id.in_({x.plan_id for x in subscriptions + orders}))).all()} if subscriptions or orders else {}
     assignment = db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.student_id == target.id).order_by(AdvisorAssignment.updated_at.desc())) if target.role == "student" else None
     advisor = db.get(User, assignment.advisor_id) if assignment else None
-    return ok(basic(target) | {"created_at": target.created_at, "profile": profile, "advisor": basic(advisor) if advisor else None,
+    deadline = target.restore_until
+    deadline = deadline if not deadline or deadline.tzinfo else deadline.replace(tzinfo=timezone.utc)
+    deletion = {"phone": target.deleted_phone if target.status == "deleted" and target.deleted_phone else target.phone,
+        "deleted_at": target.deleted_at, "restore_until": target.restore_until,
+        "can_restore": bool(target.status == "deleted" and deadline and deadline >= utcnow())}
+    return ok(basic(target) | deletion | {"created_at": target.created_at, "profile": profile, "advisor": basic(advisor) if advisor else None,
         "assignment": {"approval_status": assignment.approval_status, "active": assignment.active} if assignment else None,
         "payments": [{"id":x.id,"plan_name":plans[x.plan_id].name if x.plan_id in plans else "اشتراک","amount":x.amount,"status":x.status,"created_at":x.created_at} for x in orders],
         "subscriptions": [{"id":x.id,"plan_name":plans[x.plan_id].name if x.plan_id in plans else "اشتراک","starts_at":x.starts_at,"expires_at":x.expires_at,"status":x.status} for x in subscriptions]})
+
+
+@router.patch("/admin/users/{user_id}/profile-photo-review")
+def review_profile_photo(user_id: str, payload: ProfilePhotoReview,
+                         admin: User = Depends(roles("super_admin", "operations_admin")),
+                         db: Session = Depends(get_db)):
+    target = db.get(User, user_id)
+    if not target or target.role not in {"student", "advisor"}:
+        raise HTTPException(404, "کاربر یافت نشد")
+    if not target.pending_profile_photo_json:
+        raise HTTPException(409, "درخواست تغییر عکس در انتظار بررسی نیست")
+    if payload.status == "approved":
+        target.profile_photo_json = target.pending_profile_photo_json
+    target.pending_profile_photo_json = ""
+    db.add(Notification(user_id=target.id, actor_id=admin.id, kind="profile_photo_reviewed",
+                        title="نتیجه بررسی عکس پرسنلی",
+                        body="عکس پرسنلی جدید شما تأیید و منتشر شد." if payload.status == "approved" else "درخواست تغییر عکس پرسنلی شما تأیید نشد.",
+                        link="/app/student/settings" if target.role == "student" else "/app/advisor/settings",
+                        related_id=target.id))
+    audit(db, admin.id, "admin.profile_photo_reviewed", "user", target.id, after={"status": payload.status})
+    db.commit()
+    return ok(basic(target))
 
 @router.patch("/admin/students/{student_id}/registration-approval")
 def admin_student_approval(student_id: str, payload: StudentApprovalUpdate, admin: User = Depends(roles("super_admin", "operations_admin")), db: Session = Depends(get_db)):
