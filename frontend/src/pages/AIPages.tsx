@@ -14,7 +14,7 @@ const fa=(n:number)=>n.toLocaleString('fa-IR')
 const date=(s:string)=>new Date(s).toLocaleString('fa-IR',{dateStyle:'medium',timeStyle:'short'})
 const request=(body:unknown,method='POST')=>({method,body:JSON.stringify(body)})
 function ErrorMessage({error}:{error:unknown}){return error?<p className="ai-error" role="alert">{error instanceof Error?error.message:'دریافت اطلاعات ناموفق بود'}</p>:null}
-function Intro({title,children}:{title:string;children:React.ReactNode}){return <header className="ai-intro"><span className="ai-icon"><BrainCircuit/></span><div><span className="ai-eyebrow">دستیار درسی مسیر هوشمند</span><h1>{title}</h1><p>{children}</p></div></header>}
+function Intro({title,children}:{title:string;children:React.ReactNode}){return <header className="ai-intro"><span className="ai-icon"><BrainCircuit/></span><div><span className="ai-eyebrow">دستیار درسی مهیاد</span><h1>{title}</h1><p>{children}</p></div></header>}
 function UsageBar({usage}:{usage:Usage}){return <div className="ai-usage"><div><b>{fa(usage.remaining)} پیام باقی‌مانده</b><span>از {fa(usage.limit)} پیام هفتگی</span></div><progress max={Math.max(1,usage.limit)} value={Math.min(usage.used,usage.limit)} aria-label="پیام‌های مصرف‌شده"/><small>تجدید سهمیه: {date(usage.reset_at)} · ابتدای شنبه</small></div>}
 
 export function AIChat({studentId}:{studentId?:string}){

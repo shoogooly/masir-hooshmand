@@ -24,7 +24,7 @@ class User(Base, TimeMixin):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     phone: Mapped[str] = mapped_column(String(16), unique=True, index=True)
-    full_name: Mapped[str] = mapped_column(String(120), default="کاربر مسیر هوشمند")
+    full_name: Mapped[str] = mapped_column(String(120), default="کاربر مهیاد")
     role: Mapped[str] = mapped_column(String(32), default="student", index=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -398,6 +398,46 @@ class SiteSetting(Base, TimeMixin):
     value: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class BaleAccountLink(Base, TimeMixin):
+    __tablename__ = "bale_account_links"
+    chat_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), unique=True, nullable=True, index=True)
+    state: Mapped[str] = mapped_column(String(24), default="await_phone")
+    pending_phone: Mapped[str] = mapped_column(String(16), default="")
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BaleAccessGrant(Base):
+    __tablename__ = "bale_access_grants"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20), index=True)
+    resource_id: Mapped[str] = mapped_column(String(36), default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class BaleProcessedUpdate(Base):
+    __tablename__ = "bale_processed_updates"
+    update_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OTPChallenge(Base):
+    __tablename__ = "otp_challenges"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    phone: Mapped[str] = mapped_column(String(16), index=True)
+    purpose: Mapped[str] = mapped_column(String(24), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"

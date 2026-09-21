@@ -7,7 +7,10 @@ from app.api.ai import router as ai_router
 from app.api.ai_planner import router as ai_planner_router
 from app.api.advisor_evaluation import router as advisor_evaluation_router
 from app.api.content import router as content_router
+from app.api.bale import router as bale_router
+from app.api.integrations import router as integrations_router
 from app.ai_jobs import worker as ai_worker
+from app.bale_service import polling_worker as bale_polling_worker
 from threading import Event, Thread
 from contextlib import asynccontextmanager
 import logging
@@ -30,6 +33,8 @@ from app.services import seed_database
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("masir-hooshmand")
 
 
@@ -41,11 +46,16 @@ async def lifespan(_app: FastAPI):
     ai_stop = Event()
     ai_thread = Thread(target=ai_worker, args=(ai_stop,), daemon=True, name="weekly-ai")
     ai_thread.start()
+    bale_stop = Event()
+    bale_thread = Thread(target=bale_polling_worker, args=(bale_stop,), daemon=True, name="bale-polling")
+    bale_thread.start()
     try:
         yield
     finally:
         ai_stop.set()
+        bale_stop.set()
         ai_thread.join(timeout=2)
+        bale_thread.join(timeout=3)
 
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
@@ -106,3 +116,5 @@ app.include_router(advisor_evaluation_router, prefix="/api/v1", dependencies=[De
 app.include_router(content_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 
 app.include_router(onboarding_flow_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(bale_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(integrations_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])

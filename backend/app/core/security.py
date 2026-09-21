@@ -65,6 +65,7 @@ RENEWAL_ACCOUNT_ROUTES = frozenset({
     ("POST", "/api/v1/auth/logout"),
     ("POST", "/api/v1/auth/change-password"),
     ("POST", "/api/v1/payments/orders"),
+    ("POST", "/api/v1/payments/start"),
 })
 
 
@@ -133,6 +134,8 @@ def roles(*allowed: str):
 
 
 def csrf_guard(request: Request, csrf_cookie: str | None = Cookie(default=None), x_csrf_token: str | None = Header(default=None)):
+    if request.url.path.startswith('/api/v1/bale/webhook/') or request.url.path.startswith('/api/v1/bale/session/'):
+        return
     if request.url.path in {'/api/v1/auth/password-recovery/request', '/api/v1/auth/password-recovery/complete'}:
         return
     if request.method not in {"GET", "HEAD", "OPTIONS"} and request.url.path.startswith("/api/"):

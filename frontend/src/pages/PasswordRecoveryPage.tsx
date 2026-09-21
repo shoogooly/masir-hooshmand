@@ -26,7 +26,7 @@ export default function PasswordRecoveryPage() {
     finally { setBusy(false) }
   }
   return <div className="login-page"><div className="login-visual"><Link className="back-link" to="/login">بازگشت به ورود</Link><div><h1>بازیابی دسترسی<br/>به حساب شما</h1><p>تأیید شماره موبایل و انتخاب رمز جدید</p></div></div>
-    <main className="login-card"><Brand/><div className="login-heading"><h2>فراموشی رمز ورود</h2><p>برای همه کاربران مسیر هوشمند</p></div>
+    <main className="login-card"><Brand/><div className="login-heading"><h2>فراموشی رمز ورود</h2><p>برای همه کاربران مهیاد</p></div>
       {done ? <div role="status"><p>رمز با موفقیت تغییر کرد. با شماره موبایل و رمز جدید وارد شوید.</p><Link className="btn btn-primary" to="/login">ورود به حساب</Link></div> :
       <form onSubmit={submit}>
         <label>شماره موبایل ثبت‌شده<div className="field"><input aria-label="شماره موبایل ثبت‌شده" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" pattern="09[0-9]{9}" required disabled={Boolean(challenge)} dir="ltr"/></div></label>

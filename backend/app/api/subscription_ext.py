@@ -38,8 +38,7 @@ def change_subscription(student_id: str, payload: SubscriptionAdjust, user: User
             idempotency_key=f"admin-offer:{student.id}:{utcnow().timestamp()}")
         db.add(order)
         db.flush()
-        payment = payment_provider.create(order.id, order.amount)
-        order.provider_reference = payment["signature"]
+        order.provider_reference = None
         db.add(Notification(user_id=student.id, actor_id=user.id, kind="subscription_offer", title="پیشنهاد تمدید اشتراک",
             body=f"مدیریت تمدید اشتراک به مبلغ {payload.amount:,} تومان ثبت کرده است.", link="/app/student/subscription", related_id=order.id))
         audit(db, user.id, "admin.subscription_offer_created", "order", order.id, after={"expires_at": str(expires), "amount": payload.amount})

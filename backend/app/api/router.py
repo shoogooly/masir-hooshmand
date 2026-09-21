@@ -5,6 +5,7 @@ from app.models import StudyReport
 from datetime import datetime, timedelta, timezone
 import json
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from app.core.config import settings
@@ -13,8 +14,9 @@ from app.db.session import get_db
 from app.models import Activity, AdvisorAssignment, AdvisorProfile, AuditLog, ChatLock, Exam, ExamAnswer, ExamSession, Insight, Message, Notification, Order, Question, RefreshToken, SiteSetting, StudentProfile, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
 from app.api.accounts_ext import finalize_student_registration
 from app.api.onboarding_flow import ensure_editable, reset_student_reviews, request_advisor, latest_order, paid_registration, approved_assignment, advance_student
-from app.schemas import AccountRegistration, ActivityUpdate, AdvisorAssign, AdvisorOnboardingProfile, AdvisorReferralCreate, AdvisorRegistration, AdvisorReview, AnswerUpdate, AssignmentDecision, ExamCreate, ExpertAdvisorUpdate, FreeSubscriptionCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PasswordLogin, PasswordReset, PaymentCallback, PlanCreate, ProfileUpdate, QuestionCreate, SCHOOL_DAYS, StaffAccessUpdate, StaffCreate, StaffOTPVerify, StudentOnboardingProfile, StudentOnboardingSelection, StudentRegistration, SubscriptionPlanUpdate, TermsAccept, TermsUpdate, UserStatusUpdate
+from app.schemas import AccountRegistration, ActivityUpdate, AdvisorAssign, AdvisorOnboardingProfile, AdvisorReferralCreate, AdvisorRegistration, AdvisorReview, AnswerUpdate, AssignmentDecision, ExamCreate, ExpertAdvisorUpdate, FreeSubscriptionCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PasswordLogin, PasswordReset, PaymentCallback, PaymentStart, PlanCreate, ProfileUpdate, QuestionCreate, SCHOOL_DAYS, StaffAccessUpdate, StaffCreate, StaffOTPVerify, StudentOnboardingProfile, StudentOnboardingSelection, StudentRegistration, SubscriptionPlanUpdate, TermsAccept, TermsUpdate, UserStatusUpdate
 from app.services import ai_provider, audit, otp_provider, payment_provider
+from app.integration_service import create_zarinpal, get as integration_get, send_otp, verify_otp as verify_sms_otp, verify_zarinpal, zarinpal_ready
 from app.staff_access import ACCESS_AREAS, access_matrix, expert_advisor_ids, expert_can_view_advisor, expert_can_view_student, require_access, save_access_matrix, save_expert_advisors
 
 
@@ -347,10 +349,7 @@ def register_advisor(payload: AdvisorRegistration, db: Session = Depends(get_db)
 
 @router.post("/auth/register")
 def register_account(payload: AccountRegistration, db: Session = Depends(get_db)):
-    if settings.env not in {'development', 'test'}:
-        raise HTTPException(503, 'سرویس پیامک واقعی هنوز پیکربندی نشده است')
-    if payload.sms_code != "123456":
-        raise HTTPException(400, "کد پیامکی صحیح نیست؛ کد آزمایشی 123456 است")
+    verify_sms_otp(db, payload.phone, payload.sms_code, "registration")
     existing = db.scalar(select(User).where(User.phone == payload.phone))
     if existing and not (existing.role == "student" and payload.role == "student" and existing.status == "invited" and not existing.password_hash):
         raise HTTPException(409, "این شماره موبایل قبلاً ثبت شده است")
@@ -381,17 +380,16 @@ def password_login(payload: PasswordLogin, response: Response, db: Session = Dep
     return ok({"user": user_dict(user) | subscription_state(db, user), "csrf_token": csrf})
 
 @router.post("/auth/request-otp")
-def request_otp(payload: OTPRequest):
-    code = otp_provider.send(payload.phone)
-    return ok({"sent": True, "expires_in": 120, "dev_code": code if settings.env == "development" else None})
+def request_otp(payload: OTPRequest, db: Session = Depends(get_db)):
+    code = send_otp(db, payload.phone)
+    data={"sent": True, "expires_in": 120}
+    if code is not None:data["dev_code"]=code
+    return ok(data)
 
 
 @router.post("/auth/verify-otp")
 def verify_otp(payload: OTPVerify, response: Response, db: Session = Depends(get_db)):
-    if settings.env not in {'development', 'test'}:
-        raise HTTPException(503, 'سرویس پیامک واقعی هنوز پیکربندی نشده است')
-    if payload.code != "123456" and settings.env == "development":
-        raise HTTPException(400, "کد واردشده صحیح نیست")
+    verify_sms_otp(db, payload.phone, payload.code, "registration")
     allowed = {"student", "advisor", "content_editor", "reviewer", "exam_designer", "support", "finance", "operations_admin", "super_admin"}
     if payload.role not in allowed:
         raise HTTPException(400, "نقش معتبر نیست")
@@ -1035,12 +1033,57 @@ def create_order(payload: OrderCreate, user: User = Depends(current_account), db
     plan = db.get(SubscriptionPlan, payload.plan_id)
     if not plan or not plan.active: raise HTTPException(404, "پلن فعال نیست")
     order = Order(user_id=user.id, plan_id=plan.id, amount=plan.referral_price if user.referred_by_advisor_id else plan.price, idempotency_key=payload.idempotency_key)
-    db.add(order); db.flush(); payment = payment_provider.create(order.id, order.amount); order.provider_reference = payment["signature"]
+    db.add(order); db.flush()
+    payment = create_zarinpal(db, order, user) if zarinpal_ready(db) else payment_provider.create(order.id, order.amount)
+    if not zarinpal_ready(db): order.provider_reference = payment["signature"]
     audit(db, user.id, "payment.order_created", "order", order.id, after={"amount": order.amount}); db.commit(); return ok({"order_id": order.id, **payment})
+
+
+@router.post("/payments/start")
+def start_payment(payload: PaymentStart, user: User = Depends(current_account), db: Session = Depends(get_db)):
+    order=db.get(Order,payload.order_id)
+    if not order or order.user_id!=user.id: raise HTTPException(404,"سفارش یافت نشد")
+    if order.status not in {"pending","failed"}: raise HTTPException(409,"این سفارش قابل پرداخت نیست")
+    payment=create_zarinpal(db,order,user) if zarinpal_ready(db) else payment_provider.create(order.id,order.amount)
+    if not zarinpal_ready(db):order.provider_reference=payment["signature"]
+    order.status="pending";db.commit();return ok({"order_id":order.id,**payment})
+
+
+def activate_verified_order(db,order,reference=""):
+    existing=db.scalar(select(Subscription).where(Subscription.order_id==order.id))
+    if existing:return existing
+    plan=db.get(SubscriptionPlan,order.plan_id);order.status="paid"
+    if reference:order.provider_reference=reference
+    days=365 if plan.period=="yearly" else 90 if plan.period in {"quarterly","three_months"} else 30
+    current=db.scalar(select(Subscription).where(Subscription.user_id==order.user_id).order_by(Subscription.expires_at.desc()))
+    current_end=current.expires_at if current else utcnow();current_end=current_end if current_end.tzinfo else current_end.replace(tzinfo=timezone.utc)
+    expiry=order.custom_expires_at or (max(utcnow(),current_end)+timedelta(days=days))
+    registered=db.get(User,order.user_id)
+    sub=Subscription(user_id=order.user_id,plan_id=plan.id,order_id=order.id,starts_at=utcnow(),expires_at=expiry)
+    if registered and registered.role=="student" and registered.status!="active":sub.status="pending_activation"
+    db.add(sub);db.flush()
+    if registered and registered.role=="student" and registered.status!="active":advance_student(db,registered)
+    audit(db,order.user_id,"payment.verified","order",order.id,after={"subscription":sub.id,"provider":"zarinpal"})
+    return sub
+
+
+@router.get("/payments/zarinpal/callback")
+def zarinpal_callback(order_id:str,Authority:str="",Status:str="",db:Session=Depends(get_db)):
+    base=(integration_get(db,"public_url") or settings.frontend_origin).rstrip("/")
+    order=db.get(Order,order_id)
+    if not order or Status!="OK":return RedirectResponse(base+"/payment-result?status=failed")
+    existing=db.scalar(select(Subscription).where(Subscription.order_id==order.id))
+    if existing:return RedirectResponse(base+f"/payment-result?status=success&subscription_id={existing.id}")
+    valid,ref_id=verify_zarinpal(db,order,Authority)
+    if not valid:
+        order.status="failed";db.commit();return RedirectResponse(base+"/payment-result?status=failed")
+    sub=activate_verified_order(db,order,ref_id);db.commit()
+    return RedirectResponse(base+f"/payment-result?status=success&ref_id={ref_id}&subscription_id={sub.id}")
 
 
 @router.post("/payments/callback")
 def payment_callback(payload: PaymentCallback, db: Session = Depends(get_db)):
+    if zarinpal_ready(db): raise HTTPException(409,"تأیید پرداخت واقعی فقط از مسیر امن زرین‌پال انجام می‌شود")
     order = db.get(Order, payload.order_id)
     if not order:
         raise HTTPException(404, "سفارش یافت نشد")
@@ -1381,10 +1424,7 @@ def update_advisor_activation(profile: AdvisorProfile, advisor: User):
 
 @router.post("/auth/staff-login")
 def staff_login(payload: StaffOTPVerify, response: Response, db: Session = Depends(get_db)):
-    if settings.env not in {'development', 'test'}:
-        raise HTTPException(503, 'سرویس پیامک واقعی هنوز پیکربندی نشده است')
-    if settings.env == "development" and payload.code != "123456":
-        raise HTTPException(400, "کد یکبار مصرف صحیح نیست")
+    verify_sms_otp(db, payload.phone, payload.code, "staff")
     user = db.scalar(select(User).where(User.phone == payload.phone))
     if not user or user.role not in OTP_ONLY_ROLES:
         raise HTTPException(403, "این شماره به عنوان مدیر، کارشناس یا منشی ثبت نشده است")

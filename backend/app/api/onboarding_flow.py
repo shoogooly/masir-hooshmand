@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.security import current_account
+from app.core.config import settings
+from app.integration_service import zarinpal_ready
 from app.db.session import get_db
 from app.models import AdvisorAssignment, AdvisorProfile, Order, StudentProfile, Subscription, SubscriptionPlan, User, utcnow
 from app.services import audit, payment_provider
@@ -80,9 +82,8 @@ def advance_student(db, student, profile=None):
             return False
         if order.status not in {"pending", "failed", "awaiting_advisor"}:
             raise HTTPException(409, "وضعیت سفارش برای پرداخت معتبر نیست")
-        if not order.provider_reference:
-            payment = payment_provider.create(order.id, order.amount)
-            order.provider_reference = payment["signature"]
+        if not order.provider_reference and settings.env in {"development","test"} and not zarinpal_ready(db):
+            order.provider_reference=payment_provider.create(order.id,order.amount)["signature"]
         order.status = "pending"
         student.status, student.onboarding_step = "pending_payment", "payment"
         return False

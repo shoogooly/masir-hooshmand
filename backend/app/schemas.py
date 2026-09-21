@@ -399,6 +399,9 @@ class PaymentCallback(BaseModel):
     success: bool
     signature: str
 
+class PaymentStart(BaseModel):
+    order_id: str = Field(min_length=36, max_length=36)
+
 class AdvisorReferralCreate(BaseModel):
     phone: str = Field(pattern=r"^09\d{9}$")
 

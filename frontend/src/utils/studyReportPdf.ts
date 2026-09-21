@@ -28,7 +28,7 @@ export function createStudyReportSheet(plan:WeeklyPlan,reports:StudyReports,stud
   content.append(cards,el('p','study-pdf-daily','گزارش روز: '+(dayLines(reports.days[day.label]?.values).join(' | ')||'ثبت نشده است.')))
   row.append(content);days.append(row)
  }
- sheet.append(days,el('footer','study-pdf-footer','مأموریت هفته: '+(plan.weekly_mission||'ثبت نشده است.')+' · مسیر هوشمند'))
+ sheet.append(days,el('footer','study-pdf-footer','مأموریت هفته: '+(plan.weekly_mission||'ثبت نشده است.')+' · مهیاد'))
  return sheet
 }
 export function fitStudyReportSheet(sheet:HTMLElement){

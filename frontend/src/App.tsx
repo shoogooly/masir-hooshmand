@@ -12,9 +12,12 @@ const RegistrationPage = lazy(() => import('./pages/RegistrationPage'))
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'))
 const PublicAdvisorsPage = lazy(() => import('./pages/PublicAdvisorsPage'))
 const PublicArticlesPage = lazy(() => import('./pages/PublicArticlesPage'))
+const BaleDownloadPage = lazy(() => import('./pages/BalePages').then(module => ({ default: module.BaleDownloadPage })))
+const BaleAccessPage = lazy(() => import('./pages/BalePages').then(module => ({ default: module.BaleAccessPage })))
+const PaymentResultPage = lazy(() => import('./pages/PaymentResultPage'))
 function Protected() {
   const { data, isLoading, isError } = useQuery({ queryKey: ['me'], queryFn: auth.me, retry: false })
-  if (isLoading) return <div className="screen-loader"><span className="brand-mark" /> در حال آماده‌سازی مسیر هوشمند...</div>
+  if (isLoading) return <div className="screen-loader"><img className="brand-logo" src="/brand/mahyaad-logo.png" alt="" /> در حال آماده‌سازی مهیاد...</div>
   if (isError || !data) return <Navigate to="/login" replace />
   if (data.status !== 'active') return <OnboardingPage user={data} />
   return <WorkspacePage user={data} />
@@ -30,6 +33,9 @@ export default function App() {
     <Route path="/register" element={<RegistrationPage />} />
     <Route path="/advisors" element={<PublicAdvisorsPage />} />
     <Route path="/articles" element={<PublicArticlesPage />} />
+    <Route path="/bale-download/:token" element={<BaleDownloadPage />} />
+    <Route path="/bale-access/:token" element={<BaleAccessPage />} />
+    <Route path="/payment-result" element={<PaymentResultPage />} />
     <Route path="/app/*" element={<Protected />} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes></SubscriptionBoundary></Suspense>

@@ -102,7 +102,7 @@ def seed_database(db: Session):
         return
     student = User(phone="09120000001", full_name="پارسا رضایی", role="student")
     advisor = User(phone="09120000002", full_name="دکتر آرمان بهرامی", role="advisor")
-    admin = User(phone="09120000003", full_name="مدیر مسیر هوشمند", role="super_admin", is_admin_mfa_enabled=True, totp_secret="JBSWY3DPEHPK3PXP")
+    admin = User(phone="09120000003", full_name="مدیر مهیاد", role="super_admin", is_admin_mfa_enabled=True, totp_secret="JBSWY3DPEHPK3PXP")
     primary_admin = User(phone="09399506609", full_name="فرید رضازاده", role="super_admin",
                          status="active", onboarding_step="completed", is_admin_mfa_enabled=False)
     editor = User(phone="09120000004", full_name="سارا محتوایی", role="content_editor")
@@ -115,7 +115,7 @@ def seed_database(db: Session):
         time_slots_json=json.dumps([{"start": start, "end": end} for start, end in [("08:00", "10:00"), ("10:00", "12:00"), ("12:00", "14:00"), ("14:00", "16:00"), ("16:00", "18:00"), ("18:00", "20:00")]]),
         status="published", published_at=utcnow())
     db.add(plan)
-    db.add(AdvisorProfile(user_id=advisor.id, national_code="0012345678", education_degree="کارشناسی ارشد", education_field="مشاوره تحصیلی", experience_years=8, bio="مشاور تحصیلی مسیر هوشمند با سابقه برنامه‌ریزی کنکور", support_capacity=30, approval_status="approved", lead_approval_status="approved", admin_approval_status="approved", reviewed_by=admin.id, reviewed_at=utcnow()))
+    db.add(AdvisorProfile(user_id=advisor.id, national_code="0012345678", education_degree="کارشناسی ارشد", education_field="مشاوره تحصیلی", experience_years=8, bio="مشاور تحصیلی مهیاد با سابقه برنامه‌ریزی کنکور", support_capacity=30, approval_status="approved", lead_approval_status="approved", admin_approval_status="approved", reviewed_by=admin.id, reviewed_at=utcnow()))
     db.flush()
     db.add_all([
         Activity(plan_id=plan.id, day="شنبه", subject="زیست‌شناسی", title="فصل گردش مواد + ۳۰ تست", start_time="08:00", end_time="09:30", planned_minutes=90, actual_minutes=85, test_count=30, status="completed"),

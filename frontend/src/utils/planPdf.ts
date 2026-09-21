@@ -30,7 +30,7 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
  const header=node('header','print-plan-header')
  const identity=node('div','print-plan-identity')
  identity.append(node('h1','',source.querySelector('.pdf-reference-header h1')?.textContent||plan.title),node('p','',source.querySelector('.pdf-reference-header p')?.textContent||''),node('p','',`${plan.week_label} · ${plan.day_start_time||'08:00'} تا ${plan.day_end_time||'24:00'}`))
- header.append(identity,node('strong','print-plan-brand','مسیر هوشمند'));sheet.append(header)
+ header.append(identity,node('strong','print-plan-brand','مهیاد'));sheet.append(header)
  const main=node('div','print-plan-main'),table=node('div','print-plan-days')
  for(const day of plan.days){
   const row=node('section','print-plan-day'),label=node('header','print-plan-date')
@@ -56,7 +56,7 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
   row.append(cards);table.append(row)
  }
  const mission=node('aside','print-plan-mission');mission.append(node('h2','','مأموریت هفته'),node('p','',plan.weekly_mission?.trim()||'مأموریتی ثبت نشده است.'))
- main.append(table,mission);sheet.append(main,node('footer','print-plan-footer','مسیر هوشمند · برنامه هفتگی'+(colored?' · نسخه رنگی':'')))
+ main.append(table,mission);sheet.append(main,node('footer','print-plan-footer','مهیاد · برنامه هفتگی'+(colored?' · نسخه رنگی':'')))
  return sheet
 }
 export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false){

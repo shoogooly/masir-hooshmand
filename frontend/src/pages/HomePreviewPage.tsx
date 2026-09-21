@@ -65,7 +65,7 @@ export default function HomePreviewPage() {
 
   useEffect(() => {
     const oldTitle = document.title
-    document.title = 'مسیر هوشمند | برنامه درسی، مشاور و پیشرفت'
+    document.title = 'مهیاد | برنامه درسی، مشاور و پیشرفت'
     const observer = new IntersectionObserver(entries => entries.forEach(entry => {
       if (entry.target === scene.current) {
         entry.target.classList.toggle('is-offscreen', !entry.isIntersecting)
@@ -92,7 +92,7 @@ export default function HomePreviewPage() {
   return <div className="mh" dir="rtl" ref={root} id="preview-top">
     <a className="mh-skip" href="#main-content">رفتن به محتوای اصلی</a>
     <header className="mh-header mh-wrap">
-      <a href="#preview-top" aria-label="مسیر هوشمند، صفحه اصلی"><Brand light /></a>
+      <a href="#preview-top" aria-label="مهیاد، صفحه اصلی"><Brand light /></a>
       <nav id="mh-navigation" className={menu ? 'is-open' : ''} aria-label="منوی اصلی">
         <Link to="/advisors" onClick={() => setMenu(false)}>معرفی مشاورین</Link><Link to="/articles" onClick={() => setMenu(false)}>مقالات</Link>{[['#preview-services', 'خدمات ما'], ['#preview-path', 'چطور شروع کنم؟'], ['#preview-pricing', 'تعرفه‌ها']].map(([href, text]) => <a key={href} href={href} onClick={() => setMenu(false)}>{text}</a>)}
       </nav>
@@ -105,7 +105,7 @@ export default function HomePreviewPage() {
         <div className="mh-hero-copy">
           <div className="mh-eyebrow"><span className="mh-live-dot" /> مسیر تو، به سبک خودت <Sparkles size={15} /></div>
           <h1>هدف بزرگ تو،<br />با <span>قدم‌های روشن.</span></h1>
-          <p>برنامهٔ درسی مخصوص تو، مشاوری که کنارت می‌ماند و گزارشی که پیشرفتت را نشان می‌دهد.<br /><strong>همه در یک جا: مسیر هوشمند.</strong></p>
+          <p>برنامهٔ درسی مخصوص تو، مشاوری که کنارت می‌ماند و گزارشی که پیشرفتت را نشان می‌دهد.<br /><strong>همه در یک جا: مهیاد.</strong></p>
           <div className="mh-actions"><Link to="/register" className="mh-btn">مسیر من رو بساز <ArrowLeft size={20} /></Link><a href="#preview-services" className="mh-demo-link"><span><Play size={15} fill="currentColor" /></span> کشف امکانات</a></div>
           <div className="mh-hero-checks"><span><Check /> برنامه شخصی</span><span><Check /> همراهی مشاور</span><span><Check /> پیگیری پیشرفت</span></div>
         </div>
@@ -153,6 +153,6 @@ export default function HomePreviewPage() {
 
       <section className="mh-final mh-wrap mh-reveal"><div className="mh-final-orbit" aria-hidden="true" /><span className="mh-overline"><Sparkles size={17} /> آینده، از قدم امروز شروع می‌شود</span><h2>این بار، با یک مسیر روشن شروع کن.</h2><p>هدفت را بگو؛ قدم‌های بعدی را با هم مشخص می‌کنیم.</p><Link className="mh-btn" to="/register">بزن بریم، مسیر من! <ArrowLeft size={20} /></Link></section>
     </main>
-    <footer className="mh-footer mh-wrap"><div className="mh-footer-main"><div><Brand light /><p>برنامه‌ریزی درسی، مشاوره و پیگیری پیشرفت.<br />هر هفته، یک قدم روشن‌تر.</p></div><div><h3>کشف مسیر</h3><a href="#preview-services">تمام خدمات</a><a href="#preview-path">مراحل شروع</a><a href="#preview-pricing">تعرفه اشتراک‌ها</a></div><div><h3>همراه ما باش</h3><Link to="/register">ثبت‌نام دانش‌آموز و مشاور</Link><Link to="/login">ورود به حساب کاربری</Link><a href="#preview-audiences">آشنایی با پنل‌ها</a></div></div><div className="mh-footer-bottom"><span>مسیر هوشمند · همراه مسیر یادگیری تو</span><a href="#preview-top">برگشت به بالا <ArrowUpLeft size={16} /></a></div></footer>
+    <footer className="mh-footer mh-wrap"><div className="mh-footer-main"><div><Brand light /><p>برنامه‌ریزی درسی، مشاوره و پیگیری پیشرفت.<br />هر هفته، یک قدم روشن‌تر.</p></div><div><h3>کشف مسیر</h3><a href="#preview-services">تمام خدمات</a><a href="#preview-path">مراحل شروع</a><a href="#preview-pricing">تعرفه اشتراک‌ها</a></div><div><h3>همراه ما باش</h3><Link to="/register">ثبت‌نام دانش‌آموز و مشاور</Link><Link to="/login">ورود به حساب کاربری</Link><a href="#preview-audiences">آشنایی با پنل‌ها</a></div></div><div className="mh-footer-bottom"><span>مهیاد · همراه مسیر یادگیری تو</span><a href="#preview-top">برگشت به بالا <ArrowUpLeft size={16} /></a></div></footer>
   </div>
 }

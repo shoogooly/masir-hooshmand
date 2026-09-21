@@ -192,7 +192,7 @@ def terms_setting(db: Session, role: str):
     key = "terms_advisor" if role == "advisor" else "terms_student"
     item = db.get(SiteSetting, key)
     if not item:
-        item = SiteSetting(key=key, value="با ثبت‌نام در مسیر هوشمند، صحت اطلاعات و رعایت قوانین آموزشی و حریم خصوصی را می‌پذیرم.", version=1)
+        item = SiteSetting(key=key, value="با ثبت‌نام در مهیاد، صحت اطلاعات و رعایت قوانین آموزشی و حریم خصوصی را می‌پذیرم.", version=1)
         db.add(item)
         db.commit()
         db.refresh(item)
