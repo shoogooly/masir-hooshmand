@@ -101,3 +101,29 @@ def test_bale_password_is_deleted_and_never_stored(monkeypatch):
             db.commit();link=db.get(BaleAccountLink,"7001")
             assert link.user_id==user.id and link.pending_phone=="" and not hasattr(link,"password")
             assert any(method=="deleteMessage" and payload["message_id"]==2 for method,payload in calls)
+def test_production_bootstrap_otp_is_limited_to_primary_admin(monkeypatch):
+    class BootstrapDB:
+        setting = None
+        challenge = None
+        def get(self, model, key):
+            return self.setting if model is SiteSetting and key == "sms_ir_enabled" else None
+        def scalar(self, _query):
+            return None
+        def add(self, value):
+            self.challenge = value
+        def commit(self):
+            pass
+
+    db = BootstrapDB()
+    monkeypatch.setattr(integration_service.settings, "env", "production")
+    monkeypatch.setattr(integration_service.settings, "sms_ir_enabled", False)
+    monkeypatch.setattr(integration_service.settings, "allow_bootstrap_otp", True)
+    monkeypatch.setattr(integration_service.settings, "bootstrap_admin_phone", "09399506609")
+
+    assert integration_service._bootstrap_otp_allowed(db, "09399506609")
+    assert not integration_service._bootstrap_otp_allowed(db, "09120000000")
+    integration_service.send_otp(db, "09399506609", "staff")
+    assert db.challenge.code_hash == integration_service._otp_hash("09399506609", "staff", "123456")
+
+    db.setting = SiteSetting(key="sms_ir_enabled", value="true")
+    assert not integration_service._bootstrap_otp_allowed(db, "09399506609")

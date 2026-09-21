@@ -30,6 +30,12 @@ def _sms_enabled(db):
 def _sms_api_key(db):
  raw=get(db,"sms_key")
  return decrypt(raw) if raw else settings.sms_ir_api_key.strip()
+def _bootstrap_otp_allowed(db,phone):
+ return (
+  settings.allow_bootstrap_otp
+  and phone==settings.bootstrap_admin_phone
+  and db.get(SiteSetting,KEYS["sms_enabled"]) is None
+ )
 def set_value(db,key,val,user_id=None):
  name=KEYS.get(key,key);row=db.get(SiteSetting,name) or SiteSetting(key=name)
  row.value=encrypt(val) if key in SECRET_KEYS and val else val;row.updated_by=user_id;row.version=(row.version or 0)+1;db.add(row)
@@ -82,6 +88,7 @@ def send_otp(db,phone,purpose=None):
   if not api_key:raise HTTPException(503,"کلید API سرویس SMS.ir در پنل مدیریت وارد نشده است")
   _send_sms_ir_otp(api_key,phone,code,template,parameter)
  elif settings.env in {"development","test"}:code="123456"
+ elif _bootstrap_otp_allowed(db,phone):code="123456"
  else:raise HTTPException(503,"سرویس SMS.ir توسط مدیر فعال نشده است")
  db.add(OTPChallenge(phone=phone,purpose=purpose,code_hash=_otp_hash(phone,purpose,code),expires_at=now+timedelta(minutes=2)))
  db.commit();return code if settings.env in {"development","test"} and not enabled else None

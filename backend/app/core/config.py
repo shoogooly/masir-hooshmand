@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     # Production bootstrap for the first administrator login on a fresh database.
     sms_ir_enabled: bool = False
     sms_ir_api_key: str = ""
+    allow_bootstrap_otp: bool = False
+    bootstrap_admin_phone: str = "09399506609"
 
     @field_validator("database_url", mode="before")
     @classmethod
