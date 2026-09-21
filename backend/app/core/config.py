@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     access_token_minutes: int = 30
     refresh_token_days: int = 14
     upload_dir: str = "uploads"
+    static_dir: str = ""
 
     @field_validator("database_url", mode="before")
     @classmethod

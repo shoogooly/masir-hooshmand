@@ -15,11 +15,12 @@ from threading import Event, Thread
 from contextlib import asynccontextmanager
 import logging
 import time
+from pathlib import Path
 from uuid import uuid4
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.encoders import jsonable_encoder
 from app.api.extended import router as extended_router
 from app.api.admin_students_ext import router as admin_students_router
@@ -119,3 +120,15 @@ app.include_router(content_router, prefix="/api/v1", dependencies=[Depends(csrf_
 app.include_router(onboarding_flow_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(bale_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(integrations_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+
+
+static_root = Path(settings.static_dir).resolve() if settings.static_dir else None
+if static_root and (static_root / "index.html").is_file():
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def frontend_app(full_path: str):
+        if full_path.startswith("api/"):
+            raise HTTPException(404, "یافت نشد")
+        requested = (static_root / full_path).resolve()
+        if requested.is_relative_to(static_root) and requested.is_file():
+            return FileResponse(requested)
+        return FileResponse(static_root / "index.html")
