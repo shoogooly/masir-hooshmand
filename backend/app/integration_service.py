@@ -24,11 +24,17 @@ def get(db,key,default=""):
  row=db.get(SiteSetting,KEYS.get(key,key));return row.value if row else default
 def get_secret(db,key):
  raw=get(db,key);return decrypt(raw) if raw else ""
+def _sms_enabled(db):
+ row=db.get(SiteSetting,KEYS["sms_enabled"])
+ return row.value=="true" if row else settings.sms_ir_enabled
+def _sms_api_key(db):
+ raw=get(db,"sms_key")
+ return decrypt(raw) if raw else settings.sms_ir_api_key.strip()
 def set_value(db,key,val,user_id=None):
  name=KEYS.get(key,key);row=db.get(SiteSetting,name) or SiteSetting(key=name)
  row.value=encrypt(val) if key in SECRET_KEYS and val else val;row.updated_by=user_id;row.version=(row.version or 0)+1;db.add(row)
 def status(db):
- return {"sms_enabled":get(db,"sms_enabled","false")=="true","sms_key_configured":bool(get(db,"sms_key")),
+ return {"sms_enabled":_sms_enabled(db),"sms_key_configured":bool(get(db,"sms_key") or settings.sms_ir_api_key.strip()),
   "sms_template":get(db,"sms_template"),"sms_parameter":get(db,"sms_parameter","Code"),
   "zarinpal_enabled":get(db,"zarinpal_enabled","false")=="true","zarinpal_merchant_configured":bool(get(db,"zarinpal_merchant")),
   "zarinpal_sandbox":get(db,"zarinpal_sandbox","false")=="true","public_url":get(db,"public_url")}
@@ -70,9 +76,9 @@ def send_otp(db,phone,purpose=None):
  last=db.scalar(select(OTPChallenge).where(OTPChallenge.phone==phone,OTPChallenge.purpose==purpose).order_by(OTPChallenge.created_at.desc()))
  if last and (now-_aware(last.created_at)).total_seconds()<60:raise HTTPException(429,"برای دریافت دوباره کد یک دقیقه صبر کنید")
  code=f"{secrets.randbelow(1_000_000):06d}"
- enabled=get(db,"sms_enabled","false")=="true"
+ enabled=_sms_enabled(db)
  if enabled:
-  api_key=get_secret(db,"sms_key");template=get(db,"sms_template");parameter=get(db,"sms_parameter","Code") or "Code"
+  api_key=_sms_api_key(db);template=get(db,"sms_template");parameter=get(db,"sms_parameter","Code") or "Code"
   if not api_key:raise HTTPException(503,"کلید API سرویس SMS.ir در پنل مدیریت وارد نشده است")
   _send_sms_ir_otp(api_key,phone,code,template,parameter)
  elif settings.env in {"development","test"}:code="123456"
@@ -82,7 +88,7 @@ def send_otp(db,phone,purpose=None):
 def verify_otp(db,phone,code,purpose):
  row=db.scalar(select(OTPChallenge).where(OTPChallenge.phone==phone,OTPChallenge.purpose==purpose,OTPChallenge.consumed_at.is_(None)).order_by(OTPChallenge.created_at.desc()))
  if not row:
-  if get(db,"sms_enabled","false")!="true":
+  if not _sms_enabled(db):
    if settings.env in {"development","test"}:
     if code=="123456":return True
     raise HTTPException(400,"کد یک‌بارمصرف صحیح نیست")

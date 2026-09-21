@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     refresh_token_days: int = 14
     upload_dir: str = "uploads"
     static_dir: str = ""
+    # Production bootstrap for the first administrator login on a fresh database.
+    sms_ir_enabled: bool = False
+    sms_ir_api_key: str = ""
 
     @field_validator("database_url", mode="before")
     @classmethod
