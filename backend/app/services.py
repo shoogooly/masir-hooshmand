@@ -74,6 +74,22 @@ def audit(db: Session, actor_id: str | None, action: str, resource_type: str, re
 
 
 def seed_database(db: Session):
+    if settings.env == "production":
+        primary_admin = db.scalar(select(User).where(User.phone == "09399506609"))
+        if not primary_admin:
+            primary_admin = User(phone="09399506609", full_name="فرید رضازاده", role="super_admin",
+                                 status="active", onboarding_step="completed", is_admin_mfa_enabled=False)
+            db.add(primary_admin)
+        else:
+            primary_admin.full_name = "فرید رضازاده"
+            primary_admin.role = "super_admin"
+            primary_admin.status = "active"
+            primary_admin.deleted_at = None
+            primary_admin.restore_until = None
+            primary_admin.onboarding_step = "completed"
+            primary_admin.is_admin_mfa_enabled = False
+        db.commit()
+        return
     if db.scalar(select(User.id).limit(1)):
         changed = False
         primary_admin = db.scalar(select(User).where(User.phone == "09399506609"))

@@ -40,7 +40,8 @@ logger = logging.getLogger("masir-hooshmand")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    Base.metadata.create_all(engine)
+    if settings.env != "production":
+        Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed_database(db)
     ai_stop = Event()

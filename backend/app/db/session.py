@@ -7,11 +7,17 @@ class Base(DeclarativeBase):
     pass
 
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
+is_sqlite = settings.database_url.startswith("sqlite")
+engine_options = {"connect_args": {"check_same_thread": False}} if is_sqlite else {
+    "pool_size": settings.database_pool_size,
+    "max_overflow": settings.database_max_overflow,
+    "pool_timeout": 30,
+    "pool_recycle": 1800,
+}
+engine = create_engine(settings.database_url, pool_pre_ping=True, **engine_options)
 
 
-if settings.database_url.startswith("sqlite"):
+if is_sqlite:
     @event.listens_for(engine, "connect")
     def configure_sqlite(dbapi_connection, _):
         cursor = dbapi_connection.cursor()
