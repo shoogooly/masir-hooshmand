@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { ArrowRight, Eye, EyeOff, GraduationCap, KeyRound, Phone, ShieldCheck, UserRound } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { auth } from '../api'
@@ -13,8 +13,26 @@ export default function RegistrationPage() {
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [smsMessage, setSmsMessage] = useState('')
+  const [smsCooldown, setSmsCooldown] = useState(0)
   const navigate = useNavigate()
   const register = useMutation({ mutationFn: () => auth.register(phone, role, smsCode, password, passwordConfirm) })
+  const requestCode = useMutation({ mutationFn: () => auth.requestOtp(phone) })
+  useEffect(() => {
+    if (smsCooldown <= 0) return
+    const timer = window.setTimeout(() => setSmsCooldown(value => value - 1), 1000)
+    return () => window.clearTimeout(timer)
+  }, [smsCooldown])
+  async function sendSmsCode() {
+    setError(''); setSmsMessage('')
+    if (!/^09[0-9]{9}$/.test(phone)) return setError('شماره موبایل را به‌صورت صحیح وارد کنید.')
+    try {
+      await requestCode.mutateAsync()
+      setSmsCooldown(60); setSmsMessage('کد پیامکی ارسال شد.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'ارسال کد پیامکی ناموفق بود.')
+    }
+  }
   async function submit(event: FormEvent) {
     event.preventDefault(); setError('')
     if (password !== passwordConfirm) return setError('رمز عبور و تکرار آن یکسان نیستند.')
@@ -25,7 +43,9 @@ export default function RegistrationPage() {
     <section className="registration-intro"><span>ساخت حساب مهیاد</span><h1>شروع مسیر، فقط با شماره موبایل</h1><p>پس از ساخت حساب و ورود، اطلاعات پرونده را قدم‌به‌قدم تکمیل می‌کنید و همیشه مرحله فعلی را می‌بینید.</p><div><button type="button" className={role === 'student' ? 'active' : ''} onClick={() => setRole('student')}><GraduationCap /> دانش‌آموز</button><button type="button" className={role === 'advisor' ? 'active' : ''} onClick={() => setRole('advisor')}><UserRound /> مشاور</button></div></section>
     <form className="registration-form account-form" onSubmit={submit}><div className="form-title"><ShieldCheck /><div><h2>ایجاد حساب {role === 'student' ? 'دانش‌آموز' : 'مشاور'}</h2><p>اطلاعات تکمیلی بعد از ورود دریافت می‌شود.</p></div></div>
       <label><span>شماره موبایل</span><div className="field"><Phone /><input value={phone} onChange={event => setPhone(event.target.value)} inputMode="tel" pattern="09[0-9]{9}" placeholder="09123456789" required /></div></label>
-      <label><span>کد پیامکی</span><div className="field"><KeyRound /><input value={smsCode} onChange={event => setSmsCode(event.target.value)} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" required /></div></label>
+      <label><span>کد پیامکی</span><div className="field"><KeyRound /><input value={smsCode} onChange={event => setSmsCode(event.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" required /></div></label>
+      <button type="button" className="btn btn-ghost sms-send-button" disabled={requestCode.isPending || smsCooldown > 0} onClick={sendSmsCode}>{requestCode.isPending ? 'در حال ارسال...' : smsCooldown > 0 ? 'ارسال مجدد تا ' + smsCooldown + ' ثانیه' : 'ارسال کد پیامکی'}</button>
+      {smsMessage && <small className="sms-send-success">{smsMessage}</small>}
       <label><span>رمز عبور</span><div className="field"><KeyRound /><input value={password} onChange={event => setPassword(event.target.value)} type={showPassword ? 'text' : 'password'} minLength={8} required /><button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label="نمایش رمز">{showPassword ? <EyeOff /> : <Eye />}</button></div></label>
       <label><span>تکرار رمز عبور</span><div className="field"><KeyRound /><input value={passwordConfirm} onChange={event => setPasswordConfirm(event.target.value)} type={showPassword ? 'text' : 'password'} minLength={8} required /></div></label>
       {(error || register.error) && <div className="form-error">{error || (register.error instanceof Error ? register.error.message : 'خطایی رخ داد')}</div>}<button className="btn btn-primary btn-lg" disabled={register.isPending}>{register.isPending ? 'در حال ساخت حساب...' : 'ساخت حساب و تکمیل پرونده'}</button><p className="login-register-link">قبلاً حساب ساخته‌اید؟ <Link to="/login">ورود با شماره موبایل و رمز</Link></p>
