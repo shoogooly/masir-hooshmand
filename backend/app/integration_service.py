@@ -1,5 +1,5 @@
 from __future__ import annotations
-import base64, hashlib, hmac, secrets
+import base64, hashlib, hmac, logging, secrets
 from datetime import timedelta, timezone
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import OTPChallenge, Order, SiteSetting, User, utcnow
+
+logger=logging.getLogger(__name__)
 
 KEYS={"sms_enabled":"sms_ir_enabled","sms_key":"sms_ir_api_key","sms_template":"sms_ir_template_id",
  "sms_parameter":"sms_ir_parameter_name","zarinpal_enabled":"zarinpal_enabled","zarinpal_merchant":"zarinpal_merchant_id",
@@ -64,22 +66,30 @@ def _send_sms_ir_otp(api_key,phone,code,template,parameter="Code"):
    json={"mobile":phone,"templateId":int(template),"parameters":[{"name":parameter or "Code","value":code}]},timeout=15)
   _sms_ir_response(response)
  except (httpx.HTTPError,ValueError,TypeError) as exc:raise HTTPException(502,"ارسال کد ورود از مسیر Verify سرویس SMS.ir ناموفق بود") from exc
-def send_otp(db,phone,purpose=None):
+def _send_sms_ir_otp_background(api_key,phone,code,template,parameter):
+ try:_send_sms_ir_otp(api_key,phone,code,template,parameter)
+ except Exception:logger.exception("SMS.ir Verify delivery failed for phone ending %s",phone[-4:])
+def send_otp(db,phone,purpose=None,background_tasks=None):
  purpose=purpose or otp_purpose(db,phone);now=utcnow()
  last=db.scalar(select(OTPChallenge).where(OTPChallenge.phone==phone,OTPChallenge.purpose==purpose).order_by(OTPChallenge.created_at.desc()))
  if last and (now-_aware(last.created_at)).total_seconds()<60:raise HTTPException(429,"برای دریافت دوباره کد یک دقیقه صبر کنید")
  code=f"{secrets.randbelow(1_000_000):06d}"
  enabled=_sms_enabled(db);template=get(db,"sms_template").strip();parameter=get(db,"sms_parameter","Code") or "Code"
+ delivery=None
  if enabled and template:
   api_key=_sms_api_key(db)
   if not api_key:raise HTTPException(503,"کلید API سرویس SMS.ir در پنل مدیریت وارد نشده است")
-  _send_sms_ir_otp(api_key,phone,code,template,parameter)
+  delivery=(api_key,phone,code,template,parameter)
  elif settings.env in {"development","test"}:code="123456"
  elif _bootstrap_otp_allowed(db,phone):code="123456"
  elif enabled:raise HTTPException(503,"شناسه قالب Verify در تنظیمات SMS.ir وارد نشده است")
  else:raise HTTPException(503,"سرویس SMS.ir توسط مدیر فعال نشده است")
  db.add(OTPChallenge(phone=phone,purpose=purpose,code_hash=_otp_hash(phone,purpose,code),expires_at=now+timedelta(minutes=2)))
- db.commit();return code if settings.env in {"development","test"} and not enabled else None
+ db.commit()
+ if delivery:
+  if background_tasks is None:_send_sms_ir_otp(*delivery)
+  else:background_tasks.add_task(_send_sms_ir_otp_background,*delivery)
+ return code if settings.env in {"development","test"} and not enabled else None
 def verify_otp(db,phone,code,purpose):
  row=db.scalar(select(OTPChallenge).where(OTPChallenge.phone==phone,OTPChallenge.purpose==purpose,OTPChallenge.consumed_at.is_(None)).order_by(OTPChallenge.created_at.desc()))
  if not row:

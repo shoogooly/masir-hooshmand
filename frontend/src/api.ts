@@ -15,6 +15,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     cache: 'no-store',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(), ...init.headers },
   })
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('application/json')) {
+    if (response.status === 502 || response.status === 503)
+      throw new Error('سرویس موقتاً در دسترس نیست؛ چند لحظه دیگر دوباره تلاش کنید.')
+    throw new Error('پاسخ نامعتبر از سرور دریافت شد.')
+  }
   const body = (await response.json()) as ApiResponse<T>
   if (!response.ok || !body.success) {
     if (body.error?.code === 'SUBSCRIPTION_REQUIRED')
