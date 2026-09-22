@@ -1,3 +1,4 @@
+from threading import Event
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from app.main import app
@@ -16,9 +17,9 @@ class Reply:
     def json(self):return self._data
 
 def test_sms_ir_code_is_one_time_and_secrets_are_write_only(monkeypatch):
-    sent={}
+    sent={};done=Event()
     def post(url,**kwargs):
-        sent.update(kwargs["json"]);return Reply({"status":1,"message":"موفق"})
+        sent.update(kwargs["json"]);done.set();return Reply({"status":1,"message":"موفق"})
     monkeypatch.setattr(integration_service.httpx,"post",post)
     with TestClient(app) as client:
         headers=admin(client)
@@ -28,6 +29,7 @@ def test_sms_ir_code_is_one_time_and_secrets_are_write_only(monkeypatch):
         assert configured.status_code==200 and "sms-secret" not in configured.text
         requested=client.post("/api/v1/auth/request-otp",json={"phone":"09399506609"})
         assert requested.status_code==200 and "dev_code" not in requested.text
+        assert done.wait(1)
         code=sent["parameters"][0]["value"]
         assert client.post("/api/v1/auth/staff-login",json={"phone":"09399506609","code":code}).status_code==200
         assert client.post("/api/v1/auth/staff-login",json={"phone":"09399506609","code":code}).status_code==400

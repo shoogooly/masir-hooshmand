@@ -1,5 +1,5 @@
 from __future__ import annotations
-import base64, hashlib, hmac, logging, secrets
+import base64, hashlib, hmac, logging, secrets, threading
 from datetime import timedelta, timezone
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -69,7 +69,7 @@ def _send_sms_ir_otp(api_key,phone,code,template,parameter="Code"):
 def _send_sms_ir_otp_background(api_key,phone,code,template,parameter):
  try:_send_sms_ir_otp(api_key,phone,code,template,parameter)
  except Exception:logger.exception("SMS.ir Verify delivery failed for phone ending %s",phone[-4:])
-def send_otp(db,phone,purpose=None,background_tasks=None):
+def send_otp(db,phone,purpose=None):
  purpose=purpose or otp_purpose(db,phone);now=utcnow()
  last=db.scalar(select(OTPChallenge).where(OTPChallenge.phone==phone,OTPChallenge.purpose==purpose).order_by(OTPChallenge.created_at.desc()))
  if last and (now-_aware(last.created_at)).total_seconds()<60:raise HTTPException(429,"برای دریافت دوباره کد یک دقیقه صبر کنید")
@@ -87,8 +87,7 @@ def send_otp(db,phone,purpose=None,background_tasks=None):
  db.add(OTPChallenge(phone=phone,purpose=purpose,code_hash=_otp_hash(phone,purpose,code),expires_at=now+timedelta(minutes=2)))
  db.commit()
  if delivery:
-  if background_tasks is None:_send_sms_ir_otp(*delivery)
-  else:background_tasks.add_task(_send_sms_ir_otp_background,*delivery)
+  threading.Thread(target=_send_sms_ir_otp_background,args=delivery,daemon=True,name="sms-ir-verify").start()
  return code if settings.env in {"development","test"} and not enabled else None
 def verify_otp(db,phone,code,purpose):
  row=db.scalar(select(OTPChallenge).where(OTPChallenge.phone==phone,OTPChallenge.purpose==purpose,OTPChallenge.consumed_at.is_(None)).order_by(OTPChallenge.created_at.desc()))

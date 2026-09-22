@@ -4,7 +4,7 @@ from app.study_reporting import ensure_report_editable, report_bounds
 from app.models import StudyReport
 from datetime import datetime, timedelta, timezone
 import json
-from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -380,8 +380,8 @@ def password_login(payload: PasswordLogin, response: Response, db: Session = Dep
     return ok({"user": user_dict(user) | subscription_state(db, user), "csrf_token": csrf})
 
 @router.post("/auth/request-otp")
-def request_otp(payload: OTPRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    code = send_otp(db, payload.phone, background_tasks=background_tasks)
+def request_otp(payload: OTPRequest, db: Session = Depends(get_db)):
+    code = send_otp(db, payload.phone)
     data={"sent": True, "expires_in": 120}
     if code is not None:data["dev_code"]=code
     return ok(data)
