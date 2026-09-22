@@ -38,28 +38,14 @@ def test_sms_ir_code_is_one_time_and_secrets_are_write_only(monkeypatch):
             for key in ("sms_ir_enabled","sms_ir_api_key","sms_ir_template_id","sms_ir_parameter_name"): db.delete(db.get(SiteSetting,key))
             db.commit()
 
-def test_sms_ir_without_template_uses_default_line(monkeypatch):
-    calls=[]
-    phone="09124445555"
-    monkeypatch.setattr(integration_service.httpx,"get",lambda url,**kwargs:Reply({"status":1,"data":[{"lineNumber":3000123456}]}))
-    monkeypatch.setattr(integration_service.httpx,"post",lambda url,**kwargs:calls.append((url,kwargs["json"])) or Reply({"status":1,"message":"موفق"}))
+def test_sms_ir_cannot_be_enabled_without_verify_template():
     with TestClient(app) as client:
         headers=admin(client)
         configured=client.put("/api/v1/integrations/admin/settings",headers=headers,json={
           "sms_enabled":True,"sms_api_key":"sms-secret","sms_template_id":"","sms_parameter_name":"Code",
           "zarinpal_enabled":False,"zarinpal_merchant_id":"","zarinpal_sandbox":True,"public_url":"https://example.test"})
-        assert configured.status_code==200
-        requested=client.post("/api/v1/auth/request-otp",json={"phone":phone})
-        assert requested.status_code==200
-        assert calls[0][0].endswith("/send/bulk")
-        assert calls[0][1]["lineNumber"]==3000123456
-        assert calls[0][1]["Mobiles"]==[phone]
-        assert "مهیاد" in calls[0][1]["MessageText"]
-        with SessionLocal() as db:
-            for key in ("sms_ir_enabled","sms_ir_api_key","sms_ir_template_id","sms_ir_parameter_name"):
-                row=db.get(SiteSetting,key)
-                if row:db.delete(row)
-            db.commit()
+        assert configured.status_code==422
+        assert "Verify" in configured.json()["error"]["message"]
 
 def test_zarinpal_amount_authority_and_server_side_verification(monkeypatch):
     calls=[]
@@ -103,10 +89,10 @@ def test_bale_password_is_deleted_and_never_stored(monkeypatch):
             assert any(method=="deleteMessage" and payload["message_id"]==2 for method,payload in calls)
 def test_production_bootstrap_otp_is_limited_to_primary_admin(monkeypatch):
     class BootstrapDB:
-        setting = None
+        settings = {}
         challenge = None
         def get(self, model, key):
-            return self.setting if model is SiteSetting and key == "sms_ir_enabled" else None
+            return self.settings.get(key) if model is SiteSetting else None
         def scalar(self, _query):
             return None
         def add(self, value):
@@ -125,7 +111,9 @@ def test_production_bootstrap_otp_is_limited_to_primary_admin(monkeypatch):
     integration_service.send_otp(db, "09399506609", "staff")
     assert db.challenge.code_hash == integration_service._otp_hash("09399506609", "staff", "123456")
 
-    db.setting = SiteSetting(key="sms_ir_enabled", value="false")
+    db.settings["sms_ir_enabled"] = SiteSetting(key="sms_ir_enabled", value="false")
     assert integration_service._bootstrap_otp_allowed(db, "09399506609")
-    db.setting = SiteSetting(key="sms_ir_enabled", value="true")
+    db.settings["sms_ir_enabled"] = SiteSetting(key="sms_ir_enabled", value="true")
+    assert integration_service._bootstrap_otp_allowed(db, "09399506609")
+    db.settings["sms_ir_template_id"] = SiteSetting(key="sms_ir_template_id", value="12345")
     assert not integration_service._bootstrap_otp_allowed(db, "09399506609")

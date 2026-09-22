@@ -34,7 +34,7 @@ def _bootstrap_otp_allowed(db,phone):
  return (
   settings.allow_bootstrap_otp
   and phone==settings.bootstrap_admin_phone
-  and not _sms_enabled(db)
+  and (not _sms_enabled(db) or not get(db,"sms_template").strip())
  )
 def set_value(db,key,val,user_id=None):
  name=KEYS.get(key,key);row=db.get(SiteSetting,name) or SiteSetting(key=name)
@@ -55,40 +55,28 @@ def _sms_ir_response(response):
  if not response.is_success or data.get("status") not in (1,"1",True):
   raise HTTPException(502,data.get("message","ارسال پیامک از SMS.ir ناموفق بود"))
  return data
-def _sms_ir_default_line(api_key):
- try:
-  response=httpx.get("https://api.sms.ir/v1/line",headers={"X-API-KEY":api_key,"Accept":"application/json"},timeout=15)
-  data=_sms_ir_response(response).get("data") or []
- except httpx.HTTPError as exc:raise HTTPException(502,"دریافت خط پیش‌فرض از SMS.ir ناموفق بود") from exc
- if isinstance(data,dict):data=data.get("items") or data.get("lines") or []
- first=data[0] if isinstance(data,list) and data else None
- if isinstance(first,dict):first=first.get("lineNumber") or first.get("number")
- if not first:raise HTTPException(502,"حساب SMS.ir خط ارسال فعالی ندارد")
- return first
-def _send_sms_ir_otp(api_key,phone,code,template="",parameter="Code"):
+def _send_sms_ir_otp(api_key,phone,code,template,parameter="Code"):
+ if not template:
+  raise HTTPException(503,"شناسه قالب Verify در تنظیمات SMS.ir وارد نشده است")
  headers={"X-API-KEY":api_key,"Accept":"application/json","Content-Type":"application/json"}
  try:
-  if template:
-   response=httpx.post("https://api.sms.ir/v1/send/verify",headers=headers,
-    json={"mobile":phone,"templateId":int(template),"parameters":[{"name":parameter or "Code","value":code}]},timeout=15)
-  else:
-   line_number=_sms_ir_default_line(api_key)
-   response=httpx.post("https://api.sms.ir/v1/send/bulk",headers=headers,
-    json={"lineNumber":line_number,"MessageText":f"کد تأیید مهیاد: {code}","Mobiles":[phone],"SendDateTime":None},timeout=15)
+  response=httpx.post("https://api.sms.ir/v1/send/verify",headers=headers,
+   json={"mobile":phone,"templateId":int(template),"parameters":[{"name":parameter or "Code","value":code}]},timeout=15)
   _sms_ir_response(response)
- except (httpx.HTTPError,ValueError,TypeError) as exc:raise HTTPException(502,"ارسال پیامک از SMS.ir ناموفق بود") from exc
+ except (httpx.HTTPError,ValueError,TypeError) as exc:raise HTTPException(502,"ارسال کد ورود از مسیر Verify سرویس SMS.ir ناموفق بود") from exc
 def send_otp(db,phone,purpose=None):
  purpose=purpose or otp_purpose(db,phone);now=utcnow()
  last=db.scalar(select(OTPChallenge).where(OTPChallenge.phone==phone,OTPChallenge.purpose==purpose).order_by(OTPChallenge.created_at.desc()))
  if last and (now-_aware(last.created_at)).total_seconds()<60:raise HTTPException(429,"برای دریافت دوباره کد یک دقیقه صبر کنید")
  code=f"{secrets.randbelow(1_000_000):06d}"
- enabled=_sms_enabled(db)
- if enabled:
-  api_key=_sms_api_key(db);template=get(db,"sms_template");parameter=get(db,"sms_parameter","Code") or "Code"
+ enabled=_sms_enabled(db);template=get(db,"sms_template").strip();parameter=get(db,"sms_parameter","Code") or "Code"
+ if enabled and template:
+  api_key=_sms_api_key(db)
   if not api_key:raise HTTPException(503,"کلید API سرویس SMS.ir در پنل مدیریت وارد نشده است")
   _send_sms_ir_otp(api_key,phone,code,template,parameter)
  elif settings.env in {"development","test"}:code="123456"
  elif _bootstrap_otp_allowed(db,phone):code="123456"
+ elif enabled:raise HTTPException(503,"شناسه قالب Verify در تنظیمات SMS.ir وارد نشده است")
  else:raise HTTPException(503,"سرویس SMS.ir توسط مدیر فعال نشده است")
  db.add(OTPChallenge(phone=phone,purpose=purpose,code_hash=_otp_hash(phone,purpose,code),expires_at=now+timedelta(minutes=2)))
  db.commit();return code if settings.env in {"development","test"} and not enabled else None

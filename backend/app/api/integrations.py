@@ -1,4 +1,4 @@
-from fastapi import APIRouter,Depends
+from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -20,8 +20,12 @@ class Settings(BaseModel):
 def read(db:Session=Depends(get_db),_user:User=Depends(roles("super_admin"))):return ok(status(db))
 @router.put("/admin/settings")
 def update(body:Settings,db:Session=Depends(get_db),user:User=Depends(roles("super_admin"))):
+ template=body.sms_template_id.strip();parameter=body.sms_parameter_name.strip() or "Code"
+ if body.sms_enabled:
+  if not template or not template.isdigit():raise HTTPException(422,"برای فعال‌سازی پیامک واقعی، شناسه عددی قالب Verify الزامی است")
+  if not body.sms_api_key.strip() and not status(db)["sms_key_configured"]:raise HTTPException(422,"کلید API سرویس SMS.ir الزامی است")
  set_value(db,"sms_enabled","true" if body.sms_enabled else "false",user.id)
- set_value(db,"sms_template",body.sms_template_id.strip(),user.id);set_value(db,"sms_parameter",body.sms_parameter_name.strip() or "Code",user.id)
+ set_value(db,"sms_template",template,user.id);set_value(db,"sms_parameter",parameter,user.id)
  set_value(db,"zarinpal_enabled","true" if body.zarinpal_enabled else "false",user.id)
  set_value(db,"zarinpal_sandbox","true" if body.zarinpal_sandbox else "false",user.id);set_value(db,"public_url",body.public_url.strip().rstrip("/"),user.id)
  if body.sms_api_key.strip():set_value(db,"sms_key",body.sms_api_key.strip(),user.id)
