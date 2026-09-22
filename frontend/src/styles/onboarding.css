@@ -2,3 +2,5 @@
 @media(max-width:760px){.onboarding-page>main{width:min(94vw,620px);margin-top:18px}.onboarding-progress{padding:20px 16px}.onboarding-progress h1{font-size:20px}.onboarding-progress ol{display:flex;overflow:auto}.onboarding-progress li{min-width:max-content}.onboarding-progress li span{display:none}.onboarding-progress li.active span{display:block}.onboarding-card{padding:20px}.account-registration .registration-intro h1{font-size:26px}}
 
 .account-form>.sms-send-button{width:100%;margin:0 0 8px}.account-form>.sms-send-button:disabled{cursor:not-allowed;opacity:.65}.sms-send-success{display:block;margin:-2px 0 10px;color:#188255;font-weight:700}
+
+.subscription-unavailable{opacity:.62}.subscription-unavailable-note{display:block;margin:8px 0;color:#a34b58;font-weight:700;font-style:normal}.subscription-unavailable button:disabled{cursor:not-allowed;opacity:.7}

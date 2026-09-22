@@ -24,3 +24,5 @@
 /* Keep the preview hint static while matching the planner card's perspective. */
 .mh-scene-caption{transform:rotateY(-11deg) rotateX(9deg) rotateZ(4deg)}
 @media(max-width:580px){.mh-scene-caption{transform:rotateY(-6deg) rotateX(5deg) rotateZ(3deg)}}
+
+.mh-price-unavailable{opacity:.65}.mh-price-disabled{display:block;margin-top:auto;padding:13px 16px;border:1px solid #bdaee044;border-radius:12px;text-align:center;color:#cbbde7;font-weight:700}

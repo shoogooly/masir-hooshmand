@@ -159,3 +159,26 @@ def test_other_users_payment_key_cannot_be_reused(access):
         db.add(Order(user_id="other",plan_id="plan",amount=100,idempotency_key="owned-by-other"))
         db.commit()
     assert client.post("/api/v1/payments/orders", json={"plan_id":"plan","idempotency_key":"owned-by-other"}).status_code == 409
+
+
+def test_inactive_plan_remains_visible_but_cannot_be_purchased(access):
+    client, factory, _ = access
+    with factory() as db:
+        plan = db.get(SubscriptionPlan, "plan")
+        plan.active = False
+        db.commit()
+    public_plans = client.get("/api/v1/subscriptions/plans")
+    assert public_plans.status_code == 200
+    assert public_plans.json()["data"][0]["active"] is False
+    registration_plans = client.get("/api/v1/registrations/options")
+    assert registration_plans.status_code == 200
+    assert registration_plans.json()["data"]["plans"][0]["active"] is False
+    add_subscription(factory, start=-1, end=30, suffix="inactive")
+    purchase = client.post("/api/v1/payments/orders", json={"plan_id": "plan", "idempotency_key": "inactive-plan"})
+    assert purchase.status_code == 404
+    with factory() as db:
+        db.add(Order(id="00000000-0000-0000-0000-000000000001", user_id="student", plan_id="plan", amount=100,
+                     status="pending", idempotency_key="00000000-0000-0000-0000-000000000001"))
+        db.commit()
+    payment = client.post("/api/v1/payments/start", json={"order_id": "00000000-0000-0000-0000-000000000001"})
+    assert payment.status_code == 409

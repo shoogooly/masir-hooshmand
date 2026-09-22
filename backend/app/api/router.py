@@ -254,7 +254,7 @@ def report_data(db: Session, student_id: str):
 def registration_options(education_level: str | None = None, db: Session = Depends(get_db)):
     if education_level not in {None, "lower_secondary", "upper_secondary"}:
         raise HTTPException(422, "مقطع تحصیلی معتبر نیست")
-    plans = db.scalars(select(SubscriptionPlan).where(SubscriptionPlan.active.is_(True)).order_by(SubscriptionPlan.price)).all()
+    plans = db.scalars(select(SubscriptionPlan).order_by(SubscriptionPlan.price)).all()
     advisor_profiles = db.scalars(select(AdvisorProfile).where(AdvisorProfile.approval_status == "approved")).all()
     advisors = []
     for profile in advisor_profiles:
@@ -266,7 +266,7 @@ def registration_options(education_level: str | None = None, db: Session = Depen
         advisors.append(user_dict(advisor) | advisor_profile_dict(db, profile))
     return ok({
         "plans": [{"id": item.id, "name": item.name, "period": item.period, "price": item.price,
-            "referral_price": item.referral_price or item.price, "features": json_value(item.features_json, [])} for item in plans],
+            "referral_price": item.referral_price or item.price, "active": item.active, "features": json_value(item.features_json, [])} for item in plans],
         "advisors": advisors,
         "school_days": SCHOOL_DAYS,
     })
@@ -1017,8 +1017,8 @@ def review_suggestion(insight_id: str, payload: InsightReview, user: User = Depe
 
 @router.get("/subscriptions/plans")
 def subscription_plans(db: Session = Depends(get_db)):
-    items = db.scalars(select(SubscriptionPlan).where(SubscriptionPlan.active.is_(True))).all()
-    return ok([{"id": x.id, "name": x.name, "period": x.period, "price": x.price, "referral_price": x.referral_price or x.price, "features": json.loads(x.features_json)} for x in items])
+    items = db.scalars(select(SubscriptionPlan)).all()
+    return ok([{"id": x.id, "name": x.name, "period": x.period, "price": x.price, "referral_price": x.referral_price or x.price, "active": x.active, "features": json.loads(x.features_json)} for x in items])
 
 
 @router.post("/payments/orders")
@@ -1032,7 +1032,7 @@ def create_order(payload: OrderCreate, user: User = Depends(current_account), db
         return ok({"order_id": duplicate.id, "status": duplicate.status, "signature": duplicate.provider_reference, "duplicate": True})
     plan = db.get(SubscriptionPlan, payload.plan_id)
     if not plan or not plan.active: raise HTTPException(404, "پلن فعال نیست")
-    order = Order(user_id=user.id, plan_id=plan.id, amount=plan.referral_price if user.referred_by_advisor_id else plan.price, idempotency_key=payload.idempotency_key)
+    order = Order(user_id=user.id, plan_id=plan.id, amount=(plan.referral_price or plan.price) if user.referred_by_advisor_id else plan.price, idempotency_key=payload.idempotency_key)
     db.add(order); db.flush()
     payment = create_zarinpal(db, order, user) if zarinpal_ready(db) else payment_provider.create(order.id, order.amount)
     if not zarinpal_ready(db): order.provider_reference = payment["signature"]
@@ -1044,6 +1044,8 @@ def start_payment(payload: PaymentStart, user: User = Depends(current_account), 
     order=db.get(Order,payload.order_id)
     if not order or order.user_id!=user.id: raise HTTPException(404,"سفارش یافت نشد")
     if order.status not in {"pending","failed"}: raise HTTPException(409,"این سفارش قابل پرداخت نیست")
+    plan=db.get(SubscriptionPlan,order.plan_id)
+    if not plan or not plan.active: raise HTTPException(409,"این طرح فعلاً در دسترس نیست")
     payment=create_zarinpal(db,order,user) if zarinpal_ready(db) else payment_provider.create(order.id,order.amount)
     if not zarinpal_ready(db):order.provider_reference=payment["signature"]
     order.status="pending";db.commit();return ok({"order_id":order.id,**payment})

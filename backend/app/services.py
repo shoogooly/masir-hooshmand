@@ -88,6 +88,16 @@ def seed_database(db: Session):
             primary_admin.restore_until = None
             primary_admin.onboarding_step = "completed"
             primary_admin.is_admin_mfa_enabled = False
+        default_plans = (
+            ("monthly", "اشتراک ماهانه", ["برنامه هفتگی", "آزمون‌های هفتگی", "تحلیل هوشمند"]),
+            ("quarterly", "اشتراک سه‌ماهه", ["برنامه هفتگی", "آزمون‌های هفتگی", "گزارش پیشرفت"]),
+            ("yearly", "اشتراک سالانه", ["همه امکانات", "مشاور اختصاصی", "گزارش پیشرفته"]),
+        )
+        existing_periods = set(db.scalars(select(SubscriptionPlan.period)).all())
+        for period, name, features in default_plans:
+            if period not in existing_periods:
+                db.add(SubscriptionPlan(name=name, period=period, price=0, referral_price=0,
+                                        features_json=json.dumps(features, ensure_ascii=False), active=False))
         db.commit()
         return
     if db.scalar(select(User.id).limit(1)):
