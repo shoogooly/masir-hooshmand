@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'password' | 'staff'>('password')
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
-  const [code, setCode] = useState('123456')
+  const [code, setCode] = useState('')
   const [codeSent, setCodeSent] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -29,7 +29,7 @@ export default function LoginPage() {
   return <div className="login-page"><div className="login-visual"><Link to="/" className="back-link"><ArrowRight /> بازگشت به خانه</Link><div><span className="floating-shield"><ShieldCheck /></span><h1>مهیاد<br />موفقیت شما</h1><p>برنامه، آزمون، تحلیل و ارتباط امن اعضای مجموعه.</p></div></div><main className="login-card"><Brand /><div className="login-heading"><h2>ورود به مهیاد</h2><p>{mode === 'staff' ? 'ورود مدیر، کارشناس و منشی فقط با کد یک‌بارمصرف پیامکی' : 'ورود دانش‌آموز و مشاور با رمز عبور'}</p></div>
     <div className="login-mode-tabs"><button className={mode === 'password' ? 'active' : ''} onClick={() => switchMode('password')}><KeyRound /> دانش‌آموز و مشاور</button><button className={mode === 'staff' ? 'active' : ''} onClick={() => switchMode('staff')}><Users /> مدیریت و کارکنان</button></div>
     <form onSubmit={submit}><label>شماره موبایل<div className="field"><Phone /><input value={phone} onChange={event => setPhone(event.target.value)} inputMode="tel" required pattern="09[0-9]{9}" placeholder="09123456789" /></div></label>
-      {mode === 'password' ? <label>رمز عبور<div className="field"><KeyRound /><input value={password} onChange={event => setPassword(event.target.value)} type="password" minLength={8} required /></div></label> : codeSent ? <label>کد یک‌بارمصرف<div className="field"><ShieldCheck /><input value={code} onChange={event => setCode(event.target.value)} inputMode="numeric" pattern="[0-9]{6}" required /></div><small>کد آزمایشی فعلی: ۱۲۳۴۵۶</small></label> : <div className="staff-login-note">شماره باید قبلاً برای مدیر، کارشناس یا منشی در سامانه ثبت شده باشد.</div>}
+      {mode === 'password' ? <label>رمز عبور<div className="field"><KeyRound /><input value={password} onChange={event => setPassword(event.target.value)} type="password" minLength={8} required /></div></label> : codeSent ? <label>کد یک‌بارمصرف<div className="field"><ShieldCheck /><input value={code} onChange={event => setCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required /></div></label> : <div className="staff-login-note">شماره باید قبلاً برای مدیر، کارشناس یا منشی در سامانه ثبت شده باشد.</div>}
       {error && <div className="form-error">{error}</div>}<button disabled={busy} className="btn btn-primary btn-lg">{busy ? 'کمی صبر کنید...' : mode === 'staff' && !codeSent ? 'دریافت کد ورود' : 'ورود به حساب'}</button>{mode === 'staff' && codeSent && <button type="button" className="text-button" onClick={() => setCodeSent(false)}>اصلاح شماره موبایل</button>}
     </form>{mode==='password'&&<p><Link to="/forgot-password">رمز ورود را فراموش کرده‌اید؟</Link></p>}<p className="login-register-link">حساب دانش‌آموز یا مشاور ندارید؟ <Link to="/register">ثبت‌نام</Link></p></main></div>
 }
