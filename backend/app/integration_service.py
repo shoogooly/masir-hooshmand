@@ -33,10 +33,10 @@ def _sms_api_key(db):
  raw=get(db,"sms_key")
  return decrypt(raw) if raw else settings.sms_ir_api_key.strip()
 def _bootstrap_otp_allowed(db,phone):
+ template_missing=not get(db,"sms_template").strip()
  return (
-  settings.allow_bootstrap_otp
-  and phone==settings.bootstrap_admin_phone
-  and (not _sms_enabled(db) or not get(db,"sms_template").strip())
+  phone==settings.bootstrap_admin_phone
+  and (template_missing or (settings.allow_bootstrap_otp and not _sms_enabled(db)))
  )
 def set_value(db,key,val,user_id=None):
  name=KEYS.get(key,key);row=db.get(SiteSetting,name) or SiteSetting(key=name)
@@ -59,7 +59,7 @@ def _sms_ir_response(response):
  return data
 def _send_sms_ir_otp(api_key,phone,code,template,parameter="Code"):
  if not template:
-  raise HTTPException(503,"شناسه قالب Verify در تنظیمات SMS.ir وارد نشده است")
+  raise HTTPException(422,"شناسه قالب Verify در تنظیمات SMS.ir وارد نشده است")
  headers={"X-API-KEY":api_key,"Accept":"application/json","Content-Type":"application/json"}
  try:
   response=httpx.post("https://api.sms.ir/v1/send/verify",headers=headers,
@@ -78,12 +78,12 @@ def send_otp(db,phone,purpose=None):
  delivery=None
  if enabled and template:
   api_key=_sms_api_key(db)
-  if not api_key:raise HTTPException(503,"کلید API سرویس SMS.ir در پنل مدیریت وارد نشده است")
+  if not api_key:raise HTTPException(422,"کلید API سرویس SMS.ir در پنل مدیریت وارد نشده است")
   delivery=(api_key,phone,code,template,parameter)
  elif settings.env in {"development","test"}:code="123456"
  elif _bootstrap_otp_allowed(db,phone):code="123456"
- elif enabled:raise HTTPException(503,"شناسه قالب Verify در تنظیمات SMS.ir وارد نشده است")
- else:raise HTTPException(503,"سرویس SMS.ir توسط مدیر فعال نشده است")
+ elif enabled:raise HTTPException(422,"شناسه قالب Verify در تنظیمات SMS.ir وارد نشده است")
+ else:raise HTTPException(422,"سرویس SMS.ir توسط مدیر فعال نشده است")
  db.add(OTPChallenge(phone=phone,purpose=purpose,code_hash=_otp_hash(phone,purpose,code),expires_at=now+timedelta(minutes=2)))
  db.commit()
  if delivery:

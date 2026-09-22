@@ -105,7 +105,7 @@ def test_production_bootstrap_otp_is_limited_to_primary_admin(monkeypatch):
     db = BootstrapDB()
     monkeypatch.setattr(integration_service.settings, "env", "production")
     monkeypatch.setattr(integration_service.settings, "sms_ir_enabled", False)
-    monkeypatch.setattr(integration_service.settings, "allow_bootstrap_otp", True)
+    monkeypatch.setattr(integration_service.settings, "allow_bootstrap_otp", False)
     monkeypatch.setattr(integration_service.settings, "bootstrap_admin_phone", "09399506609")
 
     assert integration_service._bootstrap_otp_allowed(db, "09399506609")
