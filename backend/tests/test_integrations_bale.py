@@ -125,5 +125,7 @@ def test_production_bootstrap_otp_is_limited_to_primary_admin(monkeypatch):
     integration_service.send_otp(db, "09399506609", "staff")
     assert db.challenge.code_hash == integration_service._otp_hash("09399506609", "staff", "123456")
 
+    db.setting = SiteSetting(key="sms_ir_enabled", value="false")
+    assert integration_service._bootstrap_otp_allowed(db, "09399506609")
     db.setting = SiteSetting(key="sms_ir_enabled", value="true")
     assert not integration_service._bootstrap_otp_allowed(db, "09399506609")

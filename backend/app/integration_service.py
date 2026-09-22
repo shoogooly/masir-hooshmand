@@ -34,7 +34,7 @@ def _bootstrap_otp_allowed(db,phone):
  return (
   settings.allow_bootstrap_otp
   and phone==settings.bootstrap_admin_phone
-  and db.get(SiteSetting,KEYS["sms_enabled"]) is None
+  and not _sms_enabled(db)
  )
 def set_value(db,key,val,user_id=None):
  name=KEYS.get(key,key);row=db.get(SiteSetting,name) or SiteSetting(key=name)
