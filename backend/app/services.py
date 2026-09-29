@@ -91,7 +91,7 @@ def seed_database(db: Session):
         default_plans = (
             ("monthly", "اشتراک ماهانه", ["برنامه هفتگی", "آزمون‌های هفتگی", "تحلیل هوشمند"]),
             ("quarterly", "اشتراک سه‌ماهه", ["برنامه هفتگی", "آزمون‌های هفتگی", "گزارش پیشرفت"]),
-            ("yearly", "اشتراک سالانه", ["همه امکانات", "مشاور اختصاصی", "گزارش پیشرفته"]),
+            ("yearly", "اشتراک از اکنون تا پایان سال تحصیلی", ["همه امکانات", "مشاور اختصاصی", "گزارش پیشرفته"]),
         )
         existing_periods = set(db.scalars(select(SubscriptionPlan.period)).all())
         for period, name, features in default_plans:
@@ -160,7 +160,7 @@ def seed_database(db: Session):
     db.add_all([
         SubscriptionPlan(name="اشتراک ماهانه", period="monthly", price=200000, referral_price=160000, features_json=json.dumps(["برنامه هفتگی", "آزمون‌های هفتگی", "تحلیل هوشمند"], ensure_ascii=False)),
         SubscriptionPlan(name="اشتراک سه‌ماهه", period="quarterly", price=540000, referral_price=450000, features_json=json.dumps(["برنامه هفتگی", "آزمون‌های هفتگی", "گزارش پیشرفت"], ensure_ascii=False)),
-        SubscriptionPlan(name="اشتراک سالانه", period="yearly", price=1920000, referral_price=1500000, features_json=json.dumps(["همه امکانات", "مشاور اختصاصی", "گزارش پیشرفته"], ensure_ascii=False)),
+        SubscriptionPlan(name="اشتراک از اکنون تا پایان سال تحصیلی", period="yearly", price=1920000, referral_price=1500000, features_json=json.dumps(["همه امکانات", "مشاور اختصاصی", "گزارش پیشرفته"], ensure_ascii=False)),
     ])
     audit(db, admin.id, "seed.created", "system", reason="داده نمایشی اولیه")
     db.commit()
