@@ -51,3 +51,7 @@
 @media(max-width:580px){.mh-scene-caption{transform:rotateY(-6deg) rotateX(5deg) rotateZ(3deg)}}
 
 .mh-price-unavailable{opacity:.65}.mh-price-disabled{display:block;margin-top:auto;padding:13px 16px;border:1px solid #bdaee044;border-radius:12px;text-align:center;color:#cbbde7;font-weight:700}
+
+.mh-trust-seal a{display:flex;align-items:center;justify-content:center;width:112px;min-height:112px;padding:7px;border:1px solid var(--mh-line);border-radius:14px;background:#fff;transition:transform .2s ease,border-color .2s ease}
+.mh-trust-seal a:hover{transform:translateY(-2px);border-color:#8c6ee8}
+.mh-trust-seal img{display:block;max-width:96px;max-height:96px;object-fit:contain}
