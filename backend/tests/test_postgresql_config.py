@@ -23,16 +23,21 @@ def test_production_seed_creates_unpriced_plans_without_overwriting_prices(tmp_p
             ("09399506609", "فرید رضازاده", "super_admin")
         ]
         plans = db.scalars(select(SubscriptionPlan)).all()
-        assert {plan.period for plan in plans} == {"monthly", "quarterly", "yearly"}
+        assert {plan.period for plan in plans} == {"monthly", "quarterly", "yearly", "referral_free"}
         assert all(plan.price == 0 and plan.referral_price == 0 and not plan.active for plan in plans)
-        plans[0].price = 250000
-        plans[0].active = True
+        monthly = next(plan for plan in plans if plan.period == "monthly")
+        monthly.price = 250000
+        monthly.active = True
+        free = db.get(SubscriptionPlan, "referral-free")
+        assert free.duration_days == 7
+        free.duration_days, free.active = 14, True
         db.commit()
         services.seed_database(db)
         updated = db.scalars(select(SubscriptionPlan)).all()
-        assert len(updated) == 3
-        assert db.get(SubscriptionPlan, plans[0].id).price == 250000
-        assert db.get(SubscriptionPlan, plans[0].id).active is True
+        assert len(updated) == 4
+        assert db.get(SubscriptionPlan, monthly.id).price == 250000
+        assert db.get(SubscriptionPlan, monthly.id).active is True
+        assert free.duration_days == 14 and free.active
 
 def test_postgres_url_is_built_from_separate_host_fields():
     config = Settings(

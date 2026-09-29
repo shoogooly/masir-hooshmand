@@ -172,12 +172,18 @@ def update_subscription_plan(plan_id: str, payload: SubscriptionPlanUpdate, user
     plan = db.get(SubscriptionPlan, plan_id)
     if not plan:
         raise HTTPException(404, "طرح یافت نشد")
-    if payload.active and (payload.price <= 0 or payload.referral_price <= 0):
+    if plan.period == "referral_free":
+        if payload.price != 0 or payload.referral_price != 0:
+            raise HTTPException(422, "مبلغ طرح رایگان باید صفر باشد")
+        if payload.duration_days is None:
+            raise HTTPException(422, "مدت طرح رایگان را به روز وارد کنید")
+        plan.duration_days = payload.duration_days
+    elif payload.active and (payload.price <= 0 or payload.referral_price <= 0):
         raise HTTPException(422, "برای فعال‌کردن طرح، هر دو مبلغ عادی و معرفی مشاور باید بیشتر از صفر باشند")
     plan.price, plan.referral_price, plan.active = payload.price, payload.referral_price, payload.active
-    audit(db, user.id, "subscription_plan.updated", "subscription_plan", plan.id, after={"price": plan.price, "referral_price": plan.referral_price})
+    audit(db, user.id, "subscription_plan.updated", "subscription_plan", plan.id, after={"price": plan.price, "referral_price": plan.referral_price, "active": plan.active, "duration_days": plan.duration_days})
     db.commit()
-    return ok({"id": plan.id, "price": plan.price, "referral_price": plan.referral_price, "active": plan.active})
+    return ok({"id": plan.id, "price": plan.price, "referral_price": plan.referral_price, "active": plan.active, "duration_days": plan.duration_days})
 
 
 @router.post("/admin/subscriptions/free")

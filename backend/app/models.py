@@ -375,6 +375,7 @@ class SubscriptionPlan(Base, TimeMixin):
     features_json: Mapped[str] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     referral_price: Mapped[int] = mapped_column(Integer, default=0)
+    duration_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Order(Base, TimeMixin):

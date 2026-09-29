@@ -31,7 +31,7 @@ export interface Profile extends User {
   assigned_students?:number; remaining_capacity?:number; is_full?:boolean
 }
 
-export interface SubscriptionPlanOption { id:string;name:string;period:string;price:number;referral_price:number;features:string[];active?:boolean }
+export interface SubscriptionPlanOption { id:string;name:string;period:string;price:number;referral_price:number;features:string[];active?:boolean;duration_days?:number|null }
 export interface AdvisorOption extends User {
   education_degree?:string;education_field?:string;experience_years?:number;bio?:string
   education_level?:'lower_secondary'|'upper_secondary'

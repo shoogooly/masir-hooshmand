@@ -93,6 +93,9 @@ def advance_student(db, student, profile=None):
     if paid.status == "pending_activation":
         plan = db.get(SubscriptionPlan, paid.plan_id)
         days = 365 if plan.period == "yearly" else 90 if plan.period in {"quarterly", "three_months"} else 30
+        if plan.period == "referral_free":
+            # Preserve the duration selected at registration, not later admin edits.
+            days = (paid.expires_at - paid.starts_at).days
         paid.starts_at = utcnow()
         paid.expires_at = paid.starts_at + timedelta(days=days)
         paid.status = "active"

@@ -74,6 +74,11 @@ def audit(db: Session, actor_id: str | None, action: str, resource_type: str, re
 
 
 def seed_database(db: Session):
+    if not db.get(SubscriptionPlan, "referral-free"):
+        db.add(SubscriptionPlan(id="referral-free", name="اشتراک رایگان معرفی مشاور",
+            period="referral_free", price=0, referral_price=0, duration_days=7,
+            active=False, features_json="[]"))
+        db.commit()
     renamed = db.execute(update(SubscriptionPlan).where(
         SubscriptionPlan.period == "yearly",
         SubscriptionPlan.name != "اشتراک از اکنون تا پایان سال تحصیلی",

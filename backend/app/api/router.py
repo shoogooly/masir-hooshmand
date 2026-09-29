@@ -263,7 +263,7 @@ def report_data(db: Session, student_id: str):
 def registration_options(education_level: str | None = None, db: Session = Depends(get_db)):
     if education_level not in {None, "lower_secondary", "upper_secondary"}:
         raise HTTPException(422, "مقطع تحصیلی معتبر نیست")
-    plans = db.scalars(select(SubscriptionPlan).order_by(SubscriptionPlan.price)).all()
+    plans = db.scalars(select(SubscriptionPlan).where(SubscriptionPlan.period != "referral_free").order_by(SubscriptionPlan.price)).all()
     advisor_profiles = db.scalars(select(AdvisorProfile).options(defer(AdvisorProfile.documents_json)).where(
         AdvisorProfile.approval_status == "approved")).all()
     matching_profiles = [profile for profile in advisor_profiles
@@ -283,10 +283,25 @@ def registration_options(education_level: str | None = None, db: Session = Depen
             db, profile, assigned_count=assigned_counts.get(profile.user_id, 0)))
     return ok({
         "plans": [{"id": item.id, "name": item.name, "period": item.period, "price": item.price,
-            "referral_price": item.referral_price or item.price, "active": item.active, "features": json_value(item.features_json, [])} for item in plans],
+            "referral_price": item.referral_price or item.price, "active": item.active, "duration_days": item.duration_days, "features": json_value(item.features_json, [])} for item in plans],
         "advisors": advisors,
         "school_days": SCHOOL_DAYS,
     })
+
+
+@router.get("/onboarding/student/options")
+def student_registration_options(education_level: str | None = None,
+                                 user: User = Depends(current_account), db: Session = Depends(get_db)):
+    result = registration_options(education_level, db)
+    if user.role == "student" and user.referred_by_advisor_id:
+        plan = db.get(SubscriptionPlan, "referral-free")
+        used = db.scalar(select(Subscription.id).where(
+            Subscription.user_id == user.id, Subscription.plan_id == "referral-free"))
+        if plan and plan.active and not used:
+            result["data"]["plans"].append({"id": plan.id, "name": plan.name, "period": plan.period,
+                "price": 0, "referral_price": 0, "active": True, "duration_days": plan.duration_days,
+                "features": json_value(plan.features_json, [])})
+    return result
 
 
 @router.post("/registrations/student")
@@ -296,8 +311,7 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
     if db.scalar(select(StudentProfile).where(StudentProfile.national_code == payload.national_code)):
         raise HTTPException(409, "این کد ملی قبلاً ثبت شده است")
     plan = db.get(SubscriptionPlan, payload.plan_id)
-    paid = paid_registration(db, user.id)
-    if not plan or (not plan.active and (not paid or paid.plan_id != plan.id)):
+    if not plan or not plan.active or plan.period == "referral_free":
         raise HTTPException(404, "طرح انتخابی فعال نیست")
     preferred = None
     if payload.advisor_selection_mode == "self":
@@ -573,10 +587,13 @@ def onboarding_status(user: User = Depends(current_account), db: Session = Depen
             db.commit()
             data.update(user=user_dict(user), step=user.onboarding_step)
         data["selection"] = {"plan_id": order.plan_id, "advisor_selection_mode": profile.advisor_selection_mode if profile else "admin", "advisor_id": profile.preferred_advisor_id if profile else None} if order else None
-        data["paid"] = paid_registration(db, user.id) is not None
+        registered_subscription = paid_registration(db, user.id)
+        data["paid"] = registered_subscription is not None
         if data["paid"] and order:
             paid_plan = db.get(SubscriptionPlan, order.plan_id)
-            data["paid_plan"] = {"id": paid_plan.id, "name": paid_plan.name, "price": order.amount, "referral_price": order.amount, "features": []}
+            data["paid_plan"] = {"id": paid_plan.id, "name": paid_plan.name, "period": paid_plan.period, "duration_days": paid_plan.duration_days, "price": order.amount, "referral_price": order.amount, "features": []}
+            if paid_plan.period == "referral_free":
+                data["paid_plan"]["duration_days"] = (registered_subscription.expires_at - registered_subscription.starts_at).days
         data["rejected_advisor_ids"] = list(db.scalars(select(AdvisorAssignment.advisor_id).where(AdvisorAssignment.student_id == user.id, AdvisorAssignment.approval_status == "rejected")).all())
         data["profile"] = student_profile_dict(profile)
         if user.referred_by_advisor_id:
@@ -632,6 +649,7 @@ def onboarding_student_profile(payload: StudentOnboardingProfile,
 @router.post("/onboarding/student/selection")
 def onboarding_student_selection(payload: StudentOnboardingSelection,
                                  user: User = Depends(current_account), db: Session = Depends(get_db)):
+    db.refresh(user, with_for_update=True)
     ensure_editable(user)
     if user.onboarding_step != "selection" or not user.terms_accepted_version:
         raise HTTPException(409, "ابتدا اطلاعات و شرایط ثبت‌نام را تکمیل کنید")
@@ -641,8 +659,11 @@ def onboarding_student_selection(payload: StudentOnboardingSelection,
     if not profile:
         raise HTTPException(409, "ابتدا اطلاعات فردی و تحصیلی را تکمیل کنید")
     plan = db.get(SubscriptionPlan, payload.plan_id)
-    if not plan or not plan.active:
+    paid = paid_registration(db, user.id)
+    if not plan or (not plan.active and (not paid or paid.plan_id != plan.id)):
         raise HTTPException(404, "طرح انتخابی فعال نیست")
+    if plan.period == "referral_free" and not user.referred_by_advisor_id:
+        raise HTTPException(403, "این طرح فقط برای دانش‌آموز معرفی‌شده توسط مشاور است")
     preferred = None
     selection_mode = payload.advisor_selection_mode
     rejected_ids = set(db.scalars(select(AdvisorAssignment.advisor_id).where(AdvisorAssignment.student_id == user.id, AdvisorAssignment.approval_status == "rejected")).all())
@@ -682,6 +703,17 @@ def onboarding_student_selection(payload: StudentOnboardingSelection,
         order = Order(user_id=user.id, plan_id=plan.id, amount=(plan.referral_price or plan.price) if user.referred_by_advisor_id else plan.price,
             status="awaiting_advisor", idempotency_key=f"onboarding:{user.id}:{utcnow().timestamp()}")
         db.add(order)
+    if plan.period == "referral_free" and not paid:
+        if not plan.duration_days or plan.duration_days < 1:
+            raise HTTPException(409, "مدت طرح رایگان تنظیم نشده است")
+        if db.scalar(select(Subscription.id).where(Subscription.user_id == user.id, Subscription.plan_id == plan.id)):
+            raise HTTPException(409, "اشتراک رایگان ثبت‌نام قبلاً استفاده شده است")
+        order.amount = 0
+        order.status = "paid"
+        db.flush()
+        starts_at = utcnow()
+        db.add(Subscription(user_id=user.id, plan_id=plan.id, order_id=order.id,
+            starts_at=starts_at, expires_at=starts_at + timedelta(days=plan.duration_days), status="pending_activation"))
     if preferred:
         request_advisor(db, user, profile, preferred.id)
     else:
@@ -1109,7 +1141,7 @@ def review_suggestion(insight_id: str, payload: InsightReview, user: User = Depe
 
 @router.get("/subscriptions/plans")
 def subscription_plans(db: Session = Depends(get_db)):
-    items = db.scalars(select(SubscriptionPlan)).all()
+    items = db.scalars(select(SubscriptionPlan).where(SubscriptionPlan.period != "referral_free")).all()
     return ok([{"id": x.id, "name": x.name, "period": x.period, "price": x.price, "referral_price": x.referral_price or x.price, "active": x.active, "features": json.loads(x.features_json)} for x in items])
 
 
@@ -1123,7 +1155,7 @@ def create_order(payload: OrderCreate, user: User = Depends(current_account), db
             raise HTTPException(409, "شناسه درخواست قبلاً استفاده شده است")
         return ok({"order_id": duplicate.id, "status": duplicate.status, "signature": duplicate.provider_reference, "duplicate": True})
     plan = db.get(SubscriptionPlan, payload.plan_id)
-    if not plan or not plan.active: raise HTTPException(404, "پلن فعال نیست")
+    if not plan or not plan.active or plan.period == "referral_free": raise HTTPException(404, "پلن فعال نیست")
     order = Order(user_id=user.id, plan_id=plan.id, amount=(plan.referral_price or plan.price) if user.referred_by_advisor_id else plan.price, idempotency_key=payload.idempotency_key)
     db.add(order); db.flush()
     payment = create_zarinpal(db, order, user) if zarinpal_ready(db) else payment_provider.create(order.id, order.amount)
@@ -1137,7 +1169,7 @@ def start_payment(payload: PaymentStart, user: User = Depends(current_account), 
     if not order or order.user_id!=user.id: raise HTTPException(404,"سفارش یافت نشد")
     if order.status not in {"pending","failed"}: raise HTTPException(409,"این سفارش قابل پرداخت نیست")
     plan=db.get(SubscriptionPlan,order.plan_id)
-    if not plan or not plan.active: raise HTTPException(409,"این طرح فعلاً در دسترس نیست")
+    if not plan or not plan.active or plan.period == "referral_free": raise HTTPException(409,"این طرح فعلاً در دسترس نیست")
     payment=create_zarinpal(db,order,user) if zarinpal_ready(db) else payment_provider.create(order.id,order.amount)
     if not zarinpal_ready(db):order.provider_reference=payment["signature"]
     order.status="pending";db.commit();return ok({"order_id":order.id,**payment})
@@ -1487,7 +1519,7 @@ def admin_finance(user: User = Depends(roles("finance", "operations_admin", "sup
         User.id.in_([order.user_id for order in orders]))).all()} if orders else {}
     return ok({
         "plans": [{"id": item.id, "name": item.name, "period": item.period, "price": item.price, "referral_price": item.referral_price or item.price,
-            "active": item.active, "features": json_value(item.features_json, [])} for item in plans],
+            "active": item.active, "duration_days": item.duration_days, "features": json_value(item.features_json, [])} for item in plans],
         "orders": [{"id": item.id, "user_id": item.user_id,
             "user_name": users[item.user_id].full_name if item.user_id in users else "—",
             "amount": item.amount, "status": item.status, "created_at": item.created_at} for item in orders],

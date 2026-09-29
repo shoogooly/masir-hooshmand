@@ -409,6 +409,7 @@ class SubscriptionPlanUpdate(BaseModel):
     price: int = Field(ge=0, le=2_000_000_000)
     referral_price: int = Field(ge=0, le=2_000_000_000)
     active: bool = True
+    duration_days: int | None = Field(default=None, ge=1, le=3650)
 
 class FreeSubscriptionCreate(BaseModel):
     student_id: str
