@@ -13,6 +13,7 @@ import './styles/chat-account.css'
 import './styles/profile-photo.css'
 import './styles/settings-photo.css'
 import './styles/bale.css'
+import './styles/loading-overlay.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } })
 

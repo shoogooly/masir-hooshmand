@@ -4,10 +4,12 @@ from app.study_reporting import ensure_report_editable, report_bounds
 from app.models import StudyReport
 from datetime import datetime, timedelta, timezone
 import json
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+import base64
+from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from pydantic import ValidationError
+from sqlalchemy import case, func, or_, select, union_all
+from sqlalchemy.orm import Session, defer
 from app.core.config import settings
 from app.core.security import active_subscription, subscription_state, create_token, current_account, current_user, hash_password, hash_token, new_csrf, new_refresh_token, roles, verify_password, verify_totp
 from app.db.session import get_db
@@ -67,7 +69,8 @@ def json_value(value: str | None, fallback):
 
 
 def advisor_capacity(db: Session, advisor_id: str):
-    profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == advisor_id))
+    profile = db.scalar(select(AdvisorProfile).options(defer(AdvisorProfile.documents_json)).where(
+        AdvisorProfile.user_id == advisor_id))
     assigned = db.scalar(select(func.count(AdvisorAssignment.id)).where(
         AdvisorAssignment.advisor_id == advisor_id, AdvisorAssignment.active.is_(True))) or 0
     capacity = profile.support_capacity if profile else 0
@@ -99,10 +102,15 @@ def student_profile_dict(profile: StudentProfile | None):
         "approval_note": profile.approval_note,
     }
 
-def advisor_profile_dict(db: Session, profile: AdvisorProfile | None, include_documents: bool = False):
+def advisor_profile_dict(db: Session, profile: AdvisorProfile | None, include_documents: bool = False,
+                         assigned_count: int | None = None):
     if not profile:
         return {}
-    _, assigned, remaining = advisor_capacity(db, profile.user_id)
+    if assigned_count is None:
+        _, assigned, remaining = advisor_capacity(db, profile.user_id)
+    else:
+        assigned = assigned_count
+        remaining = max(profile.support_capacity - assigned, 0)
     data = {
         "national_code": profile.national_code, "birth_date": profile.birth_date, "address": profile.address,
         "education_degree": profile.education_degree, "education_field": profile.education_field,
@@ -116,7 +124,7 @@ def advisor_profile_dict(db: Session, profile: AdvisorProfile | None, include_do
         "approval_status": profile.approval_status, "review_note": profile.review_note,
         "reviewed_by": profile.reviewed_by, "reviewed_at": profile.reviewed_at,
         "assigned_students": assigned, "remaining_capacity": remaining, "is_full": remaining <= 0,
-        "documents_count": len(json_value(profile.documents_json, [])),
+        "documents_count": profile.documents_count,
     }
     if include_documents:
         data["documents"] = json_value(profile.documents_json, [])
@@ -185,7 +193,8 @@ def user_education_level(db: Session, user: User):
     if user.role == "student":
         profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
     elif user.role == "advisor":
-        profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == user.id))
+        profile = db.scalar(select(AdvisorProfile).options(defer(AdvisorProfile.documents_json)).where(
+            AdvisorProfile.user_id == user.id))
     else:
         return None
     return profile.education_level if profile else None
@@ -255,15 +264,23 @@ def registration_options(education_level: str | None = None, db: Session = Depen
     if education_level not in {None, "lower_secondary", "upper_secondary"}:
         raise HTTPException(422, "مقطع تحصیلی معتبر نیست")
     plans = db.scalars(select(SubscriptionPlan).order_by(SubscriptionPlan.price)).all()
-    advisor_profiles = db.scalars(select(AdvisorProfile).where(AdvisorProfile.approval_status == "approved")).all()
+    advisor_profiles = db.scalars(select(AdvisorProfile).options(defer(AdvisorProfile.documents_json)).where(
+        AdvisorProfile.approval_status == "approved")).all()
+    matching_profiles = [profile for profile in advisor_profiles
+                         if not education_level or education_level in advisor_levels(profile)]
+    advisor_ids = [profile.user_id for profile in matching_profiles]
+    active_advisors = {advisor.id: advisor for advisor in db.scalars(select(User).where(
+        User.id.in_(advisor_ids), User.status == "active")).all()} if advisor_ids else {}
+    assigned_counts = dict(db.execute(select(AdvisorAssignment.advisor_id, func.count(AdvisorAssignment.id)).where(
+        AdvisorAssignment.advisor_id.in_(advisor_ids), AdvisorAssignment.active.is_(True)
+    ).group_by(AdvisorAssignment.advisor_id)).all()) if advisor_ids else {}
     advisors = []
-    for profile in advisor_profiles:
-        if education_level and education_level not in advisor_levels(profile):
+    for profile in matching_profiles:
+        advisor = active_advisors.get(profile.user_id)
+        if not advisor:
             continue
-        advisor = db.get(User, profile.user_id)
-        if not advisor or advisor.status != "active":
-            continue
-        advisors.append(user_dict(advisor) | advisor_profile_dict(db, profile))
+        advisors.append(user_dict(advisor) | advisor_profile_dict(
+            db, profile, assigned_count=assigned_counts.get(profile.user_id, 0)))
     return ok({
         "plans": [{"id": item.id, "name": item.name, "period": item.period, "price": item.price,
             "referral_price": item.referral_price or item.price, "active": item.active, "features": json_value(item.features_json, [])} for item in plans],
@@ -338,6 +355,7 @@ def register_advisor(payload: AdvisorRegistration, db: Session = Depends(get_db)
         education_level=payload.work_levels[0], work_levels_json=json.dumps(payload.work_levels, ensure_ascii=False),
         bio=payload.bio, support_capacity=payload.support_capacity, academic_year=payload.academic_year,
         documents_json=json.dumps([item.model_dump() for item in payload.documents], ensure_ascii=False),
+        documents_count=len(payload.documents),
         approval_status="pending",
     )
     db.add(profile)
@@ -489,15 +507,47 @@ def advisor_dashboard(user: User = Depends(roles("advisor", "super_admin")), db:
     from app.ai_models import AIAnalysis
     pending = db.scalar(select(func.count(func.distinct(AIAnalysis.student_id))).where(
         AIAnalysis.student_id.in_(student_ids), AIAnalysis.advisor_id == user.id, AIAnalysis.status == "completed")) if student_ids else 0
+    progress_by_student = {}
+    last_activities = {}
+    last_messages = {}
+    if student_ids:
+        progress_by_student = {student_id: (total, completed or 0) for student_id, total, completed in db.execute(
+            select(WeeklyPlan.student_id, func.count(Activity.id),
+                   func.sum(case((Activity.status == "completed", 1), else_=0)))
+            .join(Activity, Activity.plan_id == WeeklyPlan.id)
+            .where(WeeklyPlan.student_id.in_(student_ids)).group_by(WeeklyPlan.student_id)
+        )}
+        activity_ranks = select(
+            WeeklyPlan.student_id.label("student_id"), Activity.title.label("title"),
+            func.row_number().over(partition_by=WeeklyPlan.student_id,
+                                   order_by=(Activity.created_at.desc(), Activity.id.desc())).label("rank"),
+        ).join(Activity, Activity.plan_id == WeeklyPlan.id).where(WeeklyPlan.student_id.in_(student_ids)).subquery()
+        last_activities = dict(db.execute(select(activity_ranks.c.student_id, activity_ranks.c.title)
+                                          .where(activity_ranks.c.rank == 1)).all())
+        message_participants = union_all(
+            select(Message.sender_id.label("student_id"), Message.body, Message.created_at, Message.id)
+            .where(Message.sender_id.in_(student_ids)),
+            select(Message.recipient_id.label("student_id"), Message.body, Message.created_at, Message.id)
+            .where(Message.recipient_id.in_(student_ids)),
+        ).subquery()
+        message_ranks = select(
+            message_participants.c.student_id, message_participants.c.body, message_participants.c.created_at,
+            func.row_number().over(partition_by=message_participants.c.student_id,
+                                   order_by=(message_participants.c.created_at.desc(),
+                                             message_participants.c.id.desc())).label("rank"),
+        ).subquery()
+        last_messages = {student_id: (body, created_at) for student_id, body, created_at in db.execute(
+            select(message_ranks.c.student_id, message_ranks.c.body, message_ranks.c.created_at)
+            .where(message_ranks.c.rank == 1))}
     student_rows = []
     for x in students:
-        report = report_data(db, x.id)
-        last_activity = report["activities"][-1] if report["activities"] else None
-        last_message = db.scalar(select(Message).where(or_(Message.sender_id == x.id, Message.recipient_id == x.id)).order_by(Message.created_at.desc()))
-        progress = report["summary"]["progress"]
+        total, completed = progress_by_student.get(x.id, (0, 0))
+        progress = round(completed / total * 100) if total else 0
+        last_message = last_messages.get(x.id)
         student_rows.append(user_dict(x) | {"risk": "بالا" if progress < 50 else "عادی", "progress": progress,
-            "last_activity": last_activity["title"] if last_activity else None,
-            "last_message": last_message.body if last_message else None, "last_message_at": last_message.created_at if last_message else None})
+            "last_activity": last_activities.get(x.id),
+            "last_message": last_message[0] if last_message else None,
+            "last_message_at": last_message[1] if last_message else None})
     return ok({"user": user_dict(user), "students": student_rows, "pending_insights": pending or 0,
         "alerts": sum(x["risk"] == "بالا" for x in student_rows), "weekly_plans": len(student_ids)})
 
@@ -535,7 +585,10 @@ def onboarding_status(user: User = Depends(current_account), db: Session = Depen
         if order and order.status in {"pending", "failed"} and user.onboarding_step == "payment" and profile and profile.advisor_approval_status == "approved":
             data["payment"] = {"order_id": order.id, "amount": order.amount, "signature": order.provider_reference}
     elif user.role == "advisor":
-        profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == user.id))
+        stmt = select(AdvisorProfile).where(AdvisorProfile.user_id == user.id)
+        if user.onboarding_step not in {"profile", "rejected"}:
+            stmt = stmt.options(defer(AdvisorProfile.documents_json))
+        profile = db.scalar(stmt)
         data["profile"] = advisor_profile_dict(db, profile, include_documents=user.onboarding_step in {"profile", "rejected"}) if profile else {}
     return ok(data)
 
@@ -643,14 +696,52 @@ def onboarding_student_selection(payload: StudentOnboardingSelection,
 @router.post("/onboarding/advisor/profile")
 def onboarding_advisor_profile(payload: AdvisorOnboardingProfile,
                                user: User = Depends(current_account), db: Session = Depends(get_db)):
+    return save_onboarding_advisor_profile(payload, user, db)
+
+
+@router.post("/onboarding/advisor/profile-files")
+async def onboarding_advisor_profile_files(payload: str = Form(...), files: list[UploadFile] | None = File(None),
+                                           user: User = Depends(current_account), db: Session = Depends(get_db)):
     ensure_editable(user)
     if user.role != "advisor":
         raise HTTPException(403, "این مرحله فقط برای مشاور است")
-    duplicate = db.scalar(select(AdvisorProfile).where(
+    try:
+        fields = json.loads(payload)
+        indices = fields.pop("existing_document_indices", [])
+        if not isinstance(indices, list) or any(type(index) is not int or index < 0 for index in indices):
+            raise ValueError("فهرست مدارک معتبر نیست")
+        profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == user.id))
+        existing = json_value(profile.documents_json, []) if profile else []
+        if len(set(indices)) != len(indices) or any(index >= len(existing) for index in indices):
+            raise ValueError("فهرست مدارک معتبر نیست")
+        documents = [existing[index] for index in indices]
+        uploads = files or []
+        if len(documents) + len(uploads) > 8:
+            raise ValueError("حداکثر ۸ مدرک مجاز است")
+        for upload in uploads:
+            content = await upload.read(4 * 1024 * 1024 + 1)
+            if len(content) > 4 * 1024 * 1024:
+                raise ValueError("حجم هر مدرک باید کمتر از ۴ مگابایت باشد")
+            documents.append({"kind": "مدرک هویتی یا تحصیلی", "name": upload.filename,
+                              "content_type": upload.content_type,
+                              "content_base64": base64.b64encode(content).decode("ascii")})
+        fields["documents"] = documents
+        data = AdvisorOnboardingProfile.model_validate(fields)
+    except (ValueError, TypeError, ValidationError) as exc:
+        raise HTTPException(422, "اطلاعات یا مدارک مشاور معتبر نیست") from exc
+    return save_onboarding_advisor_profile(data, user, db)
+
+
+def save_onboarding_advisor_profile(payload: AdvisorOnboardingProfile, user: User, db: Session):
+    ensure_editable(user)
+    if user.role != "advisor":
+        raise HTTPException(403, "این مرحله فقط برای مشاور است")
+    duplicate = db.scalar(select(AdvisorProfile.id).where(
         AdvisorProfile.national_code == payload.national_code, AdvisorProfile.user_id != user.id))
     if duplicate:
         raise HTTPException(409, "این کد ملی قبلاً ثبت شده است")
-    profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == user.id))
+    profile = db.scalar(select(AdvisorProfile).options(defer(AdvisorProfile.documents_json)).where(
+        AdvisorProfile.user_id == user.id))
     if not profile:
         profile = AdvisorProfile(user_id=user.id)
         db.add(profile)
@@ -662,6 +753,7 @@ def onboarding_advisor_profile(payload: AdvisorOnboardingProfile,
                   "experience_years", "bio", "support_capacity", "academic_year"):
         setattr(profile, field, getattr(payload, field))
     profile.documents_json = json.dumps([item.model_dump() for item in payload.documents], ensure_ascii=False)
+    profile.documents_count = len(payload.documents)
     profile.approval_status = "pending"
     profile.lead_approval_status = "pending"
     profile.admin_approval_status = "pending"
@@ -1167,6 +1259,10 @@ def admin_update_user_status(user_id: str, payload: UserStatusUpdate,
         raise HTTPException(409, "برای فعال‌کردن حساب حذف‌شده از گزینه بازگردانی استفاده کنید")
     if target.role == "student" and target.status == "pending_payment" and payload.status == "active":
         raise HTTPException(409, "دانش‌آموز پیش از فعال‌سازی باید پرداخت را تکمیل کند")
+    if target.role == "advisor" and payload.status == "active":
+        profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == target.id))
+        if not profile or profile.admin_approval_status != "approved":
+            raise HTTPException(409, "مشاور را از بخش «مشاوران و تأیید» بررسی و تأیید کنید")
     before = target.status
     target.status = payload.status
     audit(db, user.id, "admin.user_status_updated", "user", target.id,
@@ -1263,8 +1359,15 @@ def admin_student(student_id: str, user: User = Depends(roles("operations_admin"
 @router.get("/admin/advisors")
 def admin_advisors(user: User = Depends(roles("operations_admin", "super_admin")), db: Session = Depends(get_db)):
     advisors = db.scalars(select(User).where(User.role == "advisor", User.status != "deleted").order_by(User.created_at.desc())).all()
+    advisor_ids = [item.id for item in advisors]
+    profiles = {profile.user_id: profile for profile in db.scalars(select(AdvisorProfile).options(
+        defer(AdvisorProfile.documents_json)).where(
+        AdvisorProfile.user_id.in_(advisor_ids))).all()} if advisor_ids else {}
+    counts = dict(db.execute(select(AdvisorAssignment.advisor_id, func.count(AdvisorAssignment.id)).where(
+        AdvisorAssignment.advisor_id.in_(advisor_ids), AdvisorAssignment.active.is_(True)
+    ).group_by(AdvisorAssignment.advisor_id)).all()) if advisor_ids else {}
     return ok([user_dict(item) | {"created_at": item.created_at,
-        "profile": advisor_profile_dict(db, db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == item.id)))}
+        "profile": advisor_profile_dict(db, profiles.get(item.id), assigned_count=counts.get(item.id, 0))}
         for item in advisors])
 
 
@@ -1284,7 +1387,7 @@ def admin_advisor(advisor_id: str, user: User = Depends(roles("operations_admin"
 
 @router.patch("/admin/advisors/{advisor_id}/review")
 def admin_review_advisor(advisor_id: str, payload: AdvisorReview,
-                         user: User = Depends(roles("operations_admin", "super_admin")),
+                         user: User = Depends(roles("super_admin")),
                          db: Session = Depends(get_db)):
     advisor = db.get(User, advisor_id)
     profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == advisor_id))
@@ -1292,8 +1395,8 @@ def admin_review_advisor(advisor_id: str, payload: AdvisorReview,
         raise HTTPException(404, "پرونده مشاور یافت نشد")
     if payload.status == "rejected" and not payload.note.strip():
         raise HTTPException(422, "برای رد پرونده وارد کردن دلیل الزامی است")
-    if advisor.status != "active" and (advisor.onboarding_step != "manager_review" or profile.lead_approval_status != "approved"):
-        raise HTTPException(409, "ابتدا تأیید مسئول مقطع لازم است")
+    if advisor.status != "active" and advisor.onboarding_step not in {"manager_review", "lead_review"}:
+        raise HTTPException(409, "پرونده مشاور هنوز برای تأیید مدیر ارسال نشده است")
     before = profile.approval_status
     profile.admin_approval_status = payload.status
     profile.review_note = payload.note
@@ -1305,14 +1408,10 @@ def admin_review_advisor(advisor_id: str, payload: AdvisorReview,
         profile.approval_status = "rejected"
         advisor.status = "pending_approval"
         advisor.onboarding_step = "rejected"
-    elif profile.lead_approval_status == "approved":
+    else:
         profile.approval_status = "approved"
         advisor.status = "active"
         advisor.onboarding_step = "completed"
-    else:
-        profile.approval_status = "pending"
-        advisor.status = "pending_approval"
-        advisor.onboarding_step = "lead_review"
     audit(db, user.id, "admin.advisor_reviewed", "advisor_profile", profile.id,
         before={"status": before}, after={"status": payload.status}, reason=payload.note)
     db.commit()
@@ -1403,25 +1502,6 @@ def audit_logs(user: User = Depends(roles("operations_admin", "super_admin")), d
 
 STAFF_ROLES = {"secretary", "expert"}
 OTP_ONLY_ROLES = STAFF_ROLES | {"super_admin", "operations_admin"}
-
-
-def update_advisor_activation(profile: AdvisorProfile, advisor: User):
-    if "rejected" in {profile.lead_approval_status, profile.admin_approval_status}:
-        profile.approval_status = "rejected"
-        advisor.status = "pending_approval"
-        advisor.onboarding_step = "rejected"
-    elif profile.lead_approval_status == "approved" and profile.admin_approval_status == "approved":
-        profile.approval_status = "approved"
-        advisor.status = "active"
-        advisor.onboarding_step = "completed"
-    elif profile.lead_approval_status == "approved":
-        profile.approval_status = "pending"
-        advisor.status = "pending_approval"
-        advisor.onboarding_step = "manager_review"
-    else:
-        profile.approval_status = "pending"
-        advisor.status = "pending_approval"
-        advisor.onboarding_step = "lead_review"
 
 
 @router.post("/auth/staff-login")
@@ -1569,35 +1649,9 @@ def management_advisors(user: User = Depends(roles("secretary", "expert", "super
     rows = []
     for profile in profiles:
         advisor = db.get(User, profile.user_id)
-        if advisor and advisor.status != "deleted":
+        if advisor and advisor.status == "active":
             rows.append(user_dict(advisor) | {"profile": advisor_profile_dict(db, profile, include_documents=True)})
     return ok(rows)
-
-
-@router.patch("/management/advisors/{advisor_id}/review")
-def lead_review_advisor(advisor_id: str, payload: AdvisorReview,
-                        user: User = Depends(roles("expert", "super_admin")),
-                        db: Session = Depends(get_db)):
-    require_access(db, user, "advisor_reviews", edit=True)
-    advisor = db.get(User, advisor_id)
-    profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == advisor_id))
-    if not advisor or not profile:
-        raise HTTPException(404, "پرونده مشاور یافت نشد")
-    if user.role == "expert" and not expert_can_view_advisor(db, user, advisor_id):
-        raise HTTPException(403, "این مشاور تحت نظر شما نیست")
-    if payload.status == "rejected" and not payload.note.strip():
-        raise HTTPException(422, "برای رد مدارک وارد کردن دلیل الزامی است")
-    if advisor.status != "active" and advisor.onboarding_step != "lead_review":
-        raise HTTPException(409, "پرونده هنوز برای بررسی ارسال نشده است")
-    profile.lead_approval_status = payload.status
-    profile.lead_reviewed_by = user.id
-    profile.lead_reviewed_at = utcnow()
-    profile.review_note = payload.note
-    update_advisor_activation(profile, advisor)
-    audit(db, user.id, "lead.advisor_reviewed", "advisor_profile", profile.id,
-        after={"status": payload.status, "level": profile.education_level}, reason=payload.note)
-    db.commit()
-    return ok(user_dict(advisor) | {"profile": advisor_profile_dict(db, profile)})
 
 
 @router.get("/advisors/assignment-requests")

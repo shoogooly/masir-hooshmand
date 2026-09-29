@@ -58,6 +58,17 @@ def test_expert_is_limited_to_assigned_advisors_and_configured_permissions():
         visible = expert_client.get("/api/v1/management/advisors")
         assert visible.status_code == 200
         assert [item["id"] for item in visible.json()["data"]] == [advisor_id]
+        denied_review = expert_client.patch(
+            f"/api/v1/admin/advisors/{advisor_id}/review",
+            headers={"X-CSRF-Token": login.json()["data"]["csrf_token"]},
+            json={"status": "approved"},
+        )
+        assert denied_review.status_code == 403
+        assert expert_client.patch(
+            f"/api/v1/management/advisors/{advisor_id}/review",
+            headers={"X-CSRF-Token": login.json()["data"]["csrf_token"]},
+            json={"status": "approved"},
+        ).status_code == 404
         assert expert_client.get("/api/v1/management/students").status_code == 200
         assert expert_client.get("/api/v1/management/conversations").status_code == 200
 

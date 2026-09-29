@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from uuid import uuid4
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 
@@ -124,6 +124,7 @@ class AdvisorProfile(Base, TimeMixin):
     support_capacity: Mapped[int] = mapped_column(Integer, default=20)
     academic_year: Mapped[str] = mapped_column(String(20), default="1405-1406")
     documents_json: Mapped[str] = mapped_column(Text, default="[]")
+    documents_count: Mapped[int] = mapped_column(Integer, default=0)
     approval_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     lead_approval_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     lead_reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -145,7 +146,8 @@ class AdvisorAssignment(Base, TimeMixin):
     advisor_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    __table_args__ = (UniqueConstraint("advisor_id", "student_id"),)
+    __table_args__ = (UniqueConstraint("advisor_id", "student_id"),
+                      Index("ix_advisor_assignments_advisor_active", "advisor_id", "active"))
     approval_status: Mapped[str] = mapped_column(String(24), default="approved", index=True)
     assignment_source: Mapped[str] = mapped_column(String(20), default="admin")
     assigned_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -154,6 +156,10 @@ class AdvisorAssignment(Base, TimeMixin):
 
 class WeeklyPlan(Base, TimeMixin):
     __tablename__ = "weekly_plans"
+    __table_args__ = (
+        Index("ix_weekly_plans_summary", "status", "advisor_id", "student_id", "published_at"),
+        Index("ix_weekly_plans_expiry_lookup", "status", "advisor_expiry_notified_at", "ends_at"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     advisor_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
@@ -204,6 +210,7 @@ class StudyReport(Base, TimeMixin):
 
 class Message(Base, TimeMixin):
     __tablename__ = "messages"
+    __table_args__ = (Index("ix_messages_unread_summary", "recipient_id", "read_at", "internal_note", "sender_id"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     sender_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     recipient_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
@@ -234,6 +241,7 @@ class ChatAccessRequest(Base, TimeMixin):
 
 class Notification(Base, TimeMixin):
     __tablename__ = "notifications"
+    __table_args__ = (Index("ix_notifications_unread_summary", "user_id", "read_at", "kind"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     actor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)

@@ -13,17 +13,16 @@ ACCESS_AREAS = {
     "plans": "برنامه‌های هفتگی",
     "chats": "مشاهده گفت‌وگوها",
     "messages": "ارسال پیام",
-    "advisor_reviews": "بررسی عملکرد و مدارک مشاور",
 }
 ACCESS_LEVELS = {"none": 0, "view": 1, "edit": 2}
 DEFAULT_ACCESS = {
     "expert": {
         "advisors": "view", "students": "view", "plans": "view",
-        "chats": "view", "messages": "edit", "advisor_reviews": "edit",
+        "chats": "view", "messages": "edit",
     },
     "secretary": {
         "advisors": "view", "students": "view", "plans": "view",
-        "chats": "none", "messages": "edit", "advisor_reviews": "none",
+        "chats": "none", "messages": "edit",
     },
 }
 

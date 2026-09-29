@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session, defer
 
 from app.core.security import current_account, current_user, roles
 from app.api.onboarding_flow import ensure_editable
@@ -19,7 +19,8 @@ def ok(data=None):
 
 
 def advisor_capacity(db: Session, advisor_id: str):
-    profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == advisor_id))
+    profile = db.scalar(select(AdvisorProfile).options(defer(AdvisorProfile.documents_json)).where(
+        AdvisorProfile.user_id == advisor_id))
     assigned = db.scalar(select(func.count(AdvisorAssignment.id)).where(
         AdvisorAssignment.advisor_id == advisor_id, AdvisorAssignment.active.is_(True))) or 0
     capacity = profile.support_capacity if profile else 0
@@ -32,17 +33,25 @@ def notify(db: Session, user_id: str, kind: str, title: str, body: str = "", lin
 def sync_expired_plans(db: Session, user: User):
     if user.role not in {"advisor", "super_admin"}:
         return
-    stmt = select(WeeklyPlan).where(WeeklyPlan.status == "published", WeeklyPlan.advisor_expiry_notified_at.is_(None))
+    now = utcnow()
+    cutoff = now - timedelta(days=7)
+    stmt = select(WeeklyPlan).where(
+        WeeklyPlan.status == "published",
+        WeeklyPlan.advisor_expiry_notified_at.is_(None),
+        or_(WeeklyPlan.ends_at <= now,
+            and_(WeeklyPlan.ends_at.is_(None), func.coalesce(WeeklyPlan.published_at, WeeklyPlan.created_at) <= cutoff)),
+    )
     if user.role == "advisor":
         stmt = stmt.where(WeeklyPlan.advisor_id == user.id)
-    now = utcnow()
     changed = False
-    for plan in db.scalars(stmt).all():
+    expired = db.scalars(stmt).all()
+    student_names = dict(db.execute(select(User.id, User.full_name).where(
+        User.id.in_({plan.student_id for plan in expired}))).all()) if expired else {}
+    for plan in expired:
         end = plan.ends_at or ((plan.published_at or plan.created_at) + timedelta(days=7))
         end = end if end.tzinfo else end.replace(tzinfo=timezone.utc)
         if end <= now:
-            student = db.get(User, plan.student_id)
-            notify(db, plan.advisor_id, "plan_expired", "برنامه دانش‌آموز تمام شد", f"برنامه {student.full_name if student else 'دانش‌آموز'} تمام شده و نیازمند برنامه جدید است.", f"/app/advisor/students/{plan.student_id}/plan", related_id=plan.id)
+            notify(db, plan.advisor_id, "plan_expired", "برنامه دانش‌آموز تمام شد", f"برنامه {student_names.get(plan.student_id, 'دانش‌آموز')} تمام شده و نیازمند برنامه جدید است.", f"/app/advisor/students/{plan.student_id}/plan", related_id=plan.id)
             plan.advisor_expiry_notified_at = now
             changed = True
     if changed:
@@ -52,10 +61,9 @@ def sync_expired_plans(db: Session, user: User):
 @router.get("/notifications/summary")
 def notification_summary(user: User = Depends(current_user), db: Session = Depends(get_db)):
     sync_expired_plans(db, user)
-    messages = db.scalars(select(Message).where(Message.recipient_id == user.id, Message.read_at.is_(None), Message.internal_note.is_(False))).all()
-    by_sender: dict[str, int] = {}
-    for message in messages:
-        by_sender[message.sender_id] = by_sender.get(message.sender_id, 0) + 1
+    by_sender = dict(db.execute(select(Message.sender_id, func.count(Message.id)).where(
+        Message.recipient_id == user.id, Message.read_at.is_(None), Message.internal_note.is_(False)
+    ).group_by(Message.sender_id)).all())
     unread_notes = db.scalar(select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.read_at.is_(None))) or 0
     latest_student_plan = db.scalar(select(WeeklyPlan).where(WeeklyPlan.student_id == user.id, WeeklyPlan.status == "published").order_by(WeeklyPlan.published_at.desc())) if user.role == "student" else None
     unseen_exams = db.scalar(select(func.count(Notification.id)).where(
@@ -63,20 +71,28 @@ def notification_summary(user: User = Depends(current_user), db: Session = Depen
     unseen = 1 if latest_student_plan and latest_student_plan.student_viewed_at is None else 0
     expired_ids: list[str] = []
     if user.role in {"advisor", "super_admin"}:
-        stmt = select(WeeklyPlan).where(WeeklyPlan.status == "published").order_by(WeeklyPlan.published_at.desc())
+        stmt = select(
+            WeeklyPlan.student_id,
+            WeeklyPlan.ends_at,
+            WeeklyPlan.published_at,
+            WeeklyPlan.created_at,
+            func.row_number().over(
+                partition_by=WeeklyPlan.student_id,
+                order_by=(WeeklyPlan.published_at.desc(), WeeklyPlan.id.desc()),
+            ).label("rank"),
+        ).where(WeeklyPlan.status == "published")
         if user.role == "advisor":
             stmt = stmt.where(WeeklyPlan.advisor_id == user.id)
-        latest: dict[str, WeeklyPlan] = {}
-        for plan in db.scalars(stmt).all():
-            if plan.student_id not in latest:
-                latest[plan.student_id] = plan
+        latest = stmt.subquery()
         now = utcnow()
-        for student_id, plan in latest.items():
-            end = plan.ends_at or ((plan.published_at or plan.created_at) + timedelta(days=7))
+        for student_id, ends_at, published_at, created_at in db.execute(select(
+            latest.c.student_id, latest.c.ends_at, latest.c.published_at, latest.c.created_at,
+        ).where(latest.c.rank == 1)):
+            end = ends_at or ((published_at or created_at) + timedelta(days=7))
             end = end if end.tzinfo else end.replace(tzinfo=timezone.utc)
             if end <= now:
                 expired_ids.append(student_id)
-    return ok({"unread_messages": len(messages), "unread_by_sender": by_sender, "unread_notifications": unread_notes, "unseen_plans": unseen or 0, "unseen_exams": unseen_exams, "expired_student_ids": expired_ids})
+    return ok({"unread_messages": sum(by_sender.values()), "unread_by_sender": by_sender, "unread_notifications": unread_notes, "unseen_plans": unseen or 0, "unseen_exams": unseen_exams, "expired_student_ids": expired_ids})
 
 
 @router.get("/notifications")
@@ -220,8 +236,13 @@ def accept_terms(payload: TermsAccept, user: User = Depends(current_account), db
     if payload.version != item.version:
         raise HTTPException(409, "شرایط تغییر کرده است؛ متن جدید را مطالعه کنید")
     user.terms_accepted_version = item.version
-    user.onboarding_step = "selection" if user.role == "student" else "lead_review"
+    user.onboarding_step = "selection" if user.role == "student" else "manager_review"
     user.status = "onboarding_selection" if user.role == "student" else "pending_approval"
+    if user.role == "advisor":
+        for manager in db.scalars(select(User).where(User.role == "super_admin", User.status == "active")):
+            notify(db, manager.id, "advisor_review", "درخواست تأیید مشاور",
+                   f"پرونده {user.full_name} برای بررسی و تأیید آماده است.",
+                   "/app/admin/advisors", user.id, user.id)
     db.commit()
     return ok({"next_step": user.onboarding_step})
 

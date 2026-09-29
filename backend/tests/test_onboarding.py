@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import json
 
 from app.main import app
 
@@ -9,6 +10,44 @@ def accept_terms(client, csrf, role="student"):
 
 def login_advisor(client):
     return client.post("/api/v1/auth/verify-otp", json={"phone":"09120000002","code":"123456","role":"advisor"}).json()["data"]
+
+
+def test_advisor_documents_upload_without_base64_json():
+    with TestClient(app) as client:
+        account = {"phone": "09124445567", "role": "advisor", "sms_code": "123456",
+                   "password": "Advisor123", "password_confirm": "Advisor123"}
+        assert client.post("/api/v1/auth/register", json=account).status_code == 200
+        csrf = client.post("/api/v1/auth/login", json={
+            "phone": account["phone"], "password": account["password"],
+        }).json()["data"]["csrf_token"]
+        fields = {"full_name": "مشاور آزمایشی جدید", "national_code": "0987654322",
+                  "birth_date": "1370/01/01", "address": "نشانی کامل مشاور آزمایشی",
+                  "education_degree": "کارشناسی ارشد", "education_field": "مشاوره",
+                  "experience_years": 5, "bio": "سابقه کامل مشاوره و برنامه ریزی تحصیلی",
+                  "support_capacity": 25, "academic_year": "1405-1406",
+                  "work_levels": ["upper_secondary"],
+                  "profile_photo": {"content_type": "image/png", "content_base64":
+                      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="},
+                  "existing_document_indices": []}
+        endpoint = "/api/v1/onboarding/advisor/profile-files"
+        headers = {"X-CSRF-Token": csrf}
+        submitted = client.post(endpoint, headers=headers, data={"payload": json.dumps(fields)}, files=[
+            ("files", ("identity.pdf", b"%PDF-1.4\nidentity", "application/pdf")),
+            ("files", ("resume.pdf", b"%PDF-1.4\nresume", "application/pdf")),
+        ])
+        assert submitted.status_code == 200, submitted.text
+        assert submitted.json()["data"]["next_step"] == "terms"
+        assert client.post("/api/v1/onboarding/back", headers=headers).status_code == 200
+        status = client.get("/api/v1/onboarding/status").json()["data"]
+        assert [doc["name"] for doc in status["profile"]["documents"]] == ["identity.pdf", "resume.pdf"]
+        fields["existing_document_indices"] = [1]
+        changed = client.post(endpoint, headers=headers, data={"payload": json.dumps(fields)}, files=[
+            ("files", ("certificate.pdf", b"%PDF-1.4\ncertificate", "application/pdf")),
+        ])
+        assert changed.status_code == 200, changed.text
+        assert client.post("/api/v1/onboarding/back", headers=headers).status_code == 200
+        status = client.get("/api/v1/onboarding/status").json()["data"]
+        assert [doc["name"] for doc in status["profile"]["documents"]] == ["resume.pdf", "certificate.pdf"]
 
 def decide(client, csrf, student_id, decision, note=""):
     requests = client.get("/api/v1/advisors/assignment-requests").json()["data"]
@@ -107,6 +146,45 @@ def test_advisor_steps_end_in_manager_review():
         status = client.get("/api/v1/onboarding/status").json()["data"]
         assert status["user"]["status"] == "onboarding_profile"
         assert status["profile"]["support_capacity"] == 25
+        accept_terms(client, csrf, "advisor")
+        status = client.get("/api/v1/onboarding/status").json()["data"]
+        assert status["step"] == "manager_review"
+        advisor_id = status["user"]["id"]
+
+        with TestClient(app) as admin:
+            manager = admin.post("/api/v1/auth/verify-otp", json={
+                "phone": "09120000003", "code": "123456", "role": "super_admin", "mfa_code": "654321",
+            }).json()["data"]
+            headers = {"X-CSRF-Token": manager["csrf_token"]}
+            notifications = admin.get("/api/v1/notifications").json()["data"]
+            assert any(item["related_id"] == advisor_id and item["kind"] == "advisor_review" for item in notifications)
+            assert admin.patch(f"/api/v1/admin/users/{advisor_id}/status", headers=headers,
+                               json={"status": "active"}).status_code == 409
+            reviewed = admin.patch(f"/api/v1/admin/advisors/{advisor_id}/review", headers=headers,
+                                   json={"status": "approved", "note": "مدارک کامل است"})
+            assert reviewed.status_code == 200, reviewed.text
+            assert reviewed.json()["data"]["status"] == "active"
+            assert reviewed.json()["data"]["onboarding_step"] == "completed"
+
+            # Applications left at the retired expert-review step remain approvable.
+            from sqlalchemy import select
+            from app.db.session import SessionLocal
+            from app.models import AdvisorProfile, User
+            with SessionLocal() as db:
+                old_advisor = db.get(User, advisor_id)
+                old_profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == advisor_id))
+                old_advisor.status = "pending_approval"
+                old_advisor.onboarding_step = "lead_review"
+                old_profile.approval_status = "pending"
+                old_profile.admin_approval_status = "pending"
+                old_profile.lead_approval_status = "pending"
+                db.commit()
+            legacy_review = admin.patch(f"/api/v1/admin/advisors/{advisor_id}/review", headers=headers,
+                                        json={"status": "approved"})
+            assert legacy_review.status_code == 200, legacy_review.text
+            assert legacy_review.json()["data"]["status"] == "active"
+
+        assert client.get("/api/v1/auth/me").json()["data"]["status"] == "active"
 
 def test_advisor_referral_locks_selection_and_uses_referral_price():
     invited_phone = "09127778899"

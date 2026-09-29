@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ReactNode, useEffect, useState } from 'react'
 import { ArrowRight, Check, Clock3, CreditCard, LogOut, UserCheck } from 'lucide-react'
 import { api, auth } from '../api'
 import Brand from '../components/Brand'
+import LoadingOverlay from '../components/LoadingOverlay'
 import type { RegistrationOptions, SubscriptionPlanOption, User } from '../types'
 import { AdvisorProfileForm, StudentProfileForm } from './OnboardingForms'
 import TermsStep from './TermsStep'
@@ -12,6 +13,14 @@ export default function OnboardingPage({user}:{user:User}){
  const qc=useQueryClient()
  const [part,setPart]=useState(1)
  const status=useQuery({queryKey:['onboarding',user.id],queryFn:()=>api<StatusData>('/onboarding/status'),refetchInterval:query=>['lead_review','manager_review','advisor_confirmation','advisor_assignment','dual_approval'].includes(query.state.data?.step||'')?10000:false})
+ const mutating=useIsMutating()
+ const [awaitingRefresh,setAwaitingRefresh]=useState(false)
+ useEffect(()=>{if(mutating>0)setAwaitingRefresh(true)},[mutating])
+ useEffect(()=>{
+   if(mutating>0||status.isFetching||!awaitingRefresh)return
+   const timer=window.setTimeout(()=>setAwaitingRefresh(false),250)
+   return ()=>window.clearTimeout(timer)
+ },[mutating,status.isFetching,awaitingRefresh])
  const refresh=()=>{setPart(1);void status.refetch();void qc.invalidateQueries({queryKey:['me']})}
  const back=useMutation({mutationFn:()=>api('/onboarding/back',{method:'POST'}),onSuccess:refresh})
  useEffect(()=>{if(status.data?.user.status==='active')void qc.invalidateQueries({queryKey:['me']})},[status.data?.user.status,qc])
@@ -23,13 +32,13 @@ export default function OnboardingPage({user}:{user:User}){
  return <div className="onboarding-page"><header><Brand/><button className="btn btn-outline" onClick={logout}><LogOut/> خروج</button></header><main><Progress role={data.user.role} step={data.step} part={part}/>
  {canBack&&<button className="btn btn-outline onboarding-back" disabled={back.isPending} onClick={()=>back.mutate()}><ArrowRight/> مرحله قبل</button>}{back.error&&<ErrorText error={back.error}/>}
  {data.user.role==='student'?<StudentStep key={data.step} data={data} refresh={refresh} onPartChange={setPart}/>:<AdvisorStep key={data.step} data={data} refresh={refresh} onPartChange={setPart}/>}
- </main></div>
+ </main>{awaitingRefresh&&<LoadingOverlay message="در حال ثبت و بارگذاری مرحله بعد…"/>}</div>
 }
 function Progress({role,step,part}:{role:string;step:string;part:number}){
  const student=[['account','ساخت حساب'],['profile','اطلاعات فردی'],['education','سوابق تحصیلی'],['terms','پذیرش شرایط'],['selection','طرح و مشاور'],['advisor_confirmation','تأیید مشاور'],['payment','پرداخت'],['manager_review','تأیید مدیر'],['completed','تکمیل ثبت‌نام']]
- const advisor=[['account','ساخت حساب'],['profile','اطلاعات فردی'],['education','سوابق و مدارک'],['terms','پذیرش شرایط'],['lead_review','تأیید مسئول مقطع'],['manager_review','تأیید مدیر'],['completed','تکمیل ثبت‌نام']]
+ const advisor=[['account','ساخت حساب'],['profile','اطلاعات فردی'],['education','سوابق و مدارک'],['terms','پذیرش شرایط'],['manager_review','تأیید مدیر'],['completed','تکمیل ثبت‌نام']]
  const stages=role==='student'?student:advisor
- const normalized=['profile_correction','rejected'].includes(step)?'profile':step==='advisor_assignment'?'advisor_confirmation':step==='dual_approval'?'manager_review':step
+ const normalized=['profile_correction','rejected'].includes(step)?'profile':step==='advisor_assignment'?'advisor_confirmation':['dual_approval','lead_review'].includes(step)?'manager_review':step
  const effective=normalized==='profile'&&part===2?'education':normalized
  const current=Math.max(0,stages.findIndex(([key])=>key===effective))
  return <section className="onboarding-progress"><div><span>فرایند تکمیل ثبت‌نام</span><h1>مرحله فعلی: {stages[current][1]}</h1><p>اطلاعات ذخیره می‌شود و پس از ورود دوباره از همین مرحله ادامه می‌دهید.</p></div><ol>{stages.map(([key,label],index)=><li key={key} className={index<current||step==='completed'?'done':index===current?'active':''}><i>{index<current||step==='completed'?<Check/>:index+1}</i><span>{label}</span></li>)}</ol></section>
@@ -65,7 +74,7 @@ function StudentSelection({data,refresh}:{data:StatusData;refresh:()=>void}){
 function AdvisorStep({data,refresh,onPartChange}:{data:StatusData;refresh:()=>void;onPartChange:(part:number)=>void}){
  if(['profile','rejected'].includes(data.step))return <>{data.step==='rejected'&&<Rejection text={String(data.profile?.review_note||'مدارک نیاز به اصلاح دارد.')}/>}<AdvisorProfileForm refresh={refresh} initial={{...data.profile,full_name:data.user.full_name,profile_photo:data.user.profile_photo}} onPartChange={onPartChange}/></>
  if(data.step==='terms')return <TermsStep role="advisor" refresh={refresh}/>
- if(data.step==='lead_review')return data.profile?.lead_approval_status==='approved'?<Continue title="مسئول مقطع تأیید کرده است" text="برای بررسی نهایی مدیر ادامه دهید." refresh={refresh}/>:<Waiting title="در انتظار تأیید مسئول مقطع" text="پس از تأیید مسئول مقطع، پرونده برای مدیر سایت ارسال می‌شود."/>
+ if(['lead_review','manager_review'].includes(data.step))return <Waiting title="در انتظار تأیید مدیر" text="پرونده شما برای مدیر سایت ارسال شده است و با تأیید او حساب فعال می‌شود."/>
  return <Waiting title={data.step==='completed'?'ثبت‌نام تکمیل شد':'در انتظار تأیید مدیر'} text="نتیجه بررسی در همین صفحه نمایش داده می‌شود."/>
 }
 function Continue({title,text,refresh}:{title:string;text:string;refresh:()=>void}){

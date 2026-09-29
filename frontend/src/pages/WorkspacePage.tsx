@@ -1,7 +1,7 @@
 import BooksPage from './BooksPage'
 import { Activity as ActivityIcon, Bell, BellRing, BookOpen, Bot, BrainCircuit, ChevronLeft, ClipboardCheck, CreditCard, FilePenLine, FileQuestion, GraduationCap, Home, LogOut, Menu, MessageSquare, Search, Settings, ShieldCheck, Sparkles, TrendingUp, UserCheck, UserPlus, UserRound, Users, X } from 'lucide-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useIsFetching, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api, auth } from '../api'
 import Brand from '../components/Brand'
@@ -29,6 +29,7 @@ import { AdminBroadcastPage, ArticlesManagementPage } from './ContentManagementP
 import { photoUrl } from '../utils/profilePhoto'
 import AdminBalePage from './AdminBalePage'
 import AdminIntegrationsPage from './AdminIntegrationsPage'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 type StudentData={user:User;profile:{grade:string;major:string;goal:string};progress:number;study_minutes:number;activities:Activity[];exams:{id:string;title:string;duration_minutes:number}[];insights:Insight[]}
 type AdvisorData={user:User;students:(User&{risk:string;progress:number})[];pending_insights:number;alerts:number;weekly_plans:number}
@@ -75,7 +76,7 @@ export default function WorkspacePage({user}:{user:User}){
     content=path.includes('/settings')?<div className="content-page"><h1>تنظیمات حساب</h1><PasswordChange/></div>:path.includes('/advisors')?<ManagerAdvisorsPage/>:path.includes('/chats')?<ConversationMonitorPage/>:path.includes('/messages')?<UniversalChatPage user={user}/>:<ProgramsAccessPage user={user}/>
   }else{
     const path=location.pathname
-    content=path==='/app/admin/integrations'&&user.role==='super_admin'?<AdminIntegrationsPage/>:path==='/app/admin/bale'&&user.role==='super_admin'?<AdminBalePage/>:path==='/app/admin/photo-reviews'&&adminManager?<AdminProfilePhotoReviewsPage/>:path==='/app/admin/notifications'&&user.role==='super_admin'?<AdminBroadcastPage/>:path==='/app/admin/articles'&&user.role==='super_admin'?<ArticlesManagementPage admin/>:path==='/app/admin/books'&&user.role==='super_admin'?<BooksPage mode="admin"/>:path==='/app/admin/ai'&&user.role==='super_admin'?<AdminAIPage/>:path.includes('/staff')&&user.role==='super_admin'?<AdminStaffControlPage/>:path.includes('/programs')&&user.role==='super_admin'?<ProgramsAccessPage user={user}/>:path.includes('/chats')&&user.role==='super_admin'?<ConversationMonitorPage/>:path.includes('/messages')&&user.role==='super_admin'?<UniversalChatPage user={user}/>:path.includes('/terms')&&user.role==='super_admin'?<AdminTermsPage/>:path.includes('/users')&&adminManager?<AdminUserDirectoryPage/>:path.includes('/students')&&adminManager?<AdminStudentControlPage/>:path.includes('/advisors')&&adminManager?<AdminAdvisorsPage/>:path.includes('/questions')?<AdminCatalogPage kind="questions"/>:path.includes('/exams')?<AdminCatalogPage kind="exams"/>:path.includes('/ledger')?<AdminFinancialLedgerPage/>:path.includes('/finance')?<AdminSubscriptionsPage/>:path.includes('/settings')?<AdminAccessPage/>:<AdminDashboard user={user}/>
+    content=path==='/app/admin/integrations'&&user.role==='super_admin'?<AdminIntegrationsPage/>:path==='/app/admin/bale'&&user.role==='super_admin'?<AdminBalePage/>:path==='/app/admin/photo-reviews'&&adminManager?<AdminProfilePhotoReviewsPage/>:path==='/app/admin/notifications'&&user.role==='super_admin'?<AdminBroadcastPage/>:path==='/app/admin/articles'&&user.role==='super_admin'?<ArticlesManagementPage admin/>:path==='/app/admin/books'&&user.role==='super_admin'?<BooksPage mode="admin"/>:path==='/app/admin/ai'&&user.role==='super_admin'?<AdminAIPage/>:path.includes('/staff')&&user.role==='super_admin'?<AdminStaffControlPage/>:path.includes('/programs')&&user.role==='super_admin'?<ProgramsAccessPage user={user}/>:path.includes('/chats')&&user.role==='super_admin'?<ConversationMonitorPage/>:path.includes('/messages')&&user.role==='super_admin'?<UniversalChatPage user={user}/>:path.includes('/terms')&&user.role==='super_admin'?<AdminTermsPage/>:path.includes('/users')&&adminManager?<AdminUserDirectoryPage/>:path.includes('/students')&&adminManager?<AdminStudentControlPage/>:path.includes('/advisors')&&adminManager?<AdminAdvisorsPage canReview={user.role==='super_admin'}/>:path.includes('/questions')?<AdminCatalogPage kind="questions"/>:path.includes('/exams')?<AdminCatalogPage kind="exams"/>:path.includes('/ledger')?<AdminFinancialLedgerPage/>:path.includes('/finance')?<AdminSubscriptionsPage/>:path.includes('/settings')?<AdminAccessPage/>:<AdminDashboard user={user}/>
   }
   return <div className="workspace"><aside className={`app-sidebar ${mobile?'open':''}`}><button className="sidebar-close" onClick={()=>setMobile(false)}><X/></button><Brand light/><nav>
     <button className={active(`${base}/overview`)?'selected':''} onClick={()=>go(`${base}/overview`)}><Home/>نمای کلی</button>
@@ -92,7 +93,23 @@ export default function WorkspacePage({user}:{user:User}){
     {['finance','operations_admin','super_admin'].includes(user.role)&&<><button className={active(`${adminBase}/finance`)?'selected':''} onClick={()=>go(`${adminBase}/finance`)}><CreditCard/>تعرفه‌ها و اشتراک</button><button className={active(`${adminBase}/ledger`)?'selected':''} onClick={()=>go(`${adminBase}/ledger`)}><CreditCard/>واریزی‌ها و مانده اشتراک</button></>}
     {user.role==='super_admin'&&<button className={active(`${adminBase}/integrations`)?'selected':''} onClick={()=>go(`${adminBase}/integrations`)}><CreditCard/>پیامک و پرداخت</button>}{user.role==='super_admin'&&<button className={active(`${adminBase}/bale`)?'selected':''} onClick={()=>go(`${adminBase}/bale`)}><Bot/>بازوی بله</button>}
     <button className={active(`${base}/settings`)?'selected':''} onClick={()=>go(`${base}/settings`)}><Settings/>تنظیمات</button>
-  </nav><button className="sidebar-logout" onClick={logout}><LogOut/>خروج</button></aside><main className="app-main"><header className="app-header"><button className="app-menu" onClick={()=>setMobile(true)}><Menu/></button><div className="app-search"><Search/><input placeholder="جست‌وجو در مهیاد..."/></div><div className="app-user"><NotificationBell/><span className="avatar profile-avatar">{user.profile_photo?<img src={photoUrl(user.profile_photo)} alt="عکس پروفایل"/>:<UserRound/>}</span><p><b>{user.full_name}</b><small>{roleLabels[user.role]}</small></p></div></header>{content}</main></div>
+  </nav><button className="sidebar-logout" onClick={logout}><LogOut/>خروج</button></aside><main className="app-main"><header className="app-header"><button className="app-menu" onClick={()=>setMobile(true)}><Menu/></button><div className="app-search"><Search/><input placeholder="جست‌وجو در مهیاد..."/></div><div className="app-user"><NotificationBell/><span className="avatar profile-avatar">{user.profile_photo?<img src={photoUrl(user.profile_photo)} alt="عکس پروفایل"/>:<UserRound/>}</span><p><b>{user.full_name}</b><small>{roleLabels[user.role]}</small></p></div></header>{content}</main><WorkspaceNavigationFeedback/></div>
+}
+
+function WorkspaceNavigationFeedback(){
+  const location=useLocation()
+  const previousPath=useRef(location.pathname)
+  const [pending,setPending]=useState(false)
+  const fetching=useIsFetching({predicate:query=>!['notification-summary','notifications','me'].includes(String(query.queryKey[0]))})
+  useLayoutEffect(()=>{
+    if(previousPath.current!==location.pathname){previousPath.current=location.pathname;setPending(true)}
+  },[location.pathname])
+  useEffect(()=>{
+    if(!pending||fetching)return
+    const timer=window.setTimeout(()=>setPending(false),300)
+    return ()=>window.clearTimeout(timer)
+  },[pending,fetching,location.pathname])
+  return pending?<LoadingOverlay message="در حال باز کردن بخش…"/>:null
 }
 
 function StudentDashboard(){const {data,isLoading}=useQuery({queryKey:['student-dashboard'],queryFn:()=>api<StudentData>('/students/dashboard')});const mutation=useMutation({mutationFn:(a:Activity)=>api(`/activities/${a.id}`,{method:'PATCH',body:JSON.stringify({status:'completed',actual_minutes:a.planned_minutes,test_count:20,note:'ثبت سریع از داشبورد',idempotency_key:crypto.randomUUID()})}),onSuccess:()=>location.reload()});if(isLoading||!data)return <Loading/>;return <div className="dashboard-page"><Welcome name={data.user.full_name} subtitle={`امروز یک قدم دیگر به هدف «${data.profile.goal}» نزدیک شو.`}/><div className="metric-grid"><Metric icon={TrendingUp} label="پیشرفت هفتگی" value={`${data.progress}٪`} tone="purple"/><Metric icon={ActivityIcon} label="زمان مطالعه" value={`${data.study_minutes} دقیقه`} tone="blue"/><Metric icon={ClipboardCheck} label="فعالیت امروز" value={`${data.activities.length} مورد`} tone="orange"/><Metric icon={BrainCircuit} label="بینش تازه" value={`${data.insights.length} مورد`} tone="green"/></div><div className="dashboard-grid"><section className="panel span-2"><PanelTitle title="برنامه این هفته" action="مشاهده برنامه"/><div className="activity-list">{data.activities.map(a=><article key={a.id}><span className={`status-dot ${a.status}`}/><div><b>{a.title}</b><small>{a.day} · {a.subject} · {a.planned_minutes} دقیقه</small></div><button disabled={a.status==='completed'||mutation.isPending} onClick={()=>mutation.mutate(a)}>{a.status==='completed'?'انجام شد':'ثبت انجام'}</button></article>)}</div></section><section className="panel"><PanelTitle title="پیشرفت کلی"/><div className="dashboard-donut" style={{'--progress':`${data.progress*3.6}deg`} as React.CSSProperties}><b>{data.progress}٪</b><span>اجرای برنامه</span></div><div className="mini-legend"><span><i className="purple"/>انجام‌شده</span><span><i/>باقی‌مانده</span></div></section><section className="panel span-2"><PanelTitle title="روند عملکرد" action="گزارش کامل"/><ChartCard/></section><section className="panel"><PanelTitle title="پیشنهادهای مهیاد"/><div className="insight-list">{data.insights.map(i=><article key={i.id}><Sparkles/><div><b>{i.title}</b><p>{i.recommendation}</p><small>اطمینان {Math.round(i.confidence*100)}٪</small></div></article>)}</div></section></div></div>}

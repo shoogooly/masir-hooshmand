@@ -9,7 +9,7 @@ export type NotificationSummary={unread_messages:number;unread_by_sender:Record<
 type NotificationItem={id:string;kind:string;title:string;body:string;link:string;read_at?:string;created_at:string}
 
 export function useNotificationSummary(){
-  return useQuery({queryKey:['notification-summary'],queryFn:()=>api<NotificationSummary>('/notifications/summary'),refetchInterval:5000})
+  return useQuery({queryKey:['notification-summary'],queryFn:()=>api<NotificationSummary>('/notifications/summary'),refetchInterval:15000})
 }
 
 export default function NotificationBell(){

@@ -10,7 +10,7 @@ export default function UniversalChatPage({user}:{user:User}){
  const qc=useQueryClient(),[selection,setSelected]=useState<Contact>(),[search,setSearch]=useState('')
  const contacts=useQuery({queryKey:['chat-contacts'],queryFn:()=>api<Contact[]>('/chat/contacts'),refetchInterval:5000})
  const selected=contacts.data?.find(item=>item.id===selection?.id)||selection
- const alerts=useQuery({queryKey:['notification-summary'],queryFn:()=>api<{unread_by_sender:Record<string,number>}>('/notifications/summary'),refetchInterval:5000})
+ const alerts=useQuery({queryKey:['notification-summary'],queryFn:()=>api<{unread_by_sender:Record<string,number>}>('/notifications/summary'),refetchInterval:15000})
  const messages=useQuery({queryKey:['universal-messages',selected?.id],queryFn:()=>api<Message[]>('/messages?counterpart_id='+selected!.id),enabled:Boolean(selected),refetchInterval:5000})
  useEffect(()=>{if(selected&&messages.data?.length)api('/messages/'+selected.id+'/read',{method:'POST'}).then(()=>{qc.invalidateQueries({queryKey:['notification-summary']});qc.invalidateQueries({queryKey:['notifications']})}).catch(()=>{})},[selected?.id,messages.data?.length,qc])
  const send=useMutation({mutationFn:(body:string)=>api('/messages',{method:'POST',body:JSON.stringify({recipient_id:selected!.id,body})}),onSuccess:()=>qc.invalidateQueries({queryKey:['universal-messages',selected?.id]})})

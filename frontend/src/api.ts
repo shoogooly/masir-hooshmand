@@ -9,11 +9,16 @@ function csrf() {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers: HeadersInit = {
+    ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+    'X-CSRF-Token': csrf(),
+    ...init.headers,
+  }
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: 'include',
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(), ...init.headers },
+    headers,
   })
   const contentType = response.headers.get('content-type') || ''
   if (!contentType.includes('application/json')) {

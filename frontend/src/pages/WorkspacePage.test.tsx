@@ -32,6 +32,7 @@ function setup(user:User=student,route='/app/student/overview'){
 test('student sidebar opens the real plan route',async()=>{
   setup()
   fireEvent.click(screen.getByRole('button',{name:/برنامه من/}))
+  expect(screen.getByText('در حال باز کردن بخش…')).toBeTruthy()
   expect(await screen.findByText('مطالعه ریاضی')).toBeTruthy()
   expect(screen.getByText('۱۴۰۵/۰۵/۲۷')).toBeTruthy()
   expect(screen.getByText(/برنامه هفتگی.*پارسا رضایی/)).toBeTruthy()

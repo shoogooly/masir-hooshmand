@@ -105,7 +105,7 @@ def previous_step(user: User = Depends(current_account), db: Session = Depends(g
     student_steps = {"terms":"profile", "selection":"terms", "advisor_confirmation":"selection",
         "advisor_assignment":"selection", "payment":"advisor_confirmation", "manager_review":"payment",
         "dual_approval":"selection", "profile_correction":"profile"}
-    advisor_steps = {"terms":"profile", "lead_review":"terms", "manager_review":"lead_review", "rejected":"profile"}
+    advisor_steps = {"terms":"profile", "lead_review":"terms", "manager_review":"terms", "rejected":"profile"}
     target = (student_steps if user.role == "student" else advisor_steps).get(user.onboarding_step)
     if not target:
         raise HTTPException(409, "مرحله قبلی در دسترس نیست")
@@ -127,9 +127,7 @@ def continue_step(user: User = Depends(current_account), db: Session = Depends(g
             raise HTTPException(409, "ابتدا مرحله فعلی را کامل کنید")
         advance_student(db, user)
     elif user.onboarding_step == "lead_review":
-        profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == user.id))
-        if not profile or profile.lead_approval_status != "approved":
-            raise HTTPException(409, "در انتظار تأیید مسئول مقطع")
+        # Existing applications may still carry the retired intermediate step.
         user.onboarding_step = "manager_review"
     else:
         raise HTTPException(409, "ابتدا مرحله فعلی را کامل کنید")
