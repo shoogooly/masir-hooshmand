@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import Activity, AdvisorAssignment, AdvisorProfile, AuditLog, Exam, Insight, Question, StudentProfile, SubscriptionPlan, User, WeeklyPlan, utcnow
@@ -74,6 +74,12 @@ def audit(db: Session, actor_id: str | None, action: str, resource_type: str, re
 
 
 def seed_database(db: Session):
+    renamed = db.execute(update(SubscriptionPlan).where(
+        SubscriptionPlan.period == "yearly",
+        SubscriptionPlan.name != "اشتراک از اکنون تا پایان سال تحصیلی",
+    ).values(name="اشتراک از اکنون تا پایان سال تحصیلی"))
+    if renamed.rowcount:
+        db.commit()
     if settings.env == "production":
         primary_admin = db.scalar(select(User).where(User.phone == "09399506609"))
         if not primary_admin:

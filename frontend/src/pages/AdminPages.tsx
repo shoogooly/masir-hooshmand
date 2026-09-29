@@ -1,3 +1,4 @@
+import { subscriptionPlanName } from '../utils/subscriptions'
 import { useMemo, useState } from 'react'
 import PasswordChange from '../components/PasswordChange'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -72,7 +73,7 @@ function AdvisorDetail({item,review,busy,canReview}:{item:AdminAdvisor;review:(s
 export function AdminFinancePage(){
   const {data,isLoading,error}=useQuery({queryKey:['admin-finance'],queryFn:()=>api<{plans:{id:string;name:string;period:string;price:number;active:boolean;features:string[]}[];orders:{id:string;user_name:string;amount:number;status:string;created_at:string}[]}>('/admin/finance')})
   if(isLoading)return <Loading/>;if(error||!data)return <ErrorBox error={error}/>
-  return <div className="content-page"><Head title="اشتراک و امور مالی" subtitle="طرح‌ها و تمام سفارش‌های ثبت‌نام دانش‌آموزان"/><div className="plan-admin-grid">{data.plans.map(plan=><article className="panel" key={plan.id}><CreditCard/><h3>{plan.name}</h3><b>{plan.price.toLocaleString('fa-IR')} تومان</b><p>{plan.features.join(' · ')}</p><Badge value={plan.active?'active':'suspended'}/></article>)}</div><div className="admin-table"><div className="admin-table-head finance"><span>دانش‌آموز</span><span>مبلغ</span><span>وضعیت</span><span>تاریخ</span></div>{data.orders.map(order=><div className="admin-table-row finance" key={order.id}><b>{order.user_name}</b><span>{order.amount.toLocaleString('fa-IR')} تومان</span><Badge value={order.status}/><span>{new Date(order.created_at).toLocaleDateString('fa-IR')}</span></div>)}</div></div>
+  return <div className="content-page"><Head title="اشتراک و امور مالی" subtitle="طرح‌ها و تمام سفارش‌های ثبت‌نام دانش‌آموزان"/><div className="plan-admin-grid">{data.plans.map(plan=><article className="panel" key={plan.id}><CreditCard/><h3>{subscriptionPlanName(plan)}</h3><b>{plan.price.toLocaleString('fa-IR')} تومان</b><p>{plan.features.join(' · ')}</p><Badge value={plan.active?'active':'suspended'}/></article>)}</div><div className="admin-table"><div className="admin-table-head finance"><span>دانش‌آموز</span><span>مبلغ</span><span>وضعیت</span><span>تاریخ</span></div>{data.orders.map(order=><div className="admin-table-row finance" key={order.id}><b>{order.user_name}</b><span>{order.amount.toLocaleString('fa-IR')} تومان</span><Badge value={order.status}/><span>{new Date(order.created_at).toLocaleDateString('fa-IR')}</span></div>)}</div></div>
 }
 
 export function AdminAuditsPage(){
