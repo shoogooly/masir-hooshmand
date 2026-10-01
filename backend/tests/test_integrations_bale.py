@@ -5,7 +5,7 @@ from app.main import app
 from app.db.session import SessionLocal
 from app.models import BaleAccountLink, OTPChallenge, Order, SiteSetting, Subscription, SubscriptionPlan, User
 from app.core.security import hash_password
-from app import integration_service, bale_service
+from app import integration_recovery, integration_service, bale_service
 from app.integration_recovery import run as recover_integrations
 
 def admin(client):
@@ -14,7 +14,7 @@ def admin(client):
     return {"X-CSRF-Token":result.json()["data"]["csrf_token"]}
 
 class Reply:
-    def __init__(self,data):self._data=data;self.is_success=True
+    def __init__(self,data):self._data=data;self.is_success=True;self.status_code=200
     def json(self):return self._data
 
 def test_sms_ir_code_is_one_time_and_secrets_are_write_only(monkeypatch):
@@ -50,7 +50,24 @@ def test_sms_ir_cannot_be_enabled_without_verify_template():
         assert configured.status_code==422
         assert "Verify" in configured.json()["error"]["message"]
 
-def test_sms_and_zarinpal_settings_are_saved_independently(capsys):
+def test_sms_ir_rejection_is_shown_and_does_not_create_otp(monkeypatch):
+    monkeypatch.setattr(integration_service.httpx,"post",lambda *args,**kwargs:Reply({"status":0,"message":"قالب تأیید نشده است"}))
+    with TestClient(app) as client:
+        headers=admin(client)
+        configured=client.put("/api/v1/integrations/admin/sms",headers=headers,json={
+            "sms_enabled":True,"sms_api_key":"sms-secret","sms_template_id":"12345","sms_parameter_name":"Code"})
+        assert configured.status_code==200
+        result=client.post("/api/v1/auth/request-otp",json={"phone":"09121119999"})
+        assert result.status_code==502
+        assert "قالب تأیید نشده است" in result.json()["error"]["message"]
+        with SessionLocal() as db:
+            assert db.scalar(select(OTPChallenge).where(OTPChallenge.phone=="09121119999")) is None
+            for key in ("sms_ir_enabled","sms_ir_api_key","sms_ir_template_id","sms_ir_parameter_name"):
+                row=db.get(SiteSetting,key)
+                if row:db.delete(row)
+            db.commit()
+
+def test_sms_and_zarinpal_settings_are_saved_independently(capsys,monkeypatch):
     with TestClient(app) as client:
         headers=admin(client)
         sms=client.put("/api/v1/integrations/admin/sms",headers=headers,json={
@@ -66,6 +83,11 @@ def test_sms_and_zarinpal_settings_are_saved_independently(capsys):
         with SessionLocal() as db:
             recover_integrations(db,enable_sms=True,enable_zarinpal=True)
             assert db.get(SiteSetting,"sms_ir_enabled").value=="true"
+            sent=[]
+            monkeypatch.setattr(integration_recovery,"send_otp",lambda db,phone,purpose:sent.append((phone,purpose)))
+            recover_integrations(db,sms_template="67890",sms_parameter="CODE",send_admin_code=True)
+            assert db.get(SiteSetting,"sms_ir_template_id").value=="67890"
+            assert sent==[("09399506609","staff")]
             assert "sms-secret" not in capsys.readouterr().out
             for key in ("sms_ir_enabled","sms_ir_api_key","sms_ir_template_id","sms_ir_parameter_name",
                         "zarinpal_enabled","zarinpal_merchant_id","zarinpal_sandbox","site_public_url"):
