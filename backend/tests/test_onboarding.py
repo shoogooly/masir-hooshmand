@@ -98,7 +98,7 @@ def test_password_registration_and_student_steps():
             approval_path = f"/api/v1/admin/students/{student_id}/registration-approval"
             assert admin.patch(approval_path, headers=admin_headers, json={"status":"approved"}).status_code == 409
             assert "payment" not in client.get("/api/v1/onboarding/status").json()["data"]
-            assert decide(advisor,advisor_data["csrf_token"],student_id,"approved").status_code == 200
+            assert admin.patch(approval_path, headers=admin_headers, json={"status":"approved","approve_as_advisor":True}).status_code == 200
             status = client.get("/api/v1/onboarding/status").json()["data"]
             assert status["step"] == "payment"
             payment = status["payment"]
@@ -110,15 +110,9 @@ def test_password_registration_and_student_steps():
             payment = client.get("/api/v1/onboarding/status").json()["data"]["payment"]
             paid = client.post("/api/v1/payments/callback",json={"order_id":payment["order_id"],"signature":payment["signature"],"success":True})
             assert paid.status_code == 200
-            assert client.get("/api/v1/onboarding/status").json()["data"]["step"] == "manager_review"
-            assert client.post("/api/v1/onboarding/back",headers={"X-CSRF-Token":csrf}).status_code == 200
-            status = client.get("/api/v1/onboarding/status").json()["data"]
-            assert status["paid"] is True and "payment" not in status
-            assert admin.patch(approval_path,headers=admin_headers,json={"status":"approved"}).status_code == 409
-            assert client.post("/api/v1/onboarding/continue",headers={"X-CSRF-Token":csrf}).status_code == 200
-            approval = admin.patch(approval_path,headers=admin_headers,json={"status":"approved","note":"پرونده کامل است"})
-            assert approval.status_code == 200
-            assert approval.json()["data"]["status"] == "active"
+            assert paid.json()["data"]["user_status"] == "active"
+            assert client.get("/api/v1/onboarding/status").json()["data"]["step"] == "completed"
+            assert admin.patch(approval_path,headers=admin_headers,json={"status":"approved","approve_as_advisor":True}).status_code == 409
 
         overview = client.get("/api/v1/students/subscription-overview")
         assert overview.status_code == 200

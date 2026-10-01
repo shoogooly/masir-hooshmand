@@ -74,6 +74,10 @@ def test_zarinpal_amount_authority_and_server_side_verification(monkeypatch):
         with SessionLocal() as db:
             assert db.get(Order,order_id).status=="paid"
             assert db.scalar(select(Subscription).where(Subscription.order_id==order_id))
+            integration_service.set_value(db,"zarinpal_sandbox","false")
+            production=integration_service.create_zarinpal(db,db.get(Order,order_id),db.get(User,login.json()["data"]["user"]["id"]))
+            assert calls[-1][0]=="https://api.zarinpal.com/pg/v4/payment/request.json"
+            assert production["redirect_url"].startswith("https://www.zarinpal.com/pg/StartPay/")
             for key in ("zarinpal_enabled","zarinpal_merchant_id","zarinpal_sandbox","site_public_url"): db.delete(db.get(SiteSetting,key))
             db.commit()
 

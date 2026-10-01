@@ -573,6 +573,10 @@ def onboarding_status(user: User = Depends(current_account), db: Session = Depen
     if user.role == "student":
         profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
         order = latest_order(db, user.id)
+        if user.onboarding_step == "manager_review" and profile and profile.advisor_approval_status == "approved":
+            advance_student(db, user, profile)
+            db.commit()
+            data.update(user=user_dict(user), step=user.onboarding_step)
         if user.onboarding_step == "dual_approval" or (user.onboarding_step == "payment" and profile and profile.advisor_approval_status != "approved"):
             if profile and profile.advisor_approval_status == "rejected":
                 user.status, user.onboarding_step = "onboarding_selection", "selection"
@@ -1158,8 +1162,9 @@ def create_order(payload: OrderCreate, user: User = Depends(current_account), db
     if not plan or not plan.active or plan.period == "referral_free": raise HTTPException(404, "پلن فعال نیست")
     order = Order(user_id=user.id, plan_id=plan.id, amount=(plan.referral_price or plan.price) if user.referred_by_advisor_id else plan.price, idempotency_key=payload.idempotency_key)
     db.add(order); db.flush()
-    payment = create_zarinpal(db, order, user) if zarinpal_ready(db) else payment_provider.create(order.id, order.amount)
-    if not zarinpal_ready(db): order.provider_reference = payment["signature"]
+    real_gateway = zarinpal_ready(db) or settings.env not in {"development", "test"}
+    payment = create_zarinpal(db, order, user) if real_gateway else payment_provider.create(order.id, order.amount)
+    if not real_gateway: order.provider_reference = payment["signature"]
     audit(db, user.id, "payment.order_created", "order", order.id, after={"amount": order.amount}); db.commit(); return ok({"order_id": order.id, **payment})
 
 
@@ -1170,8 +1175,9 @@ def start_payment(payload: PaymentStart, user: User = Depends(current_account), 
     if order.status not in {"pending","failed"}: raise HTTPException(409,"این سفارش قابل پرداخت نیست")
     plan=db.get(SubscriptionPlan,order.plan_id)
     if not plan or not plan.active or plan.period == "referral_free": raise HTTPException(409,"این طرح فعلاً در دسترس نیست")
-    payment=create_zarinpal(db,order,user) if zarinpal_ready(db) else payment_provider.create(order.id,order.amount)
-    if not zarinpal_ready(db):order.provider_reference=payment["signature"]
+    real_gateway=zarinpal_ready(db) or settings.env not in {"development", "test"}
+    payment=create_zarinpal(db,order,user) if real_gateway else payment_provider.create(order.id,order.amount)
+    if not real_gateway:order.provider_reference=payment["signature"]
     order.status="pending";db.commit();return ok({"order_id":order.id,**payment})
 
 
@@ -1209,7 +1215,10 @@ def zarinpal_callback(order_id:str,Authority:str="",Status:str="",db:Session=Dep
 
 @router.post("/payments/callback")
 def payment_callback(payload: PaymentCallback, db: Session = Depends(get_db)):
-    if zarinpal_ready(db): raise HTTPException(409,"تأیید پرداخت واقعی فقط از مسیر امن زرین‌پال انجام می‌شود")
+    if zarinpal_ready(db):
+        raise HTTPException(409,"تأیید پرداخت واقعی فقط از مسیر امن زرین‌پال انجام می‌شود")
+    if settings.env not in {"development", "test"}:
+        raise HTTPException(503,"درگاه زرین‌پال فعال نیست؛ پرداخت آزمایشی در سایت اصلی مجاز نیست")
     order = db.get(Order, payload.order_id)
     if not order:
         raise HTTPException(404, "سفارش یافت نشد")

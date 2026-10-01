@@ -105,7 +105,15 @@ def verify_otp(db,phone,code,purpose):
  row.consumed_at=utcnow();db.flush();return True
 
 def zarinpal_ready(db):return get(db,"zarinpal_enabled","false")=="true" and bool(get(db,"zarinpal_merchant"))
-def _zarinpal_base(db):return "https://sandbox.zarinpal.com" if get(db,"zarinpal_sandbox","false")=="true" else "https://payment.zarinpal.com"
+def _zarinpal_api_base(db):return "https://sandbox.zarinpal.com" if get(db,"zarinpal_sandbox","false")=="true" else "https://api.zarinpal.com"
+def _zarinpal_payment_base(db):return "https://sandbox.zarinpal.com" if get(db,"zarinpal_sandbox","false")=="true" else "https://www.zarinpal.com"
+def _zarinpal_error(body):
+ errors=body.get("errors") if isinstance(body,dict) else None
+ if isinstance(errors,dict):
+  code=errors.get("code")
+  message=errors.get("message") or "درخواست زرین‌پال رد شد"
+  return f"زرین‌پال: {message}" + (f" (کد {code})" if code is not None else "")
+ return "پاسخ نامعتبر از زرین‌پال دریافت شد"
 def create_zarinpal(db,order,user):
  if not zarinpal_ready(db):
   if settings.env in {"development","test"}:return None
@@ -116,18 +124,26 @@ def create_zarinpal(db,order,user):
  payload={"merchant_id":merchant,"amount":order.amount*10,"currency":"IRR","description":"پرداخت خدمات مهیاد",
    "callback_url":callback,"metadata":{"mobile":user.phone,"order_id":order.id}}
  try:
-  response=httpx.post(_zarinpal_base(db)+"/pg/v4/payment/request.json",json=payload,timeout=20);body=response.json()
- except (httpx.HTTPError,ValueError) as exc:raise HTTPException(502,"ارتباط با زرین‌پال برقرار نشد") from exc
- data=body.get("data") or {}
- if not response.is_success or data.get("code")!=100 or not data.get("authority"):raise HTTPException(502,(body.get("errors") or {}).get("message","ایجاد تراکنش زرین‌پال ناموفق بود"))
+  response=httpx.post(_zarinpal_api_base(db)+"/pg/v4/payment/request.json",json=payload,timeout=10);body=response.json()
+ except (httpx.HTTPError,ValueError) as exc:
+  logger.exception("Zarinpal payment request failed for order %s",order.id)
+  raise HTTPException(502,"ارتباط با API زرین‌پال برقرار نشد؛ لطفاً دوباره تلاش کنید") from exc
+ data=body.get("data") if isinstance(body,dict) else None
+ data=data if isinstance(data,dict) else {}
+ if not response.is_success or data.get("code")!=100 or not data.get("authority"):
+  logger.warning("Zarinpal rejected payment request for order %s: %s",order.id,_zarinpal_error(body))
+  raise HTTPException(502,_zarinpal_error(body))
  order.provider_reference=data["authority"];db.flush()
- return {"redirect_url":_zarinpal_base(db)+"/pg/StartPay/"+data["authority"],"authority":data["authority"],"amount":order.amount}
+ return {"redirect_url":_zarinpal_payment_base(db)+"/pg/StartPay/"+data["authority"],"authority":data["authority"],"amount":order.amount}
 def verify_zarinpal(db,order,authority):
  if not zarinpal_ready(db):return False,None
  if not order.provider_reference or not hmac.compare_digest(order.provider_reference,authority):return False,None
  payload={"merchant_id":get_secret(db,"zarinpal_merchant"),"amount":order.amount*10,"authority":authority}
  try:
-  response=httpx.post(_zarinpal_base(db)+"/pg/v4/payment/verify.json",json=payload,timeout=20);body=response.json()
- except (httpx.HTTPError,ValueError) as exc:raise HTTPException(502,"اعتبارسنجی پرداخت زرین‌پال ناموفق بود") from exc
- data=body.get("data") or {};code=data.get("code")
+  response=httpx.post(_zarinpal_api_base(db)+"/pg/v4/payment/verify.json",json=payload,timeout=10);body=response.json()
+ except (httpx.HTTPError,ValueError) as exc:
+  logger.exception("Zarinpal verification failed for order %s",order.id)
+  raise HTTPException(502,"اعتبارسنجی پرداخت زرین‌پال ناموفق بود") from exc
+ data=body.get("data") if isinstance(body,dict) else None
+ data=data if isinstance(data,dict) else {};code=data.get("code")
  return code in {100,101},str(data.get("ref_id") or "")

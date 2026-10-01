@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.chat_access import chat_locked, request_day
@@ -229,35 +229,32 @@ def admin_student_approval(student_id: str, payload: StudentApprovalUpdate, admi
     profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student_id))
     if not student or student.role != "student" or not profile:
         raise HTTPException(404, "پرونده دانش‌آموز یافت نشد")
-    if student.status != "active":
-        if not paid_registration(db, student.id) or profile.advisor_approval_status != "approved" or student.onboarding_step not in {"manager_review", "dual_approval"}:
-            raise HTTPException(409, "ابتدا تأیید مشاور و پرداخت باید تکمیل شود")
-        if payload.approve_as_advisor:
-            raise HTTPException(409, "تأیید مشاور باید توسط خود مشاور انجام شود")
-    if payload.status == "rejected" and not payload.note.strip():
-        raise HTTPException(422, "برای رد پرونده دلیل را وارد کنید")
-    profile.admin_approval_status = payload.status
-    profile.admin_reviewed_by = admin.id
-    profile.admin_reviewed_at = utcnow()
+    if not payload.approve_as_advisor or payload.status != "approved":
+        raise HTTPException(409, "تأیید مدیر حذف شده است؛ از تأیید به جای مشاور استفاده کنید")
+    if student.status == "active" or student.onboarding_step not in {"advisor_confirmation", "advisor_assignment", "dual_approval"}:
+        raise HTTPException(409, "دانش‌آموز در مرحله تأیید مشاور نیست")
+    assignment = db.scalar(select(AdvisorAssignment).where(
+        AdvisorAssignment.student_id == student.id, AdvisorAssignment.approval_status == "pending"
+    ).order_by(AdvisorAssignment.updated_at.desc()))
+    if not assignment or assignment.advisor_id != profile.preferred_advisor_id:
+        raise HTTPException(409, "ابتدا یک مشاور به دانش‌آموز تخصیص دهید")
+    advisor = db.get(User, assignment.advisor_id)
+    advisor_profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == assignment.advisor_id))
+    if not advisor or advisor.role != "advisor" or advisor.status != "active" or not advisor_profile or advisor_profile.approval_status != "approved":
+        raise HTTPException(409, "مشاور انتخاب‌شده فعال نیست")
+    active_count = db.scalar(select(func.count(AdvisorAssignment.id)).where(
+        AdvisorAssignment.advisor_id == advisor.id, AdvisorAssignment.active.is_(True))) or 0
+    if active_count >= advisor_profile.support_capacity:
+        raise HTTPException(409, "ظرفیت این مشاور تکمیل است")
+    assignment.active = True
+    assignment.approval_status = "approved"
+    assignment.decided_at = utcnow()
+    profile.advisor_approval_status = "approved"
+    profile.advisor_reviewed_by = admin.id
+    profile.advisor_reviewed_at = utcnow()
     profile.approval_note = payload.note.strip()
-    if payload.approve_as_advisor:
-        assignment = db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.student_id == student.id).order_by(AdvisorAssignment.updated_at.desc()))
-        if not assignment:
-            raise HTTPException(409, "ابتدا یک مشاور به دانش‌آموز تخصیص دهید")
-        assignment.active = True
-        assignment.approval_status = payload.status
-        assignment.decided_at = utcnow()
-        profile.advisor_approval_status = payload.status
-        profile.advisor_reviewed_by = admin.id
-        profile.advisor_reviewed_at = utcnow()
-    if payload.status == "rejected":
-        student.status = "onboarding_profile"
-        student.onboarding_step = "profile_correction"
-        profile.registration_review_status = "rejected"
-        profile.registration_review_note = payload.note.strip()
-    else:
-        finalize_student_registration(db, student, profile)
-    audit(db, admin.id, "admin.student_registration_approval", "student_profile", profile.id,
-        after={"status": payload.status, "approve_as_advisor": payload.approve_as_advisor}, reason=payload.note)
+    finalize_student_registration(db, student, profile)
+    audit(db, admin.id, "admin.student_advisor_approval", "student_profile", profile.id,
+        after={"advisor_id": advisor.id, "onboarding_step": student.onboarding_step}, reason=payload.note)
     db.commit()
     return ok(basic(student) | {"profile": {"admin_approval_status": profile.admin_approval_status, "advisor_approval_status": profile.advisor_approval_status}})

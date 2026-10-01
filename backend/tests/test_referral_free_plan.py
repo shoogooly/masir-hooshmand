@@ -59,9 +59,6 @@ def test_free_registration_skips_gateway_and_preserves_selected_duration(access,
         plan.duration_days, plan.active = 25, False
         profile.advisor_approval_status = "approved"
         assignment.active, assignment.approval_status = True, "approved"
-        assert not advance_student(db, student, profile)
-        assert student.onboarding_step == "manager_review"
-        profile.admin_approval_status = "approved"
         assert advance_student(db, student, profile)
         assert student.status == "active"
         assert (subscription.expires_at - subscription.starts_at).days == 12

@@ -87,9 +87,6 @@ def advance_student(db, student, profile=None):
         order.status = "pending"
         student.status, student.onboarding_step = "pending_payment", "payment"
         return False
-    if profile.admin_approval_status != "approved":
-        student.status, student.onboarding_step = "pending_approval", "manager_review"
-        return False
     if paid.status == "pending_activation":
         plan = db.get(SubscriptionPlan, paid.plan_id)
         days = 365 if plan.period == "yearly" else 90 if plan.period in {"quarterly", "three_months"} else 30
@@ -117,7 +114,7 @@ def previous_step(user: User = Depends(current_account), db: Session = Depends(g
         if profile:
             reset_student_reviews(db, user, profile)
     user.onboarding_step = target
-    user.status = "onboarding_profile" if target in {"profile","terms"} else "onboarding_selection" if target == "selection" else "pending_approval"
+    user.status = "onboarding_profile" if target in {"profile","terms"} else "onboarding_selection" if target == "selection" else "pending_assignment" if target == "advisor_confirmation" else "pending_payment"
     audit(db, user.id, "onboarding.previous_step", "user", user.id, after={"step": target})
     db.commit()
     return {"success":True, "data":{"next_step":target}, "meta":{}}
