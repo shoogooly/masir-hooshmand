@@ -131,6 +131,8 @@ def _zarinpal_error(body):
  errors=body.get("errors") if isinstance(body,dict) else None
  if isinstance(errors,dict):
   code=errors.get("code")
+  if str(code)=="-10":
+   return "زرین‌پال IP خروجی سرور یا Merchant ID این درگاه را نپذیرفت (کد -۱۰). مدیر باید IP ثبت‌شده و Merchant ID را در پنل زرین‌پال بررسی کند."
   message=errors.get("message") or "درخواست زرین‌پال رد شد"
   return f"زرین‌پال: {message}" + (f" (کد {code})" if code is not None else "")
  return "پاسخ نامعتبر از زرین‌پال دریافت شد"
@@ -152,7 +154,7 @@ def create_zarinpal(db,order,user):
  data=data if isinstance(data,dict) else {}
  if not response.is_success or data.get("code")!=100 or not data.get("authority"):
   logger.warning("Zarinpal rejected payment request for order %s: %s",order.id,_zarinpal_error(body))
-  raise HTTPException(502,_zarinpal_error(body))
+  raise HTTPException(424,_zarinpal_error(body))
  order.provider_reference=data["authority"];db.flush()
  return {"redirect_url":_zarinpal_payment_base(db)+"/pg/StartPay/"+data["authority"],"authority":data["authority"],"amount":order.amount}
 def verify_zarinpal(db,order,authority):

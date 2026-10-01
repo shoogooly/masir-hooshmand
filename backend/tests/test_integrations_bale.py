@@ -166,6 +166,32 @@ def test_zarinpal_amount_authority_and_server_side_verification(monkeypatch):
             for key in ("zarinpal_enabled","zarinpal_merchant_id","zarinpal_sandbox","site_public_url"): db.delete(db.get(SiteSetting,key))
             db.commit()
 
+def test_zarinpal_invalid_terminal_ip_is_explained_to_payer(monkeypatch):
+    def reject(*_args, **_kwargs):
+        result=Reply({"data":{},"errors":{"code":-10,"message":"Terminal ip not valid."}})
+        result.is_success=False
+        result.status_code=400
+        return result
+    monkeypatch.setattr(integration_service.httpx,"post",reject)
+    with TestClient(app) as client:
+        headers=admin(client)
+        assert client.put("/api/v1/integrations/admin/zarinpal",headers=headers,json={
+            "zarinpal_enabled":True,"zarinpal_merchant_id":"merchant-test","zarinpal_sandbox":False,
+            "public_url":"https://example.test"}).status_code==200
+        try:
+            login=client.post("/api/v1/auth/verify-otp",json={"phone":"09120000001","code":"123456","role":"student"})
+            csrf={"X-CSRF-Token":login.json()["data"]["csrf_token"]}
+            with SessionLocal() as db:plan=db.scalar(select(SubscriptionPlan).where(SubscriptionPlan.active.is_(True)))
+            result=client.post("/api/v1/payments/orders",headers=csrf,json={"plan_id":plan.id,"idempotency_key":"zarinpal-invalid-ip"})
+            assert result.status_code==424
+            assert "IP خروجی سرور" in result.json()["error"]["message"]
+        finally:
+            with SessionLocal() as db:
+                for key in ("zarinpal_enabled","zarinpal_merchant_id","zarinpal_sandbox","site_public_url"):
+                    row=db.get(SiteSetting,key)
+                    if row:db.delete(row)
+                db.commit()
+
 def test_bale_password_is_deleted_and_never_stored(monkeypatch):
     calls=[]
     monkeypatch.setattr(bale_service,"api",lambda db,method,payload=None:calls.append((method,payload)) or True)
