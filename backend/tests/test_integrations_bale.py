@@ -1,9 +1,10 @@
 from threading import Event
+from datetime import timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from app.main import app
 from app.db.session import SessionLocal
-from app.models import BaleAccountLink, OTPChallenge, Order, SiteSetting, Subscription, SubscriptionPlan, User
+from app.models import BaleAccountLink, OTPChallenge, Order, SiteSetting, Subscription, SubscriptionPlan, User, utcnow
 from app.core.security import hash_password
 from app import integration_recovery, integration_service, bale_service
 from app.integration_recovery import run as recover_integrations
@@ -66,6 +67,44 @@ def test_sms_ir_rejection_is_shown_and_does_not_create_otp(monkeypatch):
                 row=db.get(SiteSetting,key)
                 if row:db.delete(row)
             db.commit()
+
+def test_temporary_admin_code_only_recovers_primary_admin_and_can_be_disabled(monkeypatch):
+    def rejected(*_args, **_kwargs):
+        return Reply({"status":10,"message":"Invalid API key"})
+    monkeypatch.setattr(integration_service.httpx,"post",rejected)
+    with TestClient(app) as client:
+        headers=admin(client)
+        assert client.put("/api/v1/integrations/admin/sms",headers=headers,json={
+            "sms_enabled":True,"sms_api_key":"bad-key","sms_template_id":"380926","sms_parameter_name":"Code"}).status_code==200
+        with SessionLocal() as db:
+            recover_integrations(db,enable_temporary_admin_code=True)
+            for challenge in db.scalars(select(OTPChallenge).where(OTPChallenge.phone=="09399506609")).all():
+                db.delete(challenge)
+            db.commit()
+        monkeypatch.setattr(integration_service.settings,"env","production")
+        try:
+            assert client.post("/api/v1/auth/request-otp",json={"phone":"09121119999"}).status_code==502
+            requested=client.post("/api/v1/auth/request-otp",json={"phone":"09399506609"})
+            assert requested.status_code==200 and "dev_code" not in requested.text
+            monkeypatch.setattr(integration_service.settings,"env","development")
+            login=client.post("/api/v1/auth/staff-login",json={"phone":"09399506609","code":"123456"})
+            assert login.status_code==200
+            headers={"X-CSRF-Token":login.json()["data"]["csrf_token"]}
+            assert client.post("/api/v1/auth/staff-login",json={"phone":"09399506609","code":"123456"}).status_code==400
+            assert client.get("/api/v1/integrations/admin/settings").json()["data"]["temporary_admin_code_active"] is True
+            with SessionLocal() as db:
+                # A code issued shortly before disabling must stop working immediately.
+                db.add(OTPChallenge(phone="09399506609",purpose="staff",code_hash=integration_service._otp_hash("09399506609","staff","123456"),expires_at=utcnow()+timedelta(minutes=2)))
+                db.commit()
+            disabled=client.post("/api/v1/integrations/admin/temporary-code/disable",headers=headers)
+            assert disabled.status_code==200 and disabled.json()["data"]["temporary_admin_code_active"] is False
+            assert client.post("/api/v1/auth/staff-login",json={"phone":"09399506609","code":"123456"}).status_code==400
+        finally:
+            with SessionLocal() as db:
+                for key in ("sms_ir_enabled","sms_ir_api_key","sms_ir_template_id","sms_ir_parameter_name",integration_service.TEMP_ADMIN_OTP_KEY):
+                    row=db.get(SiteSetting,key)
+                    if row:db.delete(row)
+                db.commit()
 
 def test_sms_and_zarinpal_settings_are_saved_independently(capsys,monkeypatch):
     with TestClient(app) as client:

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CreditCard, MessageSquareText, Save, ShieldCheck } from 'lucide-react'
 import { api } from '../api'
 
-type Data = {sms_enabled:boolean;sms_key_configured:boolean;sms_template:string;sms_parameter:string;zarinpal_enabled:boolean;zarinpal_merchant_configured:boolean;zarinpal_sandbox:boolean;public_url:string}
+type Data = {sms_enabled:boolean;sms_key_configured:boolean;sms_template:string;sms_parameter:string;temporary_admin_code_active:boolean;zarinpal_enabled:boolean;zarinpal_merchant_configured:boolean;zarinpal_sandbox:boolean;public_url:string}
 
 export default function AdminIntegrationsPage(){
  const qc=useQueryClient()
@@ -14,6 +14,7 @@ export default function AdminIntegrationsPage(){
  const [zarinpalMessage,setZarinpalMessage]=useState('')
  useEffect(()=>{if(query.data){setSms(current=>({...current,sms_enabled:query.data!.sms_enabled,sms_template_id:query.data!.sms_template,sms_parameter_name:query.data!.sms_parameter||'Code'}));setZarinpal(current=>({...current,zarinpal_enabled:query.data!.zarinpal_enabled,zarinpal_sandbox:query.data!.zarinpal_sandbox,public_url:query.data!.public_url}))}},[query.data])
  const saveSms=useMutation({mutationFn:()=>api<Data>('/integrations/admin/sms',{method:'PUT',body:JSON.stringify(sms)}),onSuccess:data=>{qc.setQueryData(['integration-settings'],data);setSms(current=>({...current,sms_api_key:''}));setSmsMessage('تنظیمات پیامک ذخیره شد.')},onError:error=>setSmsMessage((error as Error).message)})
+ const disableTemporaryCode=useMutation({mutationFn:()=>api<Data>('/integrations/admin/temporary-code/disable',{method:'POST'}),onSuccess:data=>{qc.setQueryData(['integration-settings'],data);setSmsMessage('کد ورود موقت غیرفعال شد.')},onError:error=>setSmsMessage((error as Error).message)})
  const saveZarinpal=useMutation({mutationFn:()=>api<Data>('/integrations/admin/zarinpal',{method:'PUT',body:JSON.stringify(zarinpal)}),onSuccess:data=>{qc.setQueryData(['integration-settings'],data);setZarinpal(current=>({...current,zarinpal_merchant_id:''}));setZarinpalMessage('تنظیمات زرین‌پال ذخیره شد.')},onError:error=>setZarinpalMessage((error as Error).message)})
  if(query.isLoading)return <div className="page-state">در حال دریافت تنظیمات…</div>
  if(query.isError||!query.data)return <div className="error-box">دریافت تنظیمات ناموفق بود. <button className="btn btn-outline" onClick={()=>void query.refetch()}>تلاش دوباره</button></div>
@@ -26,6 +27,8 @@ export default function AdminIntegrationsPage(){
    <small>شناسه قالب و نام پارامتر باید مطابق قالب Verify در SMS.ir باشند.</small>
    {smsMessage&&<p className="bale-message" role="status">{smsMessage}</p>}
    <button className="btn btn-primary" disabled={saveSms.isPending} onClick={()=>saveSms.mutate()}><Save/>ذخیره تنظیمات پیامک</button>
+   <small>{query.data.temporary_admin_code_active?'کد ورود موقت مدیر فعال است و خودکار منقضی می‌شود.':'کد ورود موقت مدیر غیرفعال است.'}</small>
+   <button className="btn btn-outline" disabled={!query.data.temporary_admin_code_active||disableTemporaryCode.isPending} onClick={()=>disableTemporaryCode.mutate()}>غیرفعال کردن کد ورود موقت</button>
   </section>
   <section className="panel integration-card"><header><CreditCard/><div><h2>زرین‌پال</h2><small>{query.data.zarinpal_merchant_configured?'مرچنت ذخیره شده':'مرچنت تنظیم نشده'}</small></div></header>
    <label className="bale-switch"><input type="checkbox" checked={zarinpal.zarinpal_enabled} onChange={e=>setZarinpal({...zarinpal,zarinpal_enabled:e.target.checked})}/>فعال‌سازی پرداخت واقعی</label>

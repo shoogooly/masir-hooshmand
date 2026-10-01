@@ -3,7 +3,7 @@ from pydantic import BaseModel,Field
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.security import roles
-from app.integration_service import get_secret,set_value,status
+from app.integration_service import TEMP_ADMIN_OTP_KEY,get_secret,set_value,status
 from app.models import User
 router=APIRouter(prefix="/integrations",tags=["integrations"])
 def ok(data=None):return {"success":True,"data":data,"meta":{}}
@@ -28,6 +28,11 @@ class ZarinpalSettings(BaseModel):
  public_url:str=Field(default="",max_length=300)
 @router.get("/admin/settings")
 def read(db:Session=Depends(get_db),_user:User=Depends(roles("super_admin"))):return ok(status(db))
+@router.post("/admin/temporary-code/disable")
+def disable_temporary_code(db:Session=Depends(get_db),user:User=Depends(roles("super_admin"))):
+ set_value(db,TEMP_ADMIN_OTP_KEY,"",user.id)
+ db.commit()
+ return ok(status(db))
 @router.put("/admin/sms")
 def update_sms(body:SmsSettings,db:Session=Depends(get_db),user:User=Depends(roles("super_admin"))):
  template=body.sms_template_id.strip();parameter=body.sms_parameter_name.strip() or "Code"

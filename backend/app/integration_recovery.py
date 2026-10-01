@@ -3,14 +3,15 @@
 Never prints credentials, connection strings, or OTPs.
 """
 import argparse
+from datetime import timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from app.db.session import SessionLocal
 from app.core.config import settings
-from app.integration_service import get, get_secret, send_otp, set_value
-from app.models import User
+from app.integration_service import TEMP_ADMIN_OTP_KEY, get, get_secret, send_otp, set_value
+from app.models import User, utcnow
 
 
 def credential_readable(db, key):
@@ -20,7 +21,12 @@ def credential_readable(db, key):
         return False
 
 
-def run(db, enable_sms=False, enable_zarinpal=False, sms_template=None, sms_parameter=None, send_admin_code=False):
+def run(db, enable_sms=False, enable_zarinpal=False, sms_template=None, sms_parameter=None, send_admin_code=False, enable_temporary_admin_code=False):
+    if enable_temporary_admin_code:
+        expires=utcnow()+timedelta(minutes=15)
+        set_value(db,TEMP_ADMIN_OTP_KEY,expires.isoformat())
+        db.commit()
+        print(f"Temporary code 123456 enabled only for the primary admin until {expires.isoformat()} UTC. Disable it in the SMS settings after recovery.")
     if sms_template is not None:
         if not sms_template.strip().isdigit():
             raise ValueError("Verify template ID must contain only digits")
@@ -70,6 +76,7 @@ if __name__ == "__main__":
     parser.add_argument("--sms-template", help="approved SMS.ir Verify template ID")
     parser.add_argument("--sms-parameter", help="Verify template parameter name, usually Code")
     parser.add_argument("--send-admin-code", action="store_true", help="send a real, usable login code to the primary administrator")
+    parser.add_argument("--enable-temporary-admin-code", action="store_true", help="allow code 123456 for primary admin login for 15 minutes")
     args = parser.parse_args()
     with SessionLocal() as session:
-        run(session, args.enable_sms, args.enable_zarinpal, args.sms_template, args.sms_parameter, args.send_admin_code)
+        run(session, args.enable_sms, args.enable_zarinpal, args.sms_template, args.sms_parameter, args.send_admin_code, args.enable_temporary_admin_code)

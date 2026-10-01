@@ -1,6 +1,6 @@
 from __future__ import annotations
 import base64, hashlib, hmac, logging, secrets
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
@@ -15,6 +15,7 @@ KEYS={"sms_enabled":"sms_ir_enabled","sms_key":"sms_ir_api_key","sms_template":"
  "sms_parameter":"sms_ir_parameter_name","zarinpal_enabled":"zarinpal_enabled","zarinpal_merchant":"zarinpal_merchant_id",
  "zarinpal_sandbox":"zarinpal_sandbox","public_url":"site_public_url"}
 SECRET_KEYS={"sms_key","zarinpal_merchant"}
+TEMP_ADMIN_OTP_KEY="temporary_admin_otp_until"
 def _cipher():
  key=hashlib.sha256(("mahyaad-integrations-v1:"+settings.secret_key).encode()).digest()
  return Fernet(base64.urlsafe_b64encode(key))
@@ -41,11 +42,17 @@ def _bootstrap_otp_allowed(db,phone):
 def set_value(db,key,val,user_id=None):
  name=KEYS.get(key,key);row=db.get(SiteSetting,name) or SiteSetting(key=name)
  row.value=encrypt(val) if key in SECRET_KEYS and val else val;row.updated_by=user_id;row.version=(row.version or 0)+1;db.add(row)
+def temporary_admin_code_active(db,phone=None,purpose="staff"):
+ if (phone is not None and phone!=settings.bootstrap_admin_phone) or purpose!="staff":return False
+ raw=get(db,TEMP_ADMIN_OTP_KEY)
+ try:return bool(raw) and _aware(datetime.fromisoformat(raw))>utcnow()
+ except ValueError:return False
 def status(db):
  return {"sms_enabled":_sms_enabled(db),"sms_key_configured":bool(get(db,"sms_key") or settings.sms_ir_api_key.strip()),
   "sms_template":get(db,"sms_template"),"sms_parameter":get(db,"sms_parameter","Code"),
   "zarinpal_enabled":get(db,"zarinpal_enabled","false")=="true","zarinpal_merchant_configured":bool(get(db,"zarinpal_merchant")),
-  "zarinpal_sandbox":get(db,"zarinpal_sandbox","false")=="true","public_url":get(db,"public_url")}
+  "zarinpal_sandbox":get(db,"zarinpal_sandbox","false")=="true","public_url":get(db,"public_url"),
+  "temporary_admin_code_active":temporary_admin_code_active(db)}
 def _aware(value):return value if not value or value.tzinfo else value.replace(tzinfo=timezone.utc)
 def _otp_hash(phone,purpose,code):return hmac.new(settings.secret_key.encode(),f"{phone}:{purpose}:{code}".encode(),hashlib.sha256).hexdigest()
 def otp_purpose(db,phone):
@@ -77,20 +84,32 @@ def send_otp(db,phone,purpose=None):
  code=f"{secrets.randbelow(1_000_000):06d}"
  enabled=_sms_enabled(db);template=get(db,"sms_template").strip();parameter=get(db,"sms_parameter","Code") or "Code"
  delivery=None
+ recovery=temporary_admin_code_active(db,phone,purpose)
  if enabled and template:
-  api_key=_sms_api_key(db)
-  if not api_key:raise HTTPException(422,"کلید API سرویس SMS.ir در پنل مدیریت وارد نشده است")
-  delivery=(api_key,phone,code,template,parameter)
+  try:
+   api_key=_sms_api_key(db)
+   if not api_key:raise HTTPException(422,"کلید API سرویس SMS.ir در پنل مدیریت وارد نشده است")
+   delivery=(api_key,phone,code,template,parameter)
+  except HTTPException:
+   if not recovery:raise
+   code="123456"
+ elif recovery:code="123456"
  elif settings.env in {"development","test"}:code="123456"
  elif _bootstrap_otp_allowed(db,phone):code="123456"
  elif enabled:raise HTTPException(422,"شناسه قالب Verify در تنظیمات SMS.ir وارد نشده است")
  else:raise HTTPException(422,"سرویس SMS.ir توسط مدیر فعال نشده است")
  if delivery:
-  _send_sms_ir_otp(*delivery)
+  try:_send_sms_ir_otp(*delivery)
+  except HTTPException:
+   if not recovery:raise
+   logger.warning("SMS.ir delivery failed; using time-limited primary-admin recovery code")
+   code="123456"
  db.add(OTPChallenge(phone=phone,purpose=purpose,code_hash=_otp_hash(phone,purpose,code),expires_at=now+timedelta(minutes=2)))
  db.commit()
- return code if settings.env in {"development","test"} and not enabled else None
+ return code if settings.env in {"development","test"} and not enabled and not recovery else None
 def verify_otp(db,phone,code,purpose):
+ if code=="123456" and phone==settings.bootstrap_admin_phone and purpose=="staff" and db.get(SiteSetting,TEMP_ADMIN_OTP_KEY) is not None and not temporary_admin_code_active(db,phone,purpose):
+  raise HTTPException(400,"کد ورود موقت منقضی یا غیرفعال شده است")
  row=db.scalar(select(OTPChallenge).where(OTPChallenge.phone==phone,OTPChallenge.purpose==purpose,OTPChallenge.consumed_at.is_(None)).order_by(OTPChallenge.created_at.desc()))
  if not row:
   if not _sms_enabled(db):
