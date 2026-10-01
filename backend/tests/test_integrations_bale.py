@@ -6,6 +6,7 @@ from app.db.session import SessionLocal
 from app.models import BaleAccountLink, OTPChallenge, Order, SiteSetting, Subscription, SubscriptionPlan, User
 from app.core.security import hash_password
 from app import integration_service, bale_service
+from app.integration_recovery import run as recover_integrations
 
 def admin(client):
     result=client.post("/api/v1/auth/staff-login",json={"phone":"09399506609","code":"123456"})
@@ -48,6 +49,29 @@ def test_sms_ir_cannot_be_enabled_without_verify_template():
           "zarinpal_enabled":False,"zarinpal_merchant_id":"","zarinpal_sandbox":True,"public_url":"https://example.test"})
         assert configured.status_code==422
         assert "Verify" in configured.json()["error"]["message"]
+
+def test_sms_and_zarinpal_settings_are_saved_independently(capsys):
+    with TestClient(app) as client:
+        headers=admin(client)
+        sms=client.put("/api/v1/integrations/admin/sms",headers=headers,json={
+            "sms_enabled":True,"sms_api_key":"sms-secret","sms_template_id":"12345","sms_parameter_name":"Code"})
+        assert sms.status_code==200 and sms.json()["data"]["sms_enabled"] is True
+        gateway=client.put("/api/v1/integrations/admin/zarinpal",headers=headers,json={
+            "zarinpal_enabled":True,"zarinpal_merchant_id":"merchant-test","zarinpal_sandbox":True,
+            "public_url":"https://example.test"})
+        assert gateway.status_code==200 and gateway.json()["data"]["sms_enabled"] is True
+        sms=client.put("/api/v1/integrations/admin/sms",headers=headers,json={
+            "sms_enabled":False,"sms_api_key":"","sms_template_id":"12345","sms_parameter_name":"Code"})
+        assert sms.status_code==200 and sms.json()["data"]["zarinpal_enabled"] is True
+        with SessionLocal() as db:
+            recover_integrations(db,enable_sms=True,enable_zarinpal=True)
+            assert db.get(SiteSetting,"sms_ir_enabled").value=="true"
+            assert "sms-secret" not in capsys.readouterr().out
+            for key in ("sms_ir_enabled","sms_ir_api_key","sms_ir_template_id","sms_ir_parameter_name",
+                        "zarinpal_enabled","zarinpal_merchant_id","zarinpal_sandbox","site_public_url"):
+                row=db.get(SiteSetting,key)
+                if row:db.delete(row)
+            db.commit()
 
 def test_zarinpal_amount_authority_and_server_side_verification(monkeypatch):
     calls=[]
