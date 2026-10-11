@@ -20,7 +20,7 @@ test('Jalali calendar selects a birthday and accepts Persian digits',()=>{
  expect((screen.getByLabelText('تاریخ تولد') as HTMLInputElement).validity.valid).toBe(false);
 });
 const initial={full_name:'دانش آموز آزمایشی',national_code:'1234567890',birth_date:'1388/01/01',parent_name:'ولی دانش آموز',parent_phone:'09123456789',address:'نشانی کامل برای آزمایش',school:'مدرسه',major:'تجربی',goal:'پزشکی',average_grade9:19};
-function setup(advisor=false){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});return render(<QueryClientProvider client={client}>{advisor?<AdvisorProfileForm initial={{...initial,documents:[{name:'identity.pdf'},{name:'degree.pdf'}]}} refresh={()=>{}}/>:<StudentProfileForm initial={initial} refresh={()=>{}}/>}</QueryClientProvider>)}
+function setup(advisor=false){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});return render(<QueryClientProvider client={client}>{advisor?<AdvisorProfileForm initial={{...initial,profile_photo:{content_type:'image/png',content_base64:'AA=='},documents:[{name:'identity.pdf'},{name:'degree.pdf'}]}} refresh={()=>{}}/>:<StudentProfileForm initial={initial} refresh={()=>{}}/>}</QueryClientProvider>)}
 test('student back preserves fields and schedule is optional; postgraduate needs both averages',()=>{
  setup();fireEvent.click(screen.getByRole('button',{name:'مرحله بعد: سوابق تحصیلی'}));
  expect((screen.getByLabelText('شنبه زنگ 1') as HTMLInputElement).required).toBe(false);

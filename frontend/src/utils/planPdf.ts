@@ -1,3 +1,4 @@
+import type {jsPDF as PdfDocument} from 'jspdf'
 import {subjectBlockStyle} from './subjectColors'
 import {timelineWeight} from './softTimeline'
 import type { WeeklyPlan } from '../types'
@@ -11,6 +12,7 @@ const minutes=(time:string)=>{const [h,m]=time.split(':').map(Number);return h*6
 const clock=(value:number)=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(value%60).padStart(2,'0')}`
 export function timelineSegments(plan:WeeklyPlan,day:string){
  const items=plan.activities.filter(item=>item.day===day).sort((a,b)=>minutes(a.start_time)-minutes(b.start_time))
+ if(plan.plan_mode==='volume')return items.map(item=>({start:minutes(item.start_time),end:minutes(item.end_time),title:item.title,rest:false,subject:item.subject,color:item.color}))
  // Keep shared time bounds and include older activities outside the configured bounds.
  const start=Math.min(minutes(plan.day_start_time||'08:00'),...plan.activities.map(item=>minutes(item.start_time)))
  const end=Math.max(minutes(plan.day_end_time||'24:00'),...plan.activities.map(item=>minutes(item.end_time)))
@@ -29,7 +31,7 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
  const sheet=node('section','planner-pdf-sheet');sheet.dir='rtl'
  const header=node('header','print-plan-header')
  const identity=node('div','print-plan-identity')
- identity.append(node('h1','',source.querySelector('.pdf-reference-header h1')?.textContent||plan.title),node('p','',source.querySelector('.pdf-reference-header p')?.textContent||''),node('p','',`${plan.week_label} · ${plan.day_start_time||'08:00'} تا ${plan.day_end_time||'24:00'}`))
+ identity.append(node('h1','',source.querySelector('.pdf-reference-header h1')?.textContent||plan.title),node('p','',source.querySelector('.pdf-reference-header p')?.textContent||''),node('p','',plan.plan_mode==='volume'?`${plan.week_label} · برنامه حجمی`:`${plan.week_label} · ${plan.day_start_time||'08:00'} تا ${plan.day_end_time||'24:00'}`))
  header.append(identity,node('strong','print-plan-brand','مهیاد'));sheet.append(header)
  const main=node('div','print-plan-main'),table=node('div','print-plan-days')
  for(const day of plan.days){
@@ -37,14 +39,15 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
   label.append(node('b','',day.label),node('span','',day.date||''));row.append(label)
   const items=timelineSegments(plan,day.label)
   const cards=node('div','print-plan-cards')
-  cards.style.gridTemplateColumns=items.map(item=>`minmax(0,${timelineWeight(item.end-item.start)}fr)`).join(' ')
+  cards.style.gridTemplateColumns=items.map(item=>`minmax(0,${plan.plan_mode==='volume'?item.end-item.start:timelineWeight(item.end-item.start)}fr)`).join(' ')
   for(const item of items){
    const card=node('article','print-plan-card'+(item.rest?' print-plan-rest':''))
    card.dataset.minutes=String(item.end-item.start)
    if(colored&&!item.rest)Object.assign(card.style,subjectBlockStyle(item.title,item.subject,item.color))
    const text=node('div','print-plan-card-content')
    const time=node('small','')
-   time.append(node('span','',clock(item.start)),document.createTextNode(' تا '),node('span','',clock(item.end)))
+   if(plan.plan_mode==='volume')time.textContent=(item.end-item.start).toLocaleString('fa-IR')+' دقیقه'
+   else time.append(node('span','',clock(item.start)),document.createTextNode(' تا '),node('span','',clock(item.end)))
    text.append(node('p','',item.title),time)
    if(colored&&!item.rest){
     const style=subjectBlockStyle(item.title,item.subject,item.color)
@@ -59,7 +62,7 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
  main.append(table,mission);sheet.append(main,node('footer','print-plan-footer','مهیاد · برنامه هفتگی'+(colored?' · نسخه رنگی':'')))
  return sheet
 }
-export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false){
+export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false,appendTo?:PdfDocument){
  const [{default:html2canvas},{jsPDF}]=await Promise.all([import('html2canvas'),import('jspdf')])
  await document.fonts.ready
  const host=node('div','print-plan-host'),sheet=createPrintSheet(element,plan,colored)
@@ -72,7 +75,8 @@ export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=f
   const width=sheet.offsetWidth,height=sheet.scrollHeight
   const page=singlePageSize(width,height)
   const canvas=await html2canvas(sheet,{scale:3,backgroundColor:'#fff',useCORS:true,logging:false,windowWidth:1500})
-  const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:[page.width,page.height],compress:true})
+  const pdf=appendTo||new jsPDF({orientation:'landscape',unit:'pt',format:[page.width,page.height],compress:true})
+  if(appendTo)pdf.addPage([page.width,page.height],'landscape')
   const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight()
   const scale=Math.min((pw-2*page.margin)/canvas.width,(ph-2*page.margin)/canvas.height)
   pdf.addImage(canvas.toDataURL('image/png'),'PNG',(pw-canvas.width*scale)/2,(ph-canvas.height*scale)/2,canvas.width*scale,canvas.height*scale,undefined,'FAST')
@@ -103,4 +107,18 @@ export function fitPrintText(sheet:HTMLElement){
 export async function exportPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false){
  const pdf=await buildPlanPdf(element,plan,colored)
  pdf.save(`برنامه-${colored?'رنگی-':'ساده-'}${plan.week_label.replace(/[\\/:*?"<>|]/g,'-')}.pdf`)
+}
+
+
+export async function exportArchivedPlans(plans:WeeklyPlan[],studentName:string,advisorName:string,colored=true){
+ const source=document.createElement('div'),head=document.createElement('header'),title=document.createElement('h1'),advisor=document.createElement('p')
+ head.className='pdf-reference-header';title.textContent='برنامه هفتگی '+studentName;advisor.textContent='مشاور و برنامه‌ریز: '+advisorName;head.append(title,advisor);source.append(head)
+ let pdf:PdfDocument|undefined
+ for(const plan of plans)pdf=await buildPlanPdf(source,plan,colored,pdf)
+ if(pdf){
+  const filename=plans.length===1?`mahyaad-plan-${plans[0].id}.pdf`:'mahyaad-plan-history.pdf'
+  const blob=pdf.output('blob')
+  pdf.save(filename)
+  return {blob,filename}
+ }
 }

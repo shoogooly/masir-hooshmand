@@ -1,7 +1,7 @@
 import '../styles/onboarding-flow.css'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Download, MessageSquare, Printer, Search, ShieldCheck, UserPlus, XCircle } from 'lucide-react'
+import { CheckCircle2, Download, MessageSquare, Printer, Search, ShieldCheck, Trash2, UserPlus, XCircle } from 'lucide-react'
 import { api } from '../api'
 import type { AdminAdvisor, Message, Profile, User, WeeklyPlan } from '../types'
 import { ChatPanel } from './OperationalPages'
@@ -17,11 +17,13 @@ function Info({label,value}:{label:string;value:unknown}){return <p><small>{labe
 
 
 export function ProgramsAccessPage({user}:{user:User}){
+  const qc=useQueryClient()
+  const remove=useMutation({mutationFn:(id:string)=>api(`/plans/${id}?confirmed=true`,{method:'DELETE'}),onSuccess:()=>{void qc.invalidateQueries({queryKey:['management-plans']});void qc.invalidateQueries({queryKey:['plans']});void qc.invalidateQueries({queryKey:['books']})}})
   const [search,setSearch]=useState('');const {data:plans=[],isLoading,error}=useQuery({queryKey:['management-plans'],queryFn:()=>api<WeeklyPlan[]>('/plans')});const {data:students=[]}=useQuery({queryKey:['management-students'],queryFn:()=>api<(User&{profile:Profile;advisor?:User})[]>('/management/students')})
   const {data:access}=useQuery({queryKey:['management-access'],queryFn:()=>api<{levels:Record<string,string>}>('/management/access')})
   const names=Object.fromEntries(students.map(item=>[item.id,item.full_name]));const rows=useMemo(()=>plans.filter(plan=>(names[plan.student_id]||'').includes(search)||plan.week_label.includes(search)||plan.title.includes(search)),[plans,names,search])
   if(isLoading)return <State/>;if(error)return <ErrorBox error={error}/>
-  return <div className="content-page"><Head title="برنامه‌های دانش‌آموزان" text="مشاهده و چاپ برنامه‌های مجاز بر اساس سطح دسترسی"/>{access?.levels.students==='edit'&&<StudentRegistrationReviews students={students}/>}<div className="list-search"><Search/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="نام دانش‌آموز یا هفته..."/></div><div className="management-plan-list">{rows.map(plan=><article className="panel" key={plan.id}><div><b>{names[plan.student_id]||'دانش‌آموز'}</b><h3>{plan.title}</h3><p>{plan.week_label} · نسخه {plan.version} · {plan.status==='published'?'منتشرشده':'پیش‌نویس'}</p></div><button className="btn btn-soft" onClick={()=>printPlan(plan,names[plan.student_id])}><Printer/> چاپ برنامه</button></article>)}</div>{!rows.length&&<State text="برنامه‌ای در این حوزه ثبت نشده است."/>}</div>
+  return <div className="content-page"><Head title="برنامه‌های دانش‌آموزان" text="مشاهده و چاپ برنامه‌های مجاز بر اساس سطح دسترسی"/>{access?.levels.students==='edit'&&<StudentRegistrationReviews students={students}/>}<div className="list-search"><Search/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="نام دانش‌آموز یا هفته..."/></div><div className="management-plan-list">{rows.map(plan=><article className="panel" key={plan.id}><div><b>{names[plan.student_id]||'دانش‌آموز'}</b><h3>{plan.title}</h3><p>{plan.week_label} · نسخه {plan.version} · {plan.status==='published'?'منتشرشده':'پیش‌نویس'}</p></div><button className="btn btn-soft" onClick={()=>printPlan(plan,names[plan.student_id])}><Printer/> چاپ برنامه</button>{user.role==='super_admin'&&<button className="btn btn-outline" disabled={remove.isPending} onClick={()=>{if(window.confirm(`حذف قطعی «${plan.title}»؟ این برنامه و گزارش‌های آن برای دانش‌آموز و مشاور حذف می‌شوند و قابل بازگردانی نیستند.`))remove.mutate(plan.id)}}><Trash2/> حذف برنامه</button>}</article>)}</div>{remove.error&&<ErrorBox error={remove.error}/>} {!rows.length&&<State text="برنامه‌ای در این حوزه ثبت نشده است."/>}</div>
 }
 
 function StudentRegistrationReviews({students}:{students:(User&{profile:Profile})[]}){
@@ -32,7 +34,7 @@ function StudentRegistrationReviews({students}:{students:(User&{profile:Profile}
 
 function printPlan(plan:WeeklyPlan,studentName='دانش‌آموز'){
   const popup=window.open('','_blank','width=1100,height=800');if(!popup)return
-  const rows=plan.activities.map(item=>`<tr><td>${item.day}</td><td>${item.start_time} تا ${item.end_time}</td><td>${item.title}</td></tr>`).join('')
+  const rows=plan.activities.map(item=>`<tr><td>${item.day}</td><td>${plan.plan_mode==='volume'?item.planned_minutes+' دقیقه':item.start_time+' تا '+item.end_time}</td><td>${item.title}</td></tr>`).join('')
   popup.document.write(`<html dir="rtl"><head><title>${plan.title}</title><style>body{font-family:Tahoma;padding:30px}h1{text-align:center}table{width:100%;border-collapse:collapse}td,th{border:1px solid #333;padding:12px;text-align:center}@media print{button{display:none}}</style></head><body><h1>برنامه ${studentName}</h1><h2>${plan.week_label}</h2><p><b>ماموریت هفته:</b> ${plan.weekly_mission||'—'}</p><table><thead><tr><th>روز</th><th>ساعت</th><th>برنامه</th></tr></thead><tbody>${rows}</tbody></table><button onclick="window.print()">چاپ</button><script>window.onload=()=>window.print()</script></body></html>`);popup.document.close()
 }
 

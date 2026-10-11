@@ -178,7 +178,8 @@ def plan_dict(plan: WeeklyPlan):
     return {"id": plan.id, "student_id": plan.student_id, "title": plan.title, "week_label": plan.week_label,
         "version": plan.version, "status": plan.status, "published_at": plan.published_at,
         "day_start_time": plan.day_start_time, "day_end_time": plan.day_end_time,
-        "weekly_mission": plan.weekly_mission,
+        "weekly_mission": plan.weekly_mission, "plan_mode": plan.plan_mode,
+        "draft_state": json.loads(plan.draft_state_json or "{}") if plan.status == "draft" else None,
         "days": days, "time_slots": slots, "activities": [activity_dict(activity) for activity in plan.activities]}
 
 
@@ -931,7 +932,7 @@ def create_plan(payload: PlanCreate, user: User = Depends(roles("advisor", "supe
     plan = WeeklyPlan(student_id=payload.student_id, advisor_id=user.id, title=payload.title, week_label=payload.week_label,
         schedule_days_json=json.dumps(payload.days, ensure_ascii=False), time_slots_json=json.dumps(payload.time_slots, ensure_ascii=False),
         day_start_time=payload.day_start_time, day_end_time=payload.day_end_time,
-        weekly_mission=payload.weekly_mission,
+        weekly_mission=payload.weekly_mission, plan_mode=payload.plan_mode,
         version=(previous.version + 1 if previous else 1))
     db.add(plan); db.flush()
     for item in payload.activities:
@@ -949,13 +950,16 @@ def create_plan(payload: PlanCreate, user: User = Depends(roles("advisor", "supe
 
 @router.post("/plans/{plan_id}/publish")
 def publish_plan(plan_id: str, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
-    plan = db.get(WeeklyPlan, plan_id)
+    plan = db.scalar(select(WeeklyPlan).where(WeeklyPlan.id == plan_id).with_for_update())
     if not plan or (user.role == "advisor" and plan.advisor_id != user.id): raise HTTPException(404, "برنامه یافت نشد")
     if plan.status == "published":
         return ok({"id":plan.id,"status":plan.status})
     from app.book_service import validate_allocations
     validate_allocations(db,plan.student_id,[{"book_topic_id":a.book_topic_id,"book_question_count":a.book_question_count} for a in plan.activities],lock=True)
+    if not plan.activities or any(not a.title.strip() for a in plan.activities):
+        raise HTTPException(422, "برنامه پیش از انتشار باید حداقل یک بازه کامل داشته باشد")
     before = plan.status; now = utcnow(); plan.status = "published"; plan.published_at = now
+    plan.draft_state_json = "{}"
     plan.ends_at = now + timedelta(days=7)
     plan.ends_at = report_bounds(plan)[1]
     plan.student_viewed_at = None

@@ -1,3 +1,4 @@
+import {RequiredMark} from './RegistrationFeedback'
 import { useEffect, useId, useRef, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { isValidJalaaliDate, jalaaliToDateObject } from 'jalaali-js'
@@ -28,10 +29,10 @@ export default function BirthDateInput({value,onChange,initialYear=1388}:{value:
     if(next.year>=1300 && next.year<=today.year)setView(next)
   }
   function close(){setOpen(false);trigger.current?.focus()}
-  return <div className="birth-date-field"><label htmlFor={id}>تاریخ تولد</label><div className="birth-date-control">
-    <input ref={input} id={id} name="birth_date" value={value} onChange={e=>onChange(normalizeBirthDate(e.target.value))} required inputMode="numeric" placeholder="۱۳۸۸/۰۵/۱۲" dir="ltr" autoComplete="bday" />
+  return <div className="birth-date-field"><label htmlFor={id}>تاریخ تولد<RequiredMark/></label><div className="birth-date-control">
+    <input ref={input} id={id} name="birth_date" aria-label="تاریخ تولد" data-field-label="تاریخ تولد" aria-describedby={id+'-hint'} value={value} onChange={e=>onChange(normalizeBirthDate(e.target.value))} required inputMode="numeric" placeholder="۱۳۸۸/۰۵/۱۲" dir="ltr" autoComplete="bday" />
     <button ref={trigger} type="button" aria-label="انتخاب تاریخ تولد از تقویم شمسی" aria-expanded={open} aria-controls={id+'-calendar'} onClick={()=>{setView(parse(value)||{year:initialYear,month:1,day:1});setOpen(!open)}}><CalendarDays size={21}/></button>
-  </div>{open&&<div id={id+'-calendar'} className="birth-calendar" role="dialog" aria-label="تقویم شمسی تاریخ تولد" onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();close()}}}>
+  </div><small id={id+'-hint'} className="registration-field-hint">تاریخ شمسی، مانند ۱۳۸۸/۰۵/۱۲؛ تاریخ آینده مجاز نیست.</small>{open&&<div id={id+'-calendar'} className="birth-calendar" role="dialog" aria-label="تقویم شمسی تاریخ تولد" onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();close()}}}>
     <div className="birth-calendar-head"><button type="button" aria-label="ماه قبل" onClick={()=>move(-1)}><ChevronRight size={18}/></button>
     <select aria-label="ماه تولد" value={view.month} onChange={e=>setView({...view,month:Number(e.target.value),day:1})}>{persianMonths.map((m,i)=><option key={m} value={i+1}>{m}</option>)}</select>
     <select aria-label="سال تولد" value={view.year} onChange={e=>setView({...view,year:Number(e.target.value),day:1})}>{Array.from({length:today.year-1300+1},(_,i)=>today.year-i).map(y=><option key={y} value={y}>{faNumber(y)}</option>)}</select>

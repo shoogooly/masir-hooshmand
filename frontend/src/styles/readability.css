@@ -1,0 +1,46 @@
+/* Screen typography; print/PDF layouts keep their own fitted text sizes. */
+:root{--ink:#111;--muted:#404040}
+body .workspace{color:#111;font-size:15px;--ai-muted:#404040}
+body .workspace .file-tabs{gap:6px;flex-wrap:wrap}
+body .workspace .file-tabs button{font-size:16px;font-weight:650;color:#111;padding:13px 17px;line-height:1.8;min-height:48px;flex:0 0 auto;max-width:100%;white-space:normal}
+body .workspace .file-tabs button.active{color:#111;font-weight:800;border-bottom:3px solid #7347e8;background:#f1ebff;border-radius:8px 8px 0 0}
+body .workspace .app-sidebar nav button,body .workspace .sidebar-logout{font-size:15px;line-height:1.8;color:#f8f8ff}
+body .workspace .app-sidebar nav button.selected{color:#fff;font-weight:750}
+body :is(.section-head,.page-heading,.file-heading,.form-title,.login-heading)>p,
+body .section-head>div>p,body .dashboard-welcome span,body .form-title p,
+body .registration-intro>p,body .registration-form>p,body .registration-section>p,
+body .ai-helper,body .ai-coverage,body .ai-review-section article p,
+body .ai-week-proposal article p,body .ai-settings-form>p,body .ai-limit-panel>p{font-size:15px;line-height:1.9;color:#222}
+body .workspace :is(.student-cards,.activity-list,.exam-grid,.question-card,.planner) :is(b,h2,h3){font-size:17px;color:#111}
+body .workspace :is(.student-cards,.activity-list,.app-user) small,
+body .workspace :is(.advisor-plan-toggle,.result-history-card,.group-student-grid,.ai-student-list) small,
+body .workspace :is(.day-school-schedule small,.volume-guidance,.ai-review-meta,.ai-usage small,.ai-composer-actions small,.ai-disclosure){font-size:14px;color:#333;line-height:1.85}
+body .workspace .app-user b{font-size:15px;color:#111}
+body .workspace :is(.ai-tabs,.settings-tabs) button{font-size:15px;color:#111;line-height:1.8}
+body .workspace :is(th,td){font-size:14px;line-height:1.85}
+body .workspace th{font-size:15px;color:#111}
+body :is(.registration-form,.login-card,.onboarding-card) label,
+body .birth-date-field>label{font-size:15px;color:#111}
+body :is(.registration-form,.login-card) :is(input,textarea,select){font-size:15px;color:#111}
+body .registration-field-hint,body .profile-photo-picker>small,body .file-drop small{font-size:13px;line-height:1.85;color:#333}
+body :is(.form-error,.error-box,.step-validation-error){font-size:14px;line-height:1.9}
+body .workspace .success-note{font-size:14px;line-height:1.9;color:#17613f}
+body .workspace :is(.result-fields,.exam-create-form,.result-subject-row) label{font-size:15px;color:#111}
+body .workspace :is(.result-fields,.exam-create-form,.result-subject-row) :is(input,select,textarea){font-size:15px}
+body .workspace .page-state{font-size:15px;color:#333}
+body .workspace .date-chip{font-size:14px;color:#222}
+body .workspace .message-list article p{font-size:15px;line-height:1.9}
+body .workspace .chat-shell>header b{font-size:16px}
+body .workspace .plan-banner{font-size:15px;line-height:1.9}
+body .workspace .ai-intro p{font-size:15px;color:#f5f1ff}
+body .workspace .ai-user-bubble small{color:#fff;font-size:13px;opacity:1}
+body .workspace .ai-bubble p{font-size:15px}
+body .public-header nav{font-size:15px}
+body :is(.section-title p,.steps p,.testimonials article>p,.stats span){font-size:14px;color:#222;line-height:1.9}
+body .service-grid h3{font-size:16px}
+body .price-card li{font-size:14px}
+body .mh{--mh-muted:#ddd6ef}
+body .mh :is(.mh-days button>span,.mh-task small,.mh-task time,.mh-plan-bottom,.mh-advisor small,.mh-growth>small,.mh-scene-caption,.mh-footer-bottom){font-size:13px;color:#e2dcef}
+body .mh :is(.mh-task b,.mh-planner-head small,.mh-plan-label){font-size:14px}
+body .hp :is(.hp-journey-list p,.hp-price-grid li,.hp-audiences li,.hp-center-head p){font-size:14px;line-height:1.9;color:#eee9fa}
+@media(max-width:650px){body .workspace .file-tabs button{font-size:15px;padding:10px 12px}body .workspace .section-head{flex-wrap:wrap;gap:12px}body .workspace .section-head h1{font-size:23px}}

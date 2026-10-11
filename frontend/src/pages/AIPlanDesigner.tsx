@@ -5,7 +5,7 @@ import { api } from '../api'
 import '../styles/ai-plan-designer.css'
 
 export type AIPlanDraft={student_id:string;student_name:string;start_date:string;title:string;weekly_mission:string;rationale:string;cautions:string[];days:{label:string;date:string}[];day_start_time:string;day_end_time:string;activities:{book_topic_id?:string;book_question_count?:number;day:string;title:string;start_time:string;end_time:string}[]}
-export default function AIPlanDesigner({studentId,startDate,rangeStart,rangeEnd,hasDraft,onApply}:{studentId:string;startDate:string;rangeStart:string;rangeEnd:string;hasDraft:boolean;onApply:(draft:AIPlanDraft)=>void}){
+export default function AIPlanDesigner({studentId,startDate,rangeStart,rangeEnd,hasDraft,onApply,volume=false}:{studentId:string;startDate:string;rangeStart:string;rangeEnd:string;hasDraft:boolean;onApply:(draft:AIPlanDraft)=>void;volume?:boolean}){
  const [instructions,setInstructions]=useState(''),[applied,setApplied]=useState(false)
  const generate=useMutation({mutationFn:async(requestedInstructions:string)=>{
   const result=await api<AIPlanDraft>('/ai/students/'+studentId+'/plan-draft',{method:'POST',body:JSON.stringify({start_date:startDate,day_start_time:rangeStart,day_end_time:rangeEnd,instructions:requestedInstructions})})
@@ -17,7 +17,7 @@ export default function AIPlanDesigner({studentId,startDate,rangeStart,rangeEnd,
  return <section className="ai-plan-designer">
   <header><div><h3><BrainCircuit/> طراحی برنامه با هوش مصنوعی</h3><p>با توجه به برنامه‌ها، گزارش کار، آزمون‌ها و گفت‌وگوهای همین دانش‌آموز، یک پیش‌نویس قابل ویرایش بسازید.</p></div><button className="btn btn-primary" disabled={generate.isPending} onClick={()=>generate.mutate(instructions)}><BrainCircuit size={18}/>{generate.isPending?'در حال طراحی برنامه…':'طراحی برنامه با هوش مصنوعی'}</button></header>
   <label>راهنمای مشاور برای طراحی (اختیاری)<textarea rows={4} maxLength={1500} value={instructions} onChange={e=>setInstructions(e.target.value)} placeholder="مثلاً: هر روز از ساعت ۱۲ تا ۱۳ استراحت باشد. این هفته تست ریاضی بیشتر و جمعه برنامه سبک‌تر باشد."/></label>
-  <small>ابتدا تاریخ شروع و ساعت‌های کل روز را در فرم زیر تنظیم کنید. طراحی با هوش مصنوعی سهمیهٔ پیام دانش‌آموز را مصرف نمی‌کند.</small>
+  <small>{volume?'پیشنهاد هوش مصنوعی با حفظ مدت بازه‌ها به برنامه حجمی تبدیل می‌شود.':'ابتدا تاریخ شروع و ساعت‌های کل روز را در فرم زیر تنظیم کنید.'} طراحی با هوش مصنوعی سهمیهٔ پیام دانش‌آموز را مصرف نمی‌کند.</small>
   {generate.isPending&&<p role="status">در حال بررسی اطلاعات و چیدن بازه‌های هفته؛ برنامهٔ فعلی شما حفظ می‌شود…</p>}
   {generate.error&&<p className="ai-plan-error" role="alert">{generate.error instanceof Error?generate.error.message:'طراحی برنامه ناموفق بود'}</p>}
   {draft&&!generate.isPending&&<div className="ai-plan-preview">

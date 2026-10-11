@@ -25,7 +25,7 @@ test('archive expands below the selected heading and keeps reports out of plan h
  fireEvent.click(second)
  expect(screen.queryByText('محتوای p2')).toBeNull()
  expect(vi.mocked(api).mock.calls.some(([p])=>p.includes('study-reports'))).toBe(false)
- expect(screen.queryByRole('button',{name:/دانلود/})).toBeNull()
+ expect(screen.getAllByRole('button',{name:/دانلود/})).toHaveLength(3)
 })
 test('PDF beside a collapsed row downloads that exact plan without opening it',async()=>{
  setup(<AdvisorPlanArchive studentId="s" studentName="دانش‌آموز" advisorName="مشاور" reports/>)

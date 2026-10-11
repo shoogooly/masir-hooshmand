@@ -263,6 +263,7 @@ def time_minutes(value: str) -> int:
     return hour * 60 + minute
 
 class PlanCreate(BaseModel):
+    plan_mode: Literal["timed", "volume"] = "timed"
     student_id: str
     title: str = Field(min_length=2, max_length=160)
     week_label: str = Field(min_length=2, max_length=60)
@@ -272,6 +273,31 @@ class PlanCreate(BaseModel):
     day_end_time: str = "24:00"
     weekly_mission: str = Field(default="", max_length=2000)
     activities: list[dict[str, Any]] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_volume(cls, values):
+        if isinstance(values, dict) and values.get("plan_mode") == "volume":
+            values = dict(values)
+            cursors = {}
+            activities = []
+            for raw in values.get("activities", []):
+                item = dict(raw)
+                duration = item.get("planned_minutes")
+                if duration is None:
+                    duration = time_minutes(item.get("end_time", "")) - time_minutes(item.get("start_time", ""))
+                if not isinstance(duration, int) or isinstance(duration, bool) or not 1 <= duration <= 1440:
+                    raise ValueError("مدت هر بازه باید بین ۱ تا ۱۴۴۰ دقیقه باشد")
+                day = item.get("day", "")
+                start = cursors.get(day, 0)
+                end = start + duration
+                if end > 1440:
+                    raise ValueError("مجموع برنامه هر روز نباید از ۱۴۴۰ دقیقه بیشتر شود")
+                item.update(start_time=f"{start // 60:02}:{start % 60:02}", end_time=f"{end // 60:02}:{end % 60:02}")
+                cursors[day] = end
+                activities.append(item)
+            values.update(activities=activities, day_start_time="00:00", day_end_time="24:00")
+        return values
 
     @field_validator("activities")
     @classmethod

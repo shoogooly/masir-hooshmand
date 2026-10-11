@@ -1,3 +1,5 @@
+from app.api.external_results import router as external_results_router
+from app.api.plan_management import router as plan_management_router
 from app.api.books import router as books_router
 from app.api.onboarding_flow import router as onboarding_flow_router
 from app.api.exam_files import router as exam_files_router
@@ -103,6 +105,8 @@ def health():
     return {"status": "ok", "service": "masir-hooshmand-api", "version": "1.0.0"}
 
 
+app.include_router(external_results_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(plan_management_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(extended_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(admin_students_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])

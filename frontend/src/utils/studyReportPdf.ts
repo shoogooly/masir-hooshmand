@@ -19,7 +19,7 @@ export function createStudyReportSheet(plan:WeeklyPlan,reports:StudyReports,stud
   cards.style.gridTemplateColumns=`repeat(${Math.max(1,Math.min(4,activities.length))},minmax(0,1fr))`
   for(const activity of activities){
    const card=el('article','study-pdf-card')
-   card.append(el('b','',activity.start_time+' تا '+activity.end_time+' · '+activity.title))
+   card.append(el('b','',(plan.plan_mode==='volume'?activity.planned_minutes+' دقیقه':activity.start_time+' تا '+activity.end_time)+' · '+activity.title))
    const lines=activityLines(reports.activities[activity.id]?.values,'بدون پاسخ')
    card.append(el('p','',lines.join(' | ')||'گزارشی ثبت نشده است.'))
    cards.append(card)

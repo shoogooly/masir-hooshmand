@@ -1,3 +1,4 @@
+import {RequiredMark,registrationError} from '../components/RegistrationFeedback'
 import { useMutation } from '@tanstack/react-query'
 import { FormEvent, useEffect, useState } from 'react'
 import { ArrowRight, Eye, EyeOff, GraduationCap, KeyRound, Phone, ShieldCheck, UserRound } from 'lucide-react'
@@ -35,19 +36,20 @@ export default function RegistrationPage() {
   }
   async function submit(event: FormEvent) {
     event.preventDefault(); setError('')
+    const issue=registrationError(event.currentTarget as HTMLFormElement);if(issue)return setError(issue)
     if (password !== passwordConfirm) return setError('رمز عبور و تکرار آن یکسان نیستند.')
     try { await register.mutateAsync(); navigate('/login', { replace: true }) }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'ساخت حساب ناموفق بود.') }
   }
-  return <div className="registration-page account-registration"><header><Link to="/"><Brand /></Link><Link to="/login"><ArrowRight /> ورود اعضا</Link></header><main>
+  return <div className="registration-page account-registration"><header><Brand /><Link to="/login"><ArrowRight /> ورود اعضا</Link></header><main>
     <section className="registration-intro"><span>ساخت حساب مهیاد</span><h1>شروع مسیر، فقط با شماره موبایل</h1><p>پس از ساخت حساب و ورود، اطلاعات پرونده را قدم‌به‌قدم تکمیل می‌کنید و همیشه مرحله فعلی را می‌بینید.</p><div><button type="button" className={role === 'student' ? 'active' : ''} onClick={() => setRole('student')}><GraduationCap /> دانش‌آموز</button><button type="button" className={role === 'advisor' ? 'active' : ''} onClick={() => setRole('advisor')}><UserRound /> مشاور</button></div></section>
-    <form className="registration-form account-form" onSubmit={submit}><div className="form-title"><ShieldCheck /><div><h2>ایجاد حساب {role === 'student' ? 'دانش‌آموز' : 'مشاور'}</h2><p>اطلاعات تکمیلی بعد از ورود دریافت می‌شود.</p></div></div>
-      <label><span>شماره موبایل</span><div className="field"><Phone /><input value={phone} onChange={event => setPhone(event.target.value)} inputMode="tel" pattern="09[0-9]{9}" placeholder="09123456789" required /></div></label>
-      <label><span>کد پیامکی</span><div className="field"><KeyRound /><input value={smsCode} onChange={event => setSmsCode(event.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" required /></div></label>
+    <form className="registration-form account-form" noValidate onSubmit={submit}><div className="form-title"><ShieldCheck /><div><h2>ایجاد حساب {role === 'student' ? 'دانش‌آموز' : 'مشاور'}</h2><p>اطلاعات تکمیلی بعد از ورود دریافت می‌شود.</p></div></div>
+      <label><span>شماره موبایل<RequiredMark/></span><small className="registration-field-hint">۱۱ رقم با شروع 09</small><div className="field"><Phone /><input value={phone} onChange={event => setPhone(event.target.value)} inputMode="tel" pattern="09[0-9]{9}" placeholder="09123456789" required /></div></label>
+      <label><span>کد پیامکی<RequiredMark/></span><small className="registration-field-hint">کد ۶ رقمی ارسال‌شده به موبایل</small><div className="field"><KeyRound /><input value={smsCode} onChange={event => setSmsCode(event.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" required /></div></label>
       <button type="button" className="btn btn-ghost sms-send-button" disabled={requestCode.isPending || smsCooldown > 0} onClick={sendSmsCode}>{requestCode.isPending ? 'در حال ارسال...' : smsCooldown > 0 ? 'ارسال مجدد تا ' + smsCooldown + ' ثانیه' : 'ارسال کد پیامکی'}</button>
       {smsMessage && <small className="sms-send-success">{smsMessage}</small>}
-      <label><span>رمز عبور</span><div className="field"><KeyRound /><input value={password} onChange={event => setPassword(event.target.value)} type={showPassword ? 'text' : 'password'} minLength={8} required /><button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label="نمایش رمز">{showPassword ? <EyeOff /> : <Eye />}</button></div></label>
-      <label><span>تکرار رمز عبور</span><div className="field"><KeyRound /><input value={passwordConfirm} onChange={event => setPasswordConfirm(event.target.value)} type={showPassword ? 'text' : 'password'} minLength={8} required /></div></label>
-      {(error || register.error) && <div className="form-error">{error || (register.error instanceof Error ? register.error.message : 'خطایی رخ داد')}</div>}<button className="btn btn-primary btn-lg" disabled={register.isPending}>{register.isPending ? 'در حال ساخت حساب...' : 'ساخت حساب و تکمیل پرونده'}</button><p className="login-register-link">قبلاً حساب ساخته‌اید؟ <Link to="/login">ورود با شماره موبایل و رمز</Link></p>
+      <label><span>رمز عبور<RequiredMark/></span><small className="registration-field-hint">حداقل ۸ نویسه</small><div className="field"><KeyRound /><input value={password} onChange={event => setPassword(event.target.value)} type={showPassword ? 'text' : 'password'} minLength={8} maxLength={128} required /><button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label="نمایش رمز">{showPassword ? <EyeOff /> : <Eye />}</button></div></label>
+      <label><span>تکرار رمز عبور<RequiredMark/></span><small className="registration-field-hint">دقیقاً همان رمز عبور</small><div className="field"><KeyRound /><input value={passwordConfirm} onChange={event => setPasswordConfirm(event.target.value)} type={showPassword ? 'text' : 'password'} minLength={8} maxLength={128} required /></div></label>
+      {(error || register.error) && <div className="form-error" role="alert">{error || (register.error instanceof Error ? register.error.message : 'خطایی رخ داد')}</div>}<button className="btn btn-primary btn-lg" disabled={register.isPending}>{register.isPending ? 'در حال ساخت حساب...' : 'ساخت حساب و تکمیل پرونده'}</button><p className="login-register-link">قبلاً حساب ساخته‌اید؟ <Link to="/login">ورود با شماره موبایل و رمز</Link></p>
     </form></main></div>
 }

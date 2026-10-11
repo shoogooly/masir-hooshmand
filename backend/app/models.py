@@ -170,6 +170,8 @@ class WeeklyPlan(Base, TimeMixin):
     day_start_time: Mapped[str] = mapped_column(String(5), default="08:00")
     day_end_time: Mapped[str] = mapped_column(String(5), default="24:00")
     weekly_mission: Mapped[str] = mapped_column(Text, default="")
+    plan_mode: Mapped[str] = mapped_column(String(20), default="timed", server_default="timed")
+    draft_state_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
     version: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -205,6 +207,18 @@ class StudyReport(Base, TimeMixin):
     plan_id: Mapped[str] = mapped_column(ForeignKey("weekly_plans.id", ondelete="CASCADE"), primary_key=True)
     scope: Mapped[str] = mapped_column(String(80), primary_key=True)
     data_json: Mapped[str] = mapped_column(Text, default="{}")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class ExternalExamResult(Base, TimeMixin):
+    __tablename__ = "external_exam_results"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    title: Mapped[str] = mapped_column(String(180))
+    exam_date: Mapped[str] = mapped_column(String(10), index=True)
+    details_json: Mapped[str] = mapped_column(Text, default="{}")
     version: Mapped[int] = mapped_column(Integer, default=1)
 
 
@@ -292,6 +306,8 @@ class Exam(Base, TimeMixin):
 
 class AssignedExam(Base, TimeMixin):
     __tablename__ = "assigned_exams"
+    __table_args__ = (Index("ix_assigned_exams_batch_student", "batch_id", "student_id", unique=True),)
+    batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     advisor_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)

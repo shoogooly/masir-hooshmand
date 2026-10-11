@@ -32,7 +32,7 @@ test('AI draft preserves existing edits until applied, then remains editable bef
  await waitFor(()=>expect(api).toHaveBeenCalledWith('/plans/published-id/publish',{method:'POST'}))
  const call=vi.mocked(api).mock.calls.find(([path,options])=>path==='/plans'&&options?.method==='POST')!
  expect(JSON.parse(call[1]!.body as string).activities[0].title).toBe('تمرین و مرور اصلاح‌شده')
- await screen.findByText('برنامه خط زمانی با موفقیت منتشر شد.')
+ await screen.findByText('برنامه برای دانش‌آموز ارسال شد و در برنامه‌های ارسال‌شده قرار گرفت.')
  expect(screen.queryByLabelText('توضیحات (تا ۳ خط)')).toBeNull()
  expect((screen.getByLabelText('ماموریت هفته') as HTMLTextAreaElement).value).toBe('')
  expect(screen.queryByText('این پیش‌نویس مربوط به دانش‌آموز پارسا رضایی است.')).toBeNull()
@@ -66,7 +66,8 @@ test('clear draft resets activities, mission and AI instructions without publish
  fireEvent.click(screen.getAllByRole('button',{name:/افزودن بازه برای/})[0])
  fireEvent.change(screen.getByLabelText('ماموریت هفته'),{target:{value:'مرور'}})
  fireEvent.change(screen.getByLabelText('راهنمای مشاور برای طراحی (اختیاری)'),{target:{value:'تست بیشتر'}})
- fireEvent.click(screen.getByRole('button',{name:'پاک کردن پیش‌نویس'}))
+ vi.spyOn(window,'confirm').mockReturnValueOnce(true)
+ fireEvent.click(screen.getByRole('button',{name:'پاک کردن فرم'}))
  expect(screen.queryByLabelText('توضیحات (تا ۳ خط)')).toBeNull()
  expect((screen.getByLabelText('ماموریت هفته') as HTMLTextAreaElement).value).toBe('')
  expect((screen.getByLabelText('راهنمای مشاور برای طراحی (اختیاری)') as HTMLTextAreaElement).value).toBe('')

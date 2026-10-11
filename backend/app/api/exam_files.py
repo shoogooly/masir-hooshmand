@@ -160,7 +160,13 @@ def create_assigned_exam(student_id: str, payload: AssignedExamCreate, user: Use
     if not assigned_student(db, user.id, student_id):
         raise HTTPException(403, "این دانش‌آموز به شما تخصیص ندارد")
     validate_pdf(payload.question_file)
-    item = AssignedExam(advisor_id=user.id, student_id=student_id, title=payload.title,
+    item = persist_assigned_exam(db, user, student_id, payload)
+    db.commit()
+    return ok(exam_dict(db, item))
+
+
+def persist_assigned_exam(db, user, student_id, payload, batch_id=None):
+    item = AssignedExam(batch_id=batch_id, advisor_id=user.id, student_id=student_id, title=payload.title,
         duration_minutes=payload.duration_minutes or 0, instructions=payload.instructions,
         question_filename=payload.question_file.filename, question_content_type=payload.question_file.content_type,
         question_base64=payload.question_file.content_base64)
@@ -173,9 +179,8 @@ def create_assigned_exam(student_id: str, payload: AssignedExamCreate, user: Use
             answers_json=json.dumps([None] * sum(len(section.correct_answers) for section in payload.online_sheet.sections))))
     db.add(Notification(user_id=student_id, actor_id=user.id, kind="exam_assigned", title="آزمون جدید برای شما ثبت شد", body=payload.title, link="/app/student/exams", related_id=item.id))
     audit(db, user.id, "assigned_exam.created", "assigned_exam", item.id, after={"student_id": student_id, "duration_minutes": item.duration_minutes})
-    db.commit()
-    db.refresh(item)
-    return ok(exam_dict(db, item))
+    return item
+
 
 
 @router.get("/assigned-exams/{exam_id}/question-file")
@@ -322,3 +327,36 @@ def save_online_answers(exam_id: str, payload: OnlineAnswers, user: User = Depen
 @router.post("/assigned-exams/{exam_id}/online-sheet/finish")
 def finish_online_exam(exam_id: str, payload: OnlineAnswers, user: User = Depends(roles("student")), db: Session = Depends(get_db)):
     return write_online_answers(exam_id, payload, user, db, True)
+
+
+class GroupExamCreate(AssignedExamCreate):
+    student_ids: list[str] = Field(min_length=1, max_length=500)
+    batch_id: str = Field(pattern=r"^[0-9a-fA-F-]{36}$")
+
+
+@router.get("/advisors/group-exam-students")
+def group_exam_students(user: User = Depends(roles("advisor")), db: Session = Depends(get_db)):
+    rows = db.scalars(select(User).join(AdvisorAssignment, AdvisorAssignment.student_id == User.id).where(
+        AdvisorAssignment.advisor_id == user.id, AdvisorAssignment.active.is_(True),
+        AdvisorAssignment.approval_status == "approved", User.status != "deleted").order_by(User.full_name)).unique().all()
+    return ok([{"id": s.id, "full_name": s.full_name, "phone": s.phone} for s in rows])
+
+
+@router.post("/advisors/group-exams")
+def create_group_exam(payload: GroupExamCreate, user: User = Depends(roles("advisor")), db: Session = Depends(get_db)):
+    student_ids = list(dict.fromkeys(payload.student_ids))
+    assignments = db.scalars(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == user.id,
+        AdvisorAssignment.student_id.in_(student_ids), AdvisorAssignment.active.is_(True),
+        AdvisorAssignment.approval_status == "approved")).all()
+    if {a.student_id for a in assignments} != set(student_ids):
+        raise HTTPException(403, "یک یا چند دانش‌آموز به شما تخصیص ندارند؛ آزمونی ارسال نشد")
+    validate_pdf(payload.question_file)
+    db.scalar(select(User).where(User.id == user.id).with_for_update())
+    existing = db.scalars(select(AssignedExam).where(AssignedExam.batch_id == payload.batch_id)).all()
+    if existing:
+        if any(x.advisor_id != user.id for x in existing) or {x.student_id for x in existing} != set(student_ids):
+            raise HTTPException(409, "شناسه ارسال گروهی قبلاً استفاده شده است")
+        return ok({"count": len(existing), "ids": [x.id for x in existing]})
+    items = [persist_assigned_exam(db, user, sid, payload, payload.batch_id) for sid in student_ids]
+    db.commit()
+    return ok({"count": len(items), "ids": [x.id for x in items]})
