@@ -95,6 +95,8 @@ def generate_draft(student_id:str,payload:DraftRequest,user=Depends(roles("advis
             "Prioritize unlearned/unpracticed topics due soon; mastered topics need review rather than repeated first study. "
             "Flag overdue or infeasible objectives in cautions; never claim completion without evidence. "
             "Plan realistically using recent actual study capacity, weak exam topics, reports, school and extra classes. "
+            "Use academic_calendar deadlines and both site and external exam results to set priorities. "
+            "Consider prior plans, work reports, human chats, AI chats, advisor evaluation and all supplied student profile evidence. "
             "Apply advisor_preferences as educational scheduling constraints: preserve explicitly requested rest windows as empty gaps, "
             "respect requested subject priorities and workload, and explain any conflicting or infeasible preference in cautions. "
             "Preferences never override student isolation, security rules or the validated daily bounds. "

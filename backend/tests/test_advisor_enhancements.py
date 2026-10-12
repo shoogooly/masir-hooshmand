@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from app.main import app
 from app.db.session import SessionLocal
-from app.models import User, AdvisorAssignment, AssignedExam, AssignedExamSheet, Activity, StudyReport, Notification, WeeklyPlan
+from app.models import User, StudentProfile, AdvisorAssignment, AssignedExam, AssignedExamSheet, Activity, StudyReport, Notification, WeeklyPlan
 
 pytestmark = pytest.mark.usefixtures('subscribed_demo_student')
 
@@ -63,23 +63,66 @@ def test_external_results_shared_history_permissions_and_conflicts():
     with TestClient(app) as advisor, TestClient(app) as student:
         login(advisor,'09120000002','advisor');sid=login(student,'09120000001','student')
         path=f'/api/v1/students/{sid}/external-results'
-        value={'title':'آزمون مؤسسه','exam_date':'1405/07/18','score':17,'max_score':20,'scaled_score':6500,'rank':12,
-            'subjects':[{'name':'ریاضی','percent':75}]}
+        value={'title':'آزمون مؤسسه','organizer':'مؤسسه نمونه','exam_date':'1405/07/18','scaled_score':6500,'rank':12,
+            'correct_count':70,'wrong_count':20,'total_questions':100,
+            'subjects':[{'name':'ریاضی','topic':'تابع','correct_count':8,'wrong_count':2,'total_questions':12,'scaled_score':6200,'rank':20}]}
         created=student.post(path,json=value)
         assert created.status_code==200,created.text
         row=created.json()['data'];rid=row['id']
         assert any(x['id']==rid for x in advisor.get(path).json()['data'])
-        changed=advisor.put(path+'/'+rid,json={**value,'score':18,'version':1})
+        changed=advisor.put(path+'/'+rid,json={**value,'scaled_score':6600,'version':1})
         assert changed.status_code==200,changed.text
         assert changed.json()['data']['version']==2
         assert student.put(path+'/'+rid,json=value).status_code==409
         assert student.get('/api/v1/students/not-mine/external-results').status_code==403
         assert advisor.post('/api/v1/students/not-assigned/external-results',json=value).status_code==403
-        assert student.post(path,json={**value,'score':21}).status_code==422
+        assert student.post(path,json={**value,'correct_count':90,'wrong_count':20}).status_code==422
         assert student.post(path,json={**value,'exam_date':'1405/13/40'}).status_code==422
         assert student.delete(path+'/'+rid+'?version=1').status_code==409
         assert student.delete(path+'/'+rid+'?version=2').status_code==200
         assert not any(x['id']==rid for x in advisor.get(path).json()['data'])
+
+
+def test_academic_calendars_are_shared_by_grade_and_major_and_selected_per_student():
+    with TestClient(app) as advisor, TestClient(app) as student, TestClient(app) as admin:
+        login(advisor,'09120000002','advisor');sid=login(student,'09120000001','student')
+        login(admin,'09120000003','super_admin')
+        with SessionLocal() as db:
+            profile=db.scalar(select(StudentProfile).where(StudentProfile.user_id==sid))
+            grade,major=profile.grade,profile.major
+        payload={'title':'تقویم جامع پاییز','grade':grade,'major':major,'items':[
+            {'month':8,'day':15,'subject':'ریاضی','topics':'تابع و معادله'}]}
+        made=admin.post('/api/v1/academic-calendars',json=payload)
+        assert made.status_code==200,made.text
+        calendar=made.json()['data']
+        assert calendar['designer_name'] and calendar['grade']==grade and calendar['major']==major
+        listing=advisor.get(f'/api/v1/students/{sid}/academic-calendar')
+        assert listing.status_code==200,listing.text
+        assert any(row['id']==calendar['id'] for row in listing.json()['data']['calendars'])
+        selected=advisor.put(f'/api/v1/students/{sid}/academic-calendar/{calendar["id"]}')
+        assert selected.status_code==200,selected.text
+        own=student.get(f'/api/v1/students/{sid}/academic-calendar').json()['data']
+        assert own['selected_id']==calendar['id'] and len(own['calendars'])==1
+        from app import ai_service as ai
+        with SessionLocal() as db:
+            context,_=ai.student_context(db,sid)
+            assert context['academic_calendar']['id']==calendar['id']
+            assert context['academic_calendar']['major']==major
+        advisor_calendar=advisor.post('/api/v1/academic-calendars',json={
+            'title':'تقویم اختصاصی مشاور','student_id':sid,'items':[
+                {'month':9,'day':1,'subject':'فیزیک','topics':'حرکت‌شناسی'}]})
+        assert advisor_calendar.status_code==200,advisor_calendar.text
+        assert advisor_calendar.json()['data']['major']==major
+        assert any(row['id']==advisor_calendar.json()['data']['id'] for row in
+                   advisor.get(f'/api/v1/students/{sid}/academic-calendar').json()['data']['calendars'])
+        delete_path=f'/api/v1/academic-calendars/{calendar["id"]}'
+        assert advisor.delete(delete_path+'?confirmed=true').status_code==403
+        assert admin.delete(delete_path).status_code==422
+        removed=admin.delete(delete_path+'?confirmed=true')
+        assert removed.status_code==200,removed.text
+        assert removed.json()['data']['student_selections_removed']==1
+        own=student.get(f'/api/v1/students/{sid}/academic-calendar').json()['data']
+        assert own['selected_id'] is None and own['calendars']==[]
 
 
 def test_group_exam_atomic_permissions_and_idempotent_retry():

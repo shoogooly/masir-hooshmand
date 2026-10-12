@@ -1,4 +1,5 @@
 import ExternalResultsPage from './ExternalResultsPage'
+import AcademicCalendarPage from './AcademicCalendarPage'
 import '../styles/advisor-enhancements.css'
 import BooksPage, {type LibraryBook} from './BooksPage'
 import {softTimelinePositions} from '../utils/softTimeline'
@@ -97,10 +98,10 @@ export function StudentFilePage({user,studentId,tab}:{user:User;studentId:string
  const {data,isLoading,error}=useQuery({queryKey:['student-file',studentId],queryFn:()=>api<ReportData&{student:User}>(`/advisors/students/${studentId}/report`)})
  if(isLoading)return <State/>
  if(error||!data)return <ErrorBox error={error}/>
- const tabs=[['report','گزارش عملکرد'],['plan','برنامه هفتگی'],['study-reports','گزارش کار برنامه'],['exams','آزمون‌ها'],['external-results','نتایج آزمون‌های دانش‌آموز'],['chat','گفت‌وگو'],['evaluation','ارزیابی مشاور از دانش‌آموز'],['books','کتاب‌ها']]
+ const tabs=[['report','گزارش عملکرد'],['plan','برنامه هفتگی'],['study-reports','گزارش کار برنامه'],['exams','آزمون‌ها'],['external-results','نتایج آزمون‌های دانش‌آموز'],['academic-calendar','تقویم آموزشی'],['chat','گفت‌وگو'],['evaluation','ارزیابی مشاور از دانش‌آموز'],['books','کتاب‌ها']]
  return <div className="content-page"><PageHead back={()=>nav('/app/advisor/students')} title={data.student.full_name} subtitle="پرونده اختصاصی دانش‌آموز"/>
   <div className="file-tabs">{tabs.map(([key,label])=><button key={key} className={tab===key?'active':''} onClick={()=>nav(`/app/advisor/students/${studentId}/${key}`)}>{label}</button>)}</div>
-  {tab==='external-results'?<ExternalResultsPage studentId={studentId}/>:tab==='report'?<ProgressPage studentId={studentId}/>:tab==='plan'?<AdvisorPlanWorkspace key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name}/>:tab==='study-reports'?<AdvisorPlanArchive key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name} reports/>:tab==='books'?<BooksPage mode="advisor" studentId={studentId}/>:tab==='evaluation'?<AdvisorEvaluationPage key={studentId} studentId={studentId}/>:tab==='exams'?<AdvisorAssignedExamsPage studentId={studentId}/>:<ChatPanel counterpart={data.student} currentUser={user}/>}
+  {tab==='academic-calendar'?<AcademicCalendarPage mode="advisor" user={user} studentId={studentId}/>:tab==='external-results'?<ExternalResultsPage studentId={studentId}/>:tab==='report'?<ProgressPage studentId={studentId}/>:tab==='plan'?<AdvisorPlanWorkspace key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name}/>:tab==='study-reports'?<AdvisorPlanArchive key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name} reports/>:tab==='books'?<BooksPage mode="advisor" studentId={studentId}/>:tab==='evaluation'?<AdvisorEvaluationPage key={studentId} studentId={studentId}/>:tab==='exams'?<AdvisorAssignedExamsPage studentId={studentId}/>:<ChatPanel counterpart={data.student} currentUser={user}/>}
  </div>
 }
 

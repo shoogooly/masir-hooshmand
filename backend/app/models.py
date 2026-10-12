@@ -222,6 +222,38 @@ class ExternalExamResult(Base, TimeMixin):
     version: Mapped[int] = mapped_column(Integer, default=1)
 
 
+class AcademicCalendar(Base, TimeMixin):
+    __tablename__ = "academic_calendars"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    grade: Mapped[str] = mapped_column(String(40), index=True)
+    major: Mapped[str] = mapped_column(String(40), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    designer_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    designer_name: Mapped[str] = mapped_column(String(120))
+    designer_role: Mapped[str] = mapped_column(String(32))
+    source_student_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    items: Mapped[list[AcademicCalendarItem]] = relationship(cascade="all, delete-orphan", order_by="AcademicCalendarItem.sort_order")
+
+
+class AcademicCalendarItem(Base):
+    __tablename__ = "academic_calendar_items"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    calendar_id: Mapped[str] = mapped_column(ForeignKey("academic_calendars.id", ondelete="CASCADE"), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer)
+    month: Mapped[int] = mapped_column(Integer)
+    day: Mapped[int] = mapped_column(Integer)
+    subject: Mapped[str] = mapped_column(String(120))
+    topics: Mapped[str] = mapped_column(Text)
+
+
+class StudentAcademicCalendar(Base, TimeMixin):
+    __tablename__ = "student_academic_calendars"
+    student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    calendar_id: Mapped[str] = mapped_column(ForeignKey("academic_calendars.id"), index=True)
+    selected_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+
+
 class Message(Base, TimeMixin):
     __tablename__ = "messages"
     __table_args__ = (Index("ix_messages_unread_summary", "recipient_id", "read_at", "internal_note", "sender_id"),)

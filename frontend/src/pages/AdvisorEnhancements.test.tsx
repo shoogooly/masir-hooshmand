@@ -70,14 +70,14 @@ test('archive downloads the selected published plan and exposes editable drafts 
  expect(screen.queryByRole('button',{name:/دانلود PDF/})).toBeNull()
 })
 test('external result edits retain optimistic version and submit entered details',async()=>{
- const result={id:'r',title:'آزمون مدرسه',exam_date:'1405/07/18',organizer:'مدرسه',score:17,max_score:20,scaled_score:null,rank:null,subjects:[],notes:'',version:3}
+ const result={id:'r',title:'آزمون مدرسه',exam_date:'1405/07/18',organizer:'مدرسه',scaled_score:6200,rank:20,correct_count:60,wrong_count:20,total_questions:100,subjects:[],notes:'',version:3}
  vi.mocked(api).mockResolvedValue([result] as never)
  setup(<ExternalResultsPage studentId="s"/>)
  fireEvent.click(await screen.findByRole('button',{name:'ویرایش'}))
- fireEvent.change(screen.getByLabelText('نمره کل (اختیاری)'),{target:{value:'18'}})
+ fireEvent.change(screen.getByLabelText('تراز کل'),{target:{value:'6500'}})
  fireEvent.click(screen.getByRole('button',{name:'ذخیره نتیجه'}))
  await waitFor(()=>expect(vi.mocked(api).mock.calls.some(([,options])=>options?.method==='PUT')).toBe(true))
  const call=vi.mocked(api).mock.calls.find(([,options])=>options?.method==='PUT')!
  expect(call[0]).toBe('/students/s/external-results/r')
- expect(JSON.parse(call[1]!.body as string)).toMatchObject({score:18,version:3})
+ expect(JSON.parse(call[1]!.body as string)).toMatchObject({scaled_score:6500,version:3})
 })

@@ -15,26 +15,30 @@ router = APIRouter()
 
 class SubjectResult(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    percent: float | None = Field(default=None, ge=-100, le=100, allow_inf_nan=False)
-    score: float | None = Field(default=None, ge=0, le=100000, allow_inf_nan=False)
-    max_score: float | None = Field(default=None, gt=0, le=100000, allow_inf_nan=False)
+    topic: str = Field(min_length=1, max_length=500)
+    correct_count: int = Field(ge=0, le=10000)
+    wrong_count: int = Field(ge=0, le=10000)
+    total_questions: int = Field(ge=1, le=10000)
+    scaled_score: float = Field(ge=0, le=100000, allow_inf_nan=False)
+    rank: int = Field(ge=1, le=10000000)
 
     @model_validator(mode="after")
     def score_bounds(self):
-        self.name = self.name.strip()
-        if not self.name or (self.score is not None and self.max_score is not None and self.score > self.max_score):
-            raise ValueError("نام درس یا نمره واردشده معتبر نیست")
+        self.name, self.topic = self.name.strip(), self.topic.strip()
+        if not self.name or not self.topic or self.correct_count + self.wrong_count > self.total_questions:
+            raise ValueError("اطلاعات درس یا تعداد پاسخ‌ها معتبر نیست")
         return self
 
 
 class ResultInput(BaseModel):
     title: str = Field(min_length=2, max_length=180)
     exam_date: str
-    organizer: str = Field(default="", max_length=160)
-    score: float | None = Field(default=None, ge=0, le=100000, allow_inf_nan=False)
-    max_score: float | None = Field(default=None, gt=0, le=100000, allow_inf_nan=False)
-    scaled_score: float | None = Field(default=None, ge=0, le=100000, allow_inf_nan=False)
-    rank: int | None = Field(default=None, ge=1, le=10000000)
+    organizer: str = Field(min_length=2, max_length=160)
+    scaled_score: float = Field(ge=0, le=100000, allow_inf_nan=False)
+    rank: int = Field(ge=1, le=10000000)
+    correct_count: int = Field(ge=0, le=10000)
+    wrong_count: int = Field(ge=0, le=10000)
+    total_questions: int = Field(ge=1, le=10000)
     subjects: list[SubjectResult] = Field(default_factory=list, max_length=50)
     notes: str = Field(default="", max_length=5000)
     version: int = Field(default=1, ge=1)
@@ -53,9 +57,9 @@ class ResultInput(BaseModel):
 
     @model_validator(mode="after")
     def score_valid(self):
-        self.title = self.title.strip()
-        if len(self.title) < 2 or (self.score is not None and self.max_score is not None and self.score > self.max_score):
-            raise ValueError("عنوان یا نمره آزمون معتبر نیست")
+        self.title, self.organizer = self.title.strip(), self.organizer.strip()
+        if len(self.title) < 2 or len(self.organizer) < 2 or self.correct_count + self.wrong_count > self.total_questions:
+            raise ValueError("عنوان، برگزارکننده یا تعداد پاسخ‌های آزمون معتبر نیست")
         return self
 
 
@@ -70,7 +74,16 @@ def authorize(db, user, student_id):
 def result_dict(db, row):
     author = db.get(User, row.created_by)
     editor = db.get(User, row.updated_by)
-    return {**json.loads(row.details_json), "id": row.id, "student_id": row.student_id,
+    details = json.loads(row.details_json)
+    # Results saved before the richer question-count format remain readable.
+    details.setdefault("organizer", "")
+    for key in ("scaled_score", "rank", "correct_count", "wrong_count", "total_questions"):
+        details.setdefault(key, None)
+    details["subjects"] = [{"name": item.get("name", ""), "topic": item.get("topic", ""),
+        "correct_count": item.get("correct_count"), "wrong_count": item.get("wrong_count"),
+        "total_questions": item.get("total_questions"), "scaled_score": item.get("scaled_score"),
+        "rank": item.get("rank")} for item in details.get("subjects", [])]
+    return {**details, "id": row.id, "student_id": row.student_id,
         "title": row.title, "exam_date": row.exam_date, "version": row.version,
         "created_by_name": author.full_name if author else "", "updated_by_name": editor.full_name if editor else "",
         "created_at": row.created_at, "updated_at": row.updated_at}

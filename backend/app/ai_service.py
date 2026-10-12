@@ -13,7 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from app.ai_models import AIConfiguration, AIStudentAccess, AITurn, AdvisorEvaluation
 from app.core.config import settings
 from app.models import (User, StudentProfile, AdvisorAssignment, WeeklyPlan, Activity, StudyReport,
-                        Message, AssignedExam, AssignedExamSheet, ExamSession, utcnow)
+                        Message, AssignedExam, AssignedExamSheet, ExamSession, ExternalExamResult,
+                        AcademicCalendar, StudentAcademicCalendar, utcnow)
 
 BASE_URL = "https://api.gapgpt.app/v1"
 PROVIDERS = {
@@ -123,7 +124,12 @@ def student_context(db, student_id, advisor_id=None):
     chat_query=select(Message).where(or_(Message.sender_id==student_id,Message.recipient_id==student_id),Message.internal_note.is_(False))
     total_messages=db.scalar(select(func.count()).select_from(chat_query.subquery())) or 0
     messages=db.scalars(chat_query.order_by(Message.created_at.desc()).limit(80)).all()
-    chat=[{"id":m.id,"date":m.created_at.isoformat(),"from_student":m.sender_id==student_id,"text":cut(m.body,700)} for m in reversed(messages)]
+    participant_ids={value for message in messages for value in (message.sender_id,message.recipient_id)}
+    participants={row.id:row for row in db.scalars(select(User).where(User.id.in_(participant_ids))).all()} if participant_ids else {}
+    chat=[{"id":m.id,"date":m.created_at.isoformat(),"from_student":m.sender_id==student_id,
+        "sender":{"name":participants[m.sender_id].full_name,"role":participants[m.sender_id].role} if m.sender_id in participants else {},
+        "recipient":{"name":participants[m.recipient_id].full_name,"role":participants[m.recipient_id].role} if m.recipient_id in participants else {},
+        "text":cut(m.body,700)} for m in reversed(messages)]
     turns=db.scalars(select(AITurn).where(AITurn.student_id==student_id,AITurn.status=="completed").order_by(AITurn.created_at.desc()).limit(30)).all()
     ai_chat=[{"date":t.created_at.isoformat(),"student":cut(t.message,700),"assistant":cut(t.reply,1000)} for t in reversed(turns)]
     exams=db.scalars(select(AssignedExam).where(AssignedExam.student_id==student_id).order_by(AssignedExam.created_at.desc()).limit(30)).all()
@@ -139,17 +145,31 @@ def student_context(db, student_id, advisor_id=None):
     old=db.scalars(select(ExamSession).where(ExamSession.student_id==student_id,ExamSession.status=="submitted").order_by(ExamSession.submitted_at.desc()).limit(30)).all()
     legacy=[{"id":r.id,"date":r.submitted_at.isoformat() if r.submitted_at else None,"score":r.score,
         "correct":r.correct_count,"wrong":r.wrong_count,"unanswered":r.unanswered_count} for r in old]
+    external_rows=db.scalars(select(ExternalExamResult).where(ExternalExamResult.student_id==student_id)
+        .order_by(ExternalExamResult.exam_date.desc(),ExternalExamResult.created_at.desc()).limit(50)).all()
+    external_results=[{"id":row.id,"title":row.title,"exam_date":row.exam_date,
+        **parse(row.details_json,{})} for row in external_rows]
+    selected_calendar=db.get(StudentAcademicCalendar,student_id)
+    calendar=db.get(AcademicCalendar,selected_calendar.calendar_id) if selected_calendar else None
+    academic_calendar={"id":calendar.id,"title":calendar.title,"grade":calendar.grade,"major":calendar.major,
+        "designer":{"name":calendar.designer_name,"role":calendar.designer_role},
+        "items":[{"month":item.month,"day":item.day,"subject":item.subject,"topics":cut(item.topics,1400)}
+                 for item in calendar.items]} if calendar else None
     coverage={"plans":len(plans),"total_plans":total_plans,"reports":len(reports),"messages":len(chat),
         "total_messages":total_messages,"ai_messages":len(ai_chat),"exams":len(results)+len(legacy),
-        "note":"جزئیات ۸ برنامه اخیر، ۸۰ پیام آخر، ۳۰ گفت‌وگوی هوش مصنوعی و حداکثر ۶۰ نتیجه آزمون؛ فایل‌های پیوست و کلید آزمون‌های ناتمام خوانده نمی‌شوند."}
+        "external_exams":len(external_results),"academic_calendar":bool(academic_calendar),
+        "note":"جزئیات ۸ برنامه اخیر، ۸۰ پیام آخر، ۳۰ گفت‌وگوی هوش مصنوعی و نتایج آزمون‌های اخیر؛ فایل‌های پیوست و کلید آزمون‌های ناتمام خوانده نمی‌شوند."}
     student=db.get(User,student_id)
     context={"student_identity":{"id":student_id,"full_name":student.full_name},"as_of":utcnow().isoformat(),
         "all_time_totals":history_totals,
         "historical_week_summaries":[{"plan_id":r[0],"week":r[1],"activities":r[2],
             "planned_minutes":r[3],"actual_minutes":r[4],"completed":r[5]} for r in history[:100]],
         "student_profile":{k:getattr(profile,k) for k in
-        ("grade","major","goal","average_grade11","average_grade12","school_schedule_json","extra_classes_json")} if profile else {},
-        "plans":timeline,"human_chat":chat,"ai_chat":ai_chat,"exam_results":results,"legacy_results":legacy,"coverage":coverage}
+        ("education_level","grade","major","school","goal","average_grade7","average_grade8","average_grade9",
+         "average_grade10","average_grade11","average_grade12","strengths","weaknesses",
+         "school_schedule_json","extra_classes_json")} if profile else {},
+        "plans":timeline,"human_chat":chat,"ai_chat":ai_chat,"exam_results":results,"legacy_results":legacy,
+        "external_exam_results":external_results,"academic_calendar":academic_calendar,"coverage":coverage}
     # Bound individual free-text values without ever cutting JSON midway.
     def trim(value):
         if isinstance(value,str): return value[:1400]
@@ -158,14 +178,14 @@ def student_context(db, student_id, advisor_id=None):
         return value
     context=trim(context)
     while len(json.dumps(context,ensure_ascii=False))>105000:
-        buckets=[context[k] for k in ("plans","human_chat","ai_chat","exam_results","legacy_results") if len(context[k])>1]
+        buckets=[context[k] for k in ("plans","human_chat","ai_chat","exam_results","legacy_results","external_exam_results") if len(context[k])>1]
         if not buckets: break
         largest=max(buckets,key=lambda x:len(json.dumps(x,ensure_ascii=False)))
         largest.pop(0 if largest is context["human_chat"] or largest is context["ai_chat"] else -1)
         coverage["note"]="اطلاعات بسیار حجیم بود؛ جزئیات قدیمی‌تر برای رعایت ظرفیت تحلیل کنار گذاشته شده‌اند."
     retained_ids={p["id"] for p in context["plans"]}
     coverage.update(reports=sum(r.plan_id in retained_ids for r in reports),plans=len(context["plans"]),messages=len(context["human_chat"]),ai_messages=len(context["ai_chat"]),
-                    exams=len(context["exam_results"])+len(context["legacy_results"]))
+                    exams=len(context["exam_results"])+len(context["legacy_results"]),external_exams=len(context["external_exam_results"]))
     context["coverage"]=coverage
     # Advisor-private notes are used for advisor analysis/planning, not student chat.
     if advisor_id and db.scalar(select(AdvisorAssignment.id).where(
@@ -175,9 +195,6 @@ def student_context(db, student_id, advisor_id=None):
         if evaluation:
             context["advisor_evaluation"]={
                 "assessment":evaluation.assessment,
-                "academic_calendar_notes":evaluation.calendar_notes,
-                "dated_milestones":parse(evaluation.milestones_json,[]),
-                "date_system":"Jalali YYYY/MM/DD",
                 "updated_at":evaluation.updated_at.isoformat()}
     from app.book_service import inventory
     context["available_books"]=inventory(db,student_id)

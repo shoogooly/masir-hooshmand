@@ -355,7 +355,7 @@ def test_advisor_evaluation_persists_is_scoped_and_informs_draft(env,monkeypatch
     with SessionLocal() as db:
         private,_=ai.student_context(db,sid,advisor_id=aid)
         assert private["advisor_evaluation"]["assessment"]==payload["assessment"].strip()
-        assert private["advisor_evaluation"]["dated_milestones"][0]["date"]=="1405/08/30"
+        assert "dated_milestones" not in private["advisor_evaluation"]
         assert "advisor_evaluation" not in ai.student_context(db,sid)[0]
         assert "advisor_evaluation" not in ai.student_context(db,sid,advisor_id="other")[0]
     seen=[]
@@ -367,7 +367,7 @@ def test_advisor_evaluation_persists_is_scoped_and_informs_draft(env,monkeypatch
     response=a.post(f"/api/v1/ai/students/{sid}/plan-draft",headers=ah,json={
         "start_date":"1405/06/21","day_start_time":"08:00","day_end_time":"22:00"})
     assert response.status_code==200,response.text
-    assert seen[0]["student_context"]["advisor_evaluation"]["academic_calendar_notes"]==payload["calendar_notes"]
+    assert seen[0]["student_context"]["advisor_evaluation"]["assessment"]==payload["assessment"].strip()
     payload["version"]=saved.json()["data"]["version"]
     payload["milestones"][0]["date"]="1405/13/30"
     assert a.put(path,headers=ah,json=payload).status_code==422
