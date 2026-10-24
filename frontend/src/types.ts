@@ -19,6 +19,7 @@ export type ExtraClasses = Record<string,string>
 export interface Profile extends User {
   grade?:string; major?:string; school?:string; goal?:string; national_code?:string; birth_date?:string
   parent_name?:string; parent_phone?:string; address?:string
+  strengths?:string; weaknesses?:string; profile_changes_pending?:boolean
   average_grade7?:number|null; average_grade8?:number|null; average_grade9?:number|null; average_grade10?:number|null; average_grade11?:number|null; average_grade12?:number|null
   education_level?:'lower_secondary'|'upper_secondary';lead_approval_status?:string;admin_approval_status?:string
   work_levels?:('lower_secondary'|'upper_secondary')[]

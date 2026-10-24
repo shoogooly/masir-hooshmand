@@ -2,9 +2,11 @@ import { subscriptionPlanName } from '../utils/subscriptions'
 import { useMemo, useState } from 'react'
 import PasswordChange from '../components/PasswordChange'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, CheckCircle2, CreditCard, Download, FileQuestion, Search, ShieldCheck, UserCheck, Users, XCircle } from 'lucide-react'
+import { BookOpen, CheckCircle2, CreditCard, Download, FileQuestion, Search, ShieldCheck, UserCheck, UserRound, Users, XCircle } from 'lucide-react'
 import { api } from '../api'
 import type { AdminAdvisor, AdminAudit, AdminStudent, AdvisorOption, RegistrationOptions, User } from '../types'
+import { photoUrl } from '../utils/profilePhoto'
+import '../styles/advisor-detail-photo.css'
 
 const statusLabel:Record<string,string>={active:'فعال',suspended:'غیرفعال',pending_payment:'در انتظار پرداخت',pending_approval:'در انتظار تأیید',pending_assignment:'در انتظار تخصیص',pending:'در انتظار بررسی',approved:'تأییدشده',rejected:'ردشده',paid:'پرداخت‌شده',failed:'ناموفق'}
 function Head({title,subtitle}:{title:string;subtitle:string}){return <div className="section-head"><div><h1>{title}</h1><p>{subtitle}</p></div></div>}
@@ -67,7 +69,7 @@ export function AdminAdvisorsPage({canReview=true}:{canReview?:boolean}){
 
 function AdvisorDetail({item,review,busy,canReview}:{item:AdminAdvisor;review:(status:string,note:string)=>void;busy:boolean;canReview:boolean}){
   const [note,setNote]=useState(''),p=item.profile
-  return <section className="advisor-detail"><h2>{item.full_name}</h2><div className="detail-grid"><Info label="موبایل" value={item.phone}/><Info label="کد ملی" value={p.national_code}/><Info label="تاریخ تولد" value={p.birth_date}/><Info label="مدرک" value={p.education_degree}/><Info label="رشته" value={p.education_field}/><Info label="سابقه" value={`${p.experience_years||0} سال`}/><Info label="ظرفیت سال" value={`${p.assigned_students||0} از ${p.support_capacity||0}`}/><Info label="سال تحصیلی" value={p.academic_year}/><Info label="نشانی" value={p.address}/><Info label="معرفی" value={p.bio}/></div><h3>مدارک بارگذاری‌شده</h3><div className="advisor-documents">{p.documents?.map(doc=><a key={doc.name} download={doc.name} href={`data:${doc.content_type};base64,${doc.content_base64}`}><Download/>{doc.kind}<small>{doc.name}</small></a>)||<span>مدرکی ثبت نشده است.</span>}</div>{canReview&&<><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="برای رد درخواست، علت دقیق الزامی است"/><div className="review-actions"><button disabled={busy} onClick={()=>review('approved',note)}><CheckCircle2/> تأیید مشاور</button><button disabled={busy||!note.trim()} className="danger" onClick={()=>review('rejected',note)}><XCircle/> رد درخواست</button></div></>}</section>
+  return <section className="advisor-detail"><div className="advisor-detail-heading"><div className="advisor-personnel-photo">{item.profile_photo?<img src={photoUrl(item.profile_photo)} alt={`عکس پرسنلی ${item.full_name}`}/>:<UserRound/>}</div><div><h2>{item.full_name}</h2><p>عکس پرسنلی ثبت‌شده مشاور</p></div></div><div className="detail-grid"><Info label="موبایل" value={item.phone}/><Info label="کد ملی" value={p.national_code}/><Info label="تاریخ تولد" value={p.birth_date}/><Info label="مدرک" value={p.education_degree}/><Info label="رشته" value={p.education_field}/><Info label="سابقه" value={`${p.experience_years||0} سال`}/><Info label="ظرفیت سال" value={`${p.assigned_students||0} از ${p.support_capacity||0}`}/><Info label="سال تحصیلی" value={p.academic_year}/><Info label="نشانی" value={p.address}/><Info label="معرفی" value={p.bio}/></div><h3>مدارک بارگذاری‌شده</h3><div className="advisor-documents">{p.documents?.map(doc=><a key={doc.name} download={doc.name} href={`data:${doc.content_type};base64,${doc.content_base64}`}><Download/>{doc.kind}<small>{doc.name}</small></a>)||<span>مدرکی ثبت نشده است.</span>}</div>{canReview&&<><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="برای رد درخواست، علت دقیق الزامی است"/><div className="review-actions"><button disabled={busy} onClick={()=>review('approved',note)}><CheckCircle2/> تأیید مشاور</button><button disabled={busy||!note.trim()} className="danger" onClick={()=>review('rejected',note)}><XCircle/> رد درخواست</button></div></>}</section>
 }
 
 export function AdminFinancePage(){

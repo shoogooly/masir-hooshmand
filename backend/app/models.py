@@ -125,6 +125,8 @@ class AdvisorProfile(Base, TimeMixin):
     academic_year: Mapped[str] = mapped_column(String(20), default="1405-1406")
     documents_json: Mapped[str] = mapped_column(Text, default="[]")
     documents_count: Mapped[int] = mapped_column(Integer, default=0)
+    pending_changes_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+    pending_changes_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approval_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     lead_approval_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     lead_reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)

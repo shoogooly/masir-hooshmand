@@ -55,3 +55,52 @@ def test_profile_photo_stays_pending_until_admin_approval():
         assert profile["profile_photo"] == PHOTO
         assert profile["pending_profile_photo"] is None
         assert profile["profile_photo_pending"] is False
+
+
+def test_advisor_profile_changes_wait_for_manager_and_show_old_and_new_values():
+    with TestClient(app) as advisor:
+        advisor_user, headers = sign_in(advisor, "09120000002", "advisor")
+        before = advisor.get("/api/v1/profile").json()["data"]
+        response = advisor.patch("/api/v1/profile", headers=headers, json={
+            "full_name": advisor_user["full_name"],
+            "education_field": "روان‌شناسی تربیتی",
+            "experience_years": 12,
+            "bio": "معرفی جدید مشاور برای صفحه عمومی",
+        })
+        assert response.status_code == 200
+        assert response.json()["data"]["pending_review"] is True
+        pending = advisor.get("/api/v1/profile").json()["data"]
+        assert pending["education_field"] == before["education_field"]
+        assert pending["profile_changes_pending"] is True
+
+    with TestClient(app) as admin:
+        _, headers = sign_in(admin, "09120000003", "super_admin")
+        requests = admin.get("/api/v1/admin/profile-change-requests").json()["data"]
+        item = next(row for row in requests if row["id"] == advisor_user["id"])
+        assert item["old_values"]["education_field"] == before["education_field"]
+        assert item["new_values"]["education_field"] == "روان‌شناسی تربیتی"
+        approved = admin.patch(f"/api/v1/admin/users/{advisor_user['id']}/profile-change-review",
+                               headers=headers, json={"status": "approved"})
+        assert approved.status_code == 200
+
+    with TestClient(app) as advisor:
+        sign_in(advisor, "09120000002", "advisor")
+        profile = advisor.get("/api/v1/profile").json()["data"]
+        assert profile["education_field"] == "روان‌شناسی تربیتی"
+        assert profile["experience_years"] == 12
+        assert profile["profile_changes_pending"] is False
+
+
+def test_advisor_can_edit_assigned_students_school_schedule():
+    with TestClient(app) as student:
+        student_user, _ = sign_in(student, "09120000001", "student")
+    with TestClient(app) as advisor:
+        _, headers = sign_in(advisor, "09120000002", "advisor")
+        schedule = {"شنبه": ["ریاضی", "فیزیک", "ادبیات", "شیمی"], "یکشنبه": ["زیست"]}
+        response = advisor.put(f"/api/v1/advisors/students/{student_user['id']}/school-schedule",
+                               headers=headers, json={"school_schedule": schedule,
+                                                     "extra_classes": {"شنبه": "کلاس زبان"}})
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["school_schedule"]["شنبه"][1] == "فیزیک"
+        assert data["extra_classes"]["شنبه"] == "کلاس زبان"

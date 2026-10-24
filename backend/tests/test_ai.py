@@ -11,7 +11,7 @@ from app.main import app
 from app import ai_service as ai, ai_jobs
 from app.ai_models import AIConfiguration, AIStudentAccess, AITurn, AIAnalysis
 from app.db.session import SessionLocal
-from app.models import User, AdvisorAssignment, WeeklyPlan, Activity, StudyReport, Message, AssignedExam, AssignedExamSheet, utcnow
+from app.models import User, AdvisorAssignment, WeeklyPlan, Activity, StudyReport, Message, AssignedExam, AssignedExamSheet, StudentProfile, utcnow
 
 def login(client,phone,role):
     data={"phone":phone,"role":role,"code":"123456"}
@@ -134,6 +134,19 @@ def test_students_context_and_advisor_access_never_mix(env,monkeypatch):
     assert result.json()["data"]["student_id"]==sid
     with SessionLocal() as db:assert result.json()["data"]["student_name"]==db.get(User,sid).full_name
     assert s.get("/api/v1/ai/chat").json()["data"]["usage"]["used"]==0
+
+
+def test_ai_context_maps_each_day_to_tomorrows_school_lessons(env):
+    *_,sid,_=env
+    with SessionLocal() as db:
+        profile=db.scalar(select(StudentProfile).where(StudentProfile.user_id==sid))
+        profile.school_schedule_json=json.dumps({"شنبه":["ریاضی"],"یکشنبه":["فیزیک"],"دوشنبه":["شیمی"]},ensure_ascii=False)
+        db.commit()
+        context,_=ai.student_context(db,sid)
+    prepared=context["student_profile"]["next_day_school_preparation"]
+    assert prepared["شنبه"]==["فیزیک"]
+    assert prepared["یکشنبه"]==["شیمی"]
+    assert prepared["جمعه"]==["ریاضی"]
 
 def test_parallel_messages_cannot_exceed_quota(env,monkeypatch):
     s,a,m,sh,ah,mh,sid,aid=env

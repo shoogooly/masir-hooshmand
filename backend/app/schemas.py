@@ -356,10 +356,10 @@ class ProfileUpdate(BaseModel):
     major: str | None = Field(default=None, max_length=40)
     school: str | None = Field(default=None, max_length=120)
     goal: str | None = Field(default=None, max_length=200)
-    national_code: str | None = Field(default=None, pattern=r"^\d{10}$")
+    national_code: str | None = Field(default=None, pattern=r"^(?:\d{10})?$")
     birth_date: str | None = Field(default=None, max_length=10)
     parent_name: str | None = Field(default=None, max_length=120)
-    parent_phone: str | None = Field(default=None, pattern=r"^09\d{9}$")
+    parent_phone: str | None = Field(default=None, pattern=r"^(?:09\d{9})?$")
     address: str | None = Field(default=None, max_length=1000)
     average_grade9: float | None = Field(default=None, ge=0, le=20)
     average_grade10: float | None = Field(default=None, ge=0, le=20)
@@ -375,6 +375,8 @@ class ProfileUpdate(BaseModel):
     bio: str | None = Field(default=None, max_length=2000)
     support_capacity: int | None = Field(default=None, ge=1, le=500)
     academic_year: str | None = Field(default=None, max_length=20)
+    strengths: str | None = Field(default=None, max_length=2000)
+    weaknesses: str | None = Field(default=None, max_length=2000)
 
     @field_validator("work_levels")
     @classmethod
@@ -382,6 +384,28 @@ class ProfileUpdate(BaseModel):
         if levels is not None and len(levels) != len(set(levels)):
             raise ValueError("مقطع‌های فعالیت باید یکتا باشند")
         return levels
+
+
+class SchoolScheduleUpdate(BaseModel):
+    school_schedule: dict[str, list[str]]
+    extra_classes: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("school_schedule")
+    @classmethod
+    def valid_schedule(cls, value):
+        allowed = {"شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"}
+        if set(value) - allowed:
+            raise ValueError("روز برنامه مدرسه معتبر نیست")
+        if any(len(periods) > 10 or any(len(str(item)) > 120 for item in periods) for periods in value.values()):
+            raise ValueError("برنامه مدرسه بیش از حد مجاز است")
+        return value
+
+    @field_validator("extra_classes")
+    @classmethod
+    def valid_extras(cls, value):
+        if any(len(str(item)) > 1000 for item in value.values()):
+            raise ValueError("توضیحات کلاس‌ها بیش از حد مجاز است")
+        return value
 
 
 class QuestionCreate(BaseModel):

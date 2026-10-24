@@ -160,14 +160,23 @@ def student_context(db, student_id, advisor_id=None):
         "external_exams":len(external_results),"academic_calendar":bool(academic_calendar),
         "note":"جزئیات ۸ برنامه اخیر، ۸۰ پیام آخر، ۳۰ گفت‌وگوی هوش مصنوعی و نتایج آزمون‌های اخیر؛ فایل‌های پیوست و کلید آزمون‌های ناتمام خوانده نمی‌شوند."}
     student=db.get(User,student_id)
+    profile_data={k:getattr(profile,k) for k in
+        ("education_level","grade","major","school","goal","average_grade7","average_grade8","average_grade9",
+         "average_grade10","average_grade11","average_grade12","strengths","weaknesses")} if profile else {}
+    if profile:
+        school_schedule=parse(profile.school_schedule_json,{})
+        profile_data["school_schedule"]=school_schedule
+        profile_data["extra_classes"]=parse(profile.extra_classes_json,{})
+        day_order=["شنبه","یکشنبه","دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه"]
+        profile_data["next_day_school_preparation"]={
+            day:school_schedule.get(day_order[(index+1)%len(day_order)],[])
+            for index,day in enumerate(day_order)
+        }
     context={"student_identity":{"id":student_id,"full_name":student.full_name},"as_of":utcnow().isoformat(),
         "all_time_totals":history_totals,
         "historical_week_summaries":[{"plan_id":r[0],"week":r[1],"activities":r[2],
             "planned_minutes":r[3],"actual_minutes":r[4],"completed":r[5]} for r in history[:100]],
-        "student_profile":{k:getattr(profile,k) for k in
-        ("education_level","grade","major","school","goal","average_grade7","average_grade8","average_grade9",
-         "average_grade10","average_grade11","average_grade12","strengths","weaknesses",
-         "school_schedule_json","extra_classes_json")} if profile else {},
+        "student_profile":profile_data,
         "plans":timeline,"human_chat":chat,"ai_chat":ai_chat,"exam_results":results,"legacy_results":legacy,
         "external_exam_results":external_results,"academic_calendar":academic_calendar,"coverage":coverage}
     # Bound individual free-text values without ever cutting JSON midway.

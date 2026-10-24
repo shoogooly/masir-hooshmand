@@ -16,7 +16,7 @@ from app.db.session import get_db
 from app.models import Activity, AdvisorAssignment, AdvisorProfile, AuditLog, ChatLock, Exam, ExamAnswer, ExamSession, Insight, Message, Notification, Order, Question, RefreshToken, SiteSetting, StudentProfile, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
 from app.api.accounts_ext import finalize_student_registration
 from app.api.onboarding_flow import ensure_editable, reset_student_reviews, request_advisor, latest_order, paid_registration, approved_assignment, advance_student
-from app.schemas import AccountRegistration, ActivityUpdate, AdvisorAssign, AdvisorOnboardingProfile, AdvisorReferralCreate, AdvisorRegistration, AdvisorReview, AnswerUpdate, AssignmentDecision, ExamCreate, ExpertAdvisorUpdate, FreeSubscriptionCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PasswordLogin, PasswordReset, PaymentCallback, PaymentStart, PlanCreate, ProfileUpdate, QuestionCreate, SCHOOL_DAYS, StaffAccessUpdate, StaffCreate, StaffOTPVerify, StudentOnboardingProfile, StudentOnboardingSelection, StudentRegistration, SubscriptionPlanUpdate, TermsAccept, TermsUpdate, UserStatusUpdate
+from app.schemas import AccountRegistration, ActivityUpdate, AdvisorAssign, AdvisorOnboardingProfile, AdvisorReferralCreate, AdvisorRegistration, AdvisorReview, AnswerUpdate, AssignmentDecision, ExamCreate, ExpertAdvisorUpdate, FreeSubscriptionCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PasswordLogin, PasswordReset, PaymentCallback, PaymentStart, PlanCreate, ProfileUpdate, QuestionCreate, SCHOOL_DAYS, SchoolScheduleUpdate, StaffAccessUpdate, StaffCreate, StaffOTPVerify, StudentOnboardingProfile, StudentOnboardingSelection, StudentRegistration, SubscriptionPlanUpdate, TermsAccept, TermsUpdate, UserStatusUpdate
 from app.services import ai_provider, audit, otp_provider, payment_provider
 from app.integration_service import create_zarinpal, get as integration_get, send_otp, verify_otp as verify_sms_otp, verify_zarinpal, zarinpal_ready
 from app.staff_access import ACCESS_AREAS, access_matrix, expert_advisor_ids, expert_can_view_advisor, expert_can_view_student, require_access, save_access_matrix, save_expert_advisors
@@ -88,6 +88,7 @@ def student_profile_dict(profile: StudentProfile | None):
         "average_grade9": profile.average_grade9, "average_grade10": profile.average_grade10,
         "average_grade7": profile.average_grade7, "average_grade8": profile.average_grade8,
         "average_grade11": profile.average_grade11, "average_grade12": profile.average_grade12,
+        "strengths": profile.strengths, "weaknesses": profile.weaknesses,
         "school_schedule": json_value(profile.school_schedule_json, {}),
         "extra_classes": json_value(profile.extra_classes_json, {}),
         "advisor_selection_mode": profile.advisor_selection_mode,
@@ -125,6 +126,7 @@ def advisor_profile_dict(db: Session, profile: AdvisorProfile | None, include_do
         "reviewed_by": profile.reviewed_by, "reviewed_at": profile.reviewed_at,
         "assigned_students": assigned, "remaining_capacity": remaining, "is_full": remaining <= 0,
         "documents_count": profile.documents_count,
+        "profile_changes_pending": bool(json_value(profile.pending_changes_json, {}).get("new")),
     }
     if include_documents:
         data["documents"] = json_value(profile.documents_json, [])
@@ -815,7 +817,6 @@ def get_profile(user: User = Depends(current_user), db: Session = Depends(get_db
 
 @router.patch("/profile")
 def update_profile(payload: ProfileUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    user.full_name = payload.full_name
     if payload.profile_photo is not None and user.role in {"student", "advisor"}:
         user.pending_profile_photo_json = json.dumps(payload.profile_photo.model_dump(), ensure_ascii=False)
         admins = db.scalars(select(User).where(User.role == "super_admin", User.status == "active")).all()
@@ -824,12 +825,13 @@ def update_profile(payload: ProfileUpdate, user: User = Depends(current_user), d
                              f"{user.full_name} درخواست تغییر عکس پرسنلی خود را ثبت کرده است.",
                              "/app/admin/photo-reviews", actor_id=user.id, related_id=user.id)
     if user.role == "student":
+        user.full_name = payload.full_name
         profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
         if not profile:
             profile = StudentProfile(user_id=user.id)
             db.add(profile)
         for field in ("grade", "major", "school", "goal", "national_code", "birth_date", "parent_name",
-                      "parent_phone", "address", "average_grade7", "average_grade8", "average_grade9", "average_grade10", "average_grade11", "average_grade12"):
+                      "parent_phone", "address", "average_grade7", "average_grade8", "average_grade9", "average_grade10", "average_grade11", "average_grade12", "strengths", "weaknesses"):
             value = getattr(payload, field)
             if value is not None:
                 setattr(profile, field, value)
@@ -844,17 +846,36 @@ def update_profile(payload: ProfileUpdate, user: User = Depends(current_user), d
         _, assigned, _ = advisor_capacity(db, user.id)
         if payload.support_capacity is not None and payload.support_capacity < assigned:
             raise HTTPException(409, "ظرفیت نمی‌تواند از تعداد دانش‌آموزان فعال کمتر باشد")
-        if payload.work_levels is not None:
-            profile.work_levels_json = json.dumps(payload.work_levels, ensure_ascii=False)
-            profile.education_level = payload.work_levels[0]
-        for field in ("education_degree", "education_field", "experience_years", "bio", "support_capacity", "academic_year", "address", "birth_date"):
+        current = {
+            "full_name": user.full_name, "national_code": profile.national_code,
+            "birth_date": profile.birth_date, "address": profile.address,
+            "education_degree": profile.education_degree, "education_field": profile.education_field,
+            "experience_years": profile.experience_years, "bio": profile.bio,
+            "support_capacity": profile.support_capacity, "academic_year": profile.academic_year,
+            "work_levels": advisor_levels(profile),
+        }
+        pending = json_value(profile.pending_changes_json, {})
+        proposed = dict(pending.get("new") or {})
+        proposed["full_name"] = payload.full_name
+        for field in ("national_code", "birth_date", "address", "education_degree", "education_field",
+                      "experience_years", "bio", "support_capacity", "academic_year", "work_levels"):
             value = getattr(payload, field)
             if value is not None:
-                setattr(profile, field, value)
+                proposed[field] = value
+        proposed = {key: value for key, value in proposed.items() if value != current.get(key)}
+        profile.pending_changes_json = json.dumps(
+            {"old": {key: current.get(key) for key in proposed}, "new": proposed}, ensure_ascii=False)
+        profile.pending_changes_requested_at = utcnow() if proposed else None
+        if proposed or payload.profile_photo is not None:
+            admins = db.scalars(select(User).where(User.role.in_({"super_admin", "operations_admin"}), User.status == "active")).all()
+            for admin in admins:
+                add_notification(db, admin.id, "profile_change_review", "درخواست تغییر اطلاعات مشاور",
+                                 f"{user.full_name} درخواست تغییر اطلاعات پروفایل خود را ثبت کرده است.",
+                                 "/app/admin/photo-reviews", actor_id=user.id, related_id=user.id)
     audit(db, user.id, "profile.updated", "user", user.id,
           after={"work_levels": payload.work_levels, "profile_photo_requested": payload.profile_photo is not None})
     db.commit()
-    return ok({"updated": True})
+    return ok({"updated": True, "pending_review": user.role == "advisor"})
 
 
 @router.get("/students/advisor")
@@ -877,6 +898,25 @@ def advisor_student_report(student_id: str, user: User = Depends(roles("advisor"
     if not student or student.role != "student": raise HTTPException(404, "دانش‌آموز یافت نشد")
     profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student_id))
     return ok({"student": user_dict(student), "profile": advisor_student_profile_dict(profile), **report_data(db, student_id)})
+
+
+@router.put("/advisors/students/{student_id}/school-schedule")
+def update_student_school_schedule(student_id: str, payload: SchoolScheduleUpdate,
+                                   user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
+    if user.role == "advisor" and not assignment_for(db, user.id, student_id):
+        raise HTTPException(403, "دانش‌آموز به شما تخصیص داده نشده است")
+    student = db.get(User, student_id)
+    profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == student_id))
+    if not student or student.role != "student" or not profile:
+        raise HTTPException(404, "پرونده دانش‌آموز یافت نشد")
+    before = {"school_schedule": json_value(profile.school_schedule_json, {}),
+              "extra_classes": json_value(profile.extra_classes_json, {})}
+    profile.school_schedule_json = json.dumps(payload.school_schedule, ensure_ascii=False)
+    profile.extra_classes_json = json.dumps(payload.extra_classes, ensure_ascii=False)
+    audit(db, user.id, "student.school_schedule_updated", "user", student_id, before=before,
+          after={"school_schedule": payload.school_schedule, "extra_classes": payload.extra_classes})
+    db.commit()
+    return ok(advisor_student_profile_dict(profile))
 
 
 @router.get("/advisors/{advisor_id}/students")

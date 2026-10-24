@@ -52,15 +52,84 @@ class StudentApprovalUpdate(BaseModel):
 class ProfilePhotoReview(BaseModel):
     status: Literal["approved", "rejected"]
 
-@router.get("/admin/profile-photo-requests")
-def profile_photo_requests(admin: User = Depends(roles("super_admin", "operations_admin")),
+
+PROFILE_FIELD_LABELS = {
+    "full_name": "نام و نام خانوادگی", "national_code": "کد ملی", "birth_date": "تاریخ تولد",
+    "address": "نشانی", "education_degree": "مدرک تحصیلی", "education_field": "رشته تحصیلی",
+    "experience_years": "سابقه کاری", "bio": "متن معرفی و سوابق", "support_capacity": "ظرفیت پذیرش",
+    "academic_year": "سال تحصیلی", "work_levels": "مقطع‌های کاری",
+}
+
+
+@router.get("/admin/profile-change-requests")
+def profile_change_requests(admin: User = Depends(roles("super_admin", "operations_admin")),
+                            db: Session = Depends(get_db)):
+    users = db.scalars(select(User).where(User.role.in_({"student", "advisor"})).order_by(User.updated_at.desc())).all()
+    rows = []
+    for item in users:
+        profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == item.id)) if item.role == "advisor" else None
+        changes = {}
+        if profile:
+            try:
+                changes = json.loads(profile.pending_changes_json or "{}")
+            except (TypeError, json.JSONDecodeError):
+                changes = {}
+        proposed = changes.get("new") or {}
+        if not proposed and not item.pending_profile_photo_json:
+            continue
+        row = basic(item) | {
+            "old_values": changes.get("old") or {}, "new_values": proposed,
+            "field_labels": PROFILE_FIELD_LABELS,
+            "requested_at": profile.pending_changes_requested_at if profile else item.updated_at,
+        }
+        rows.append(row)
+    return ok(rows)
+
+
+@router.patch("/admin/users/{user_id}/profile-change-review")
+def review_profile_changes(user_id: str, payload: ProfilePhotoReview,
+                           admin: User = Depends(roles("super_admin", "operations_admin")),
                            db: Session = Depends(get_db)):
-    users = db.scalars(
-        select(User)
-        .where(User.role.in_({"student", "advisor"}), User.pending_profile_photo_json != "")
-        .order_by(User.updated_at.desc())
-    ).all()
-    return ok([basic(item) for item in users])
+    target = db.get(User, user_id)
+    if not target or target.role not in {"student", "advisor"}:
+        raise HTTPException(404, "کاربر یافت نشد")
+    profile = db.scalar(select(AdvisorProfile).where(AdvisorProfile.user_id == user_id)) if target.role == "advisor" else None
+    changes = {}
+    if profile:
+        try:
+            changes = json.loads(profile.pending_changes_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            changes = {}
+    proposed = changes.get("new") or {}
+    if not proposed and not target.pending_profile_photo_json:
+        raise HTTPException(409, "درخواستی در انتظار بررسی نیست")
+    if payload.status == "approved":
+        if target.pending_profile_photo_json:
+            target.profile_photo_json = target.pending_profile_photo_json
+        if profile:
+            if "full_name" in proposed:
+                target.full_name = proposed["full_name"]
+            if "work_levels" in proposed:
+                levels = proposed["work_levels"]
+                profile.work_levels_json = json.dumps(levels, ensure_ascii=False)
+                profile.education_level = levels[0]
+            for field in ("national_code", "birth_date", "address", "education_degree", "education_field",
+                          "experience_years", "bio", "support_capacity", "academic_year"):
+                if field in proposed:
+                    setattr(profile, field, proposed[field])
+    target.pending_profile_photo_json = ""
+    if profile:
+        profile.pending_changes_json = "{}"
+        profile.pending_changes_requested_at = None
+    db.add(Notification(user_id=target.id, actor_id=admin.id, kind="profile_change_reviewed",
+                        title="نتیجه بررسی اطلاعات پروفایل",
+                        body="اطلاعات جدید شما تأیید و منتشر شد." if payload.status == "approved" else "درخواست تغییر اطلاعات شما تأیید نشد.",
+                        link="/app/student/settings" if target.role == "student" else "/app/advisor/settings",
+                        related_id=target.id))
+    audit(db, admin.id, "admin.profile_changes_reviewed", "user", target.id,
+          before=changes.get("old") or {}, after={"status": payload.status, "changes": proposed})
+    db.commit()
+    return ok(basic(target))
 
 @router.get("/admin/profile-photo-requests")
 def profile_photo_requests(admin: User = Depends(roles("super_admin", "operations_admin")),

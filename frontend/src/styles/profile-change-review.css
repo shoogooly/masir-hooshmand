@@ -1,0 +1,8 @@
+.profile-change-card{align-content:start}
+.profile-change-table{display:grid;border:1px solid #e6dfec;border-radius:12px;overflow:hidden}
+.profile-change-table>div{display:grid;grid-template-columns:minmax(120px,.8fr) minmax(130px,1fr) minmax(130px,1fr);gap:10px;padding:11px 13px;align-items:start}
+.profile-change-table>div+div{border-top:1px solid #eee9f2}
+.profile-change-table .profile-change-head{background:#f5f1fa;color:#5d526a}
+.profile-change-table span{white-space:pre-wrap;line-height:1.8;color:#625a6d}
+.profile-change-table .new-value{color:#342052;font-weight:800;background:#f4edff;border-radius:7px;padding:5px 8px}
+@media(max-width:560px){.profile-change-table>div{grid-template-columns:1fr}.profile-change-table .profile-change-head{display:none}.profile-change-table strong{color:#7042bb}}

@@ -69,6 +69,12 @@ def test_advisor_can_change_work_levels_and_registration_options_are_filtered():
             "full_name": profile["full_name"], "work_levels": ["lower_secondary"],
         })
         assert changed.status_code == 200
+    with TestClient(app) as admin:
+        csrf = login(admin, "09120000003", "super_admin", "654321")
+        assert admin.patch(f"/api/v1/admin/users/{profile['id']}/profile-change-review",
+                           headers={"X-CSRF-Token": csrf}, json={"status": "approved"}).status_code == 200
+    with TestClient(app) as advisor:
+        csrf = login(advisor, "09120000002", "advisor")
         lower = advisor.get("/api/v1/registrations/options?education_level=lower_secondary").json()["data"]["advisors"]
         upper = advisor.get("/api/v1/registrations/options?education_level=upper_secondary").json()["data"]["advisors"]
         assert any(item["id"] == profile["id"] for item in lower)
@@ -77,3 +83,7 @@ def test_advisor_can_change_work_levels_and_registration_options_are_filtered():
             "full_name": profile["full_name"], "work_levels": ["upper_secondary"],
         })
         assert restored.status_code == 200
+    with TestClient(app) as admin:
+        csrf = login(admin, "09120000003", "super_admin", "654321")
+        assert admin.patch(f"/api/v1/admin/users/{profile['id']}/profile-change-review",
+                           headers={"X-CSRF-Token": csrf}, json={"status": "approved"}).status_code == 200
