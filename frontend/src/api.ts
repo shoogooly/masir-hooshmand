@@ -79,6 +79,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok || !body.success) {
     if (body.error?.code === 'SUBSCRIPTION_REQUIRED')
       window.dispatchEvent(new Event(SUBSCRIPTION_REQUIRED_EVENT))
+    if(body.error?.code==='VALIDATION_ERROR'&&body.error.details?.length){
+      const detail=body.error.details[0]
+      const field=detail.loc?.filter(part=>part!=='body').map(part=>typeof part==='number'?`ردیف ${part+1}`:({nodes:'نمودار درختی',items:'مباحث',title:'عنوان',subject:'نام درس',month:'ماه',day:'روز',major:'رشته',grade:'پایه'} as Record<string,string>)[part]||part).join(' ← ')
+      const reason=detail.msg?.replace(/^Value error,\s*/i,'')
+      throw new Error([field,reason].filter(Boolean).join(': ')||body.error.message)
+    }
     throw new Error(body.error?.message || 'خطایی رخ داد')
   }
   return body.data

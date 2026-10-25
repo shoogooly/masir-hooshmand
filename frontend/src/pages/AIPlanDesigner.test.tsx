@@ -10,6 +10,7 @@ let client:QueryClient
 afterEach(()=>{cleanup();client?.clear();vi.clearAllMocks()})
 const draft={student_id:'s',student_name:'پارسا رضایی',start_date:'1405/06/21',day_start_time:'08:00',day_end_time:'24:00',title:'برنامه پیشنهادی',weekly_mission:'مرور اشکالات',rationale:'بر پایه گزارش‌های دانش‌آموز',cautions:[],days:[{label:'شنبه',date:'1405/06/21'}],activities:[{day:'شنبه',title:'تمرین ریاضی',start_time:'09:00',end_time:'10:00'}]}
 function setup(node:React.ReactNode){client=new QueryClient({defaultOptions:{queries:{retry:false}}});render(<QueryClientProvider client={client}>{node}</QueryClientProvider>)}
+function editDescription(value:string){const field=screen.getByRole('textbox',{name:'توضیحات بازه'}) as HTMLElement;field.textContent=value;field.innerText=value;fireEvent.input(field)}
 test('AI draft preserves existing edits until applied, then remains editable before publication',async()=>{
  vi.mocked(api).mockImplementation(async(path,options)=>{
   if(path.endsWith('/plan-draft'))return {...draft,...JSON.parse(options!.body as string)} as never
@@ -19,21 +20,21 @@ test('AI draft preserves existing edits until applied, then remains editable bef
  })
  setup(<PlanBuilder studentId="s"/>)
  fireEvent.click(screen.getAllByRole('button',{name:/افزودن بازه برای/})[0])
- fireEvent.change(screen.getByLabelText('توضیحات (تا ۳ خط)'),{target:{value:'پیش‌نویس دستی'}})
+ editDescription('پیش‌نویس دستی')
  fireEvent.click(screen.getByRole('button',{name:'طراحی برنامه با هوش مصنوعی'}))
  await screen.findByText('این پیش‌نویس مربوط به دانش‌آموز پارسا رضایی است.')
- expect((screen.getByLabelText('توضیحات (تا ۳ خط)') as HTMLTextAreaElement).value).toBe('پیش‌نویس دستی')
+ expect(screen.getByRole('textbox',{name:'توضیحات بازه'}).textContent).toBe('پیش‌نویس دستی')
  expect(vi.mocked(api).mock.calls.some(([path,options])=>path==='/plans'&&options?.method==='POST')).toBe(false)
  fireEvent.click(screen.getByRole('button',{name:'جایگزینی پیش‌نویس فعلی با پیشنهاد'}))
  fireEvent.click(screen.getByRole('button',{name:'ویرایش بازه تمرین ریاضی'}))
- expect((screen.getByLabelText('توضیحات (تا ۳ خط)') as HTMLTextAreaElement).value).toBe('تمرین ریاضی')
- fireEvent.change(screen.getByLabelText('توضیحات (تا ۳ خط)'),{target:{value:'تمرین و مرور اصلاح‌شده'}})
+ expect(screen.getByRole('textbox',{name:'توضیحات بازه'}).textContent).toBe('تمرین ریاضی')
+ editDescription('تمرین و مرور اصلاح‌شده')
  fireEvent.click(screen.getByRole('button',{name:'ذخیره و انتشار برنامه'}))
  await waitFor(()=>expect(api).toHaveBeenCalledWith('/plans/published-id/publish',{method:'POST'}))
  const call=vi.mocked(api).mock.calls.find(([path,options])=>path==='/plans'&&options?.method==='POST')!
  expect(JSON.parse(call[1]!.body as string).activities[0].title).toBe('تمرین و مرور اصلاح‌شده')
  await screen.findByText('برنامه برای دانش‌آموز ارسال شد و در برنامه‌های ارسال‌شده قرار گرفت.')
- expect(screen.queryByLabelText('توضیحات (تا ۳ خط)')).toBeNull()
+ expect(screen.queryByRole('textbox',{name:'توضیحات بازه'})).toBeNull()
  expect((screen.getByLabelText('ماموریت هفته') as HTMLTextAreaElement).value).toBe('')
  expect(screen.queryByText('این پیش‌نویس مربوط به دانش‌آموز پارسا رضایی است.')).toBeNull()
 })
@@ -68,7 +69,7 @@ test('clear draft resets activities, mission and AI instructions without publish
  fireEvent.change(screen.getByLabelText('راهنمای مشاور برای طراحی (اختیاری)'),{target:{value:'تست بیشتر'}})
  vi.spyOn(window,'confirm').mockReturnValueOnce(true)
  fireEvent.click(screen.getByRole('button',{name:'پاک کردن فرم'}))
- expect(screen.queryByLabelText('توضیحات (تا ۳ خط)')).toBeNull()
+ expect(screen.queryByRole('textbox',{name:'توضیحات بازه'})).toBeNull()
  expect((screen.getByLabelText('ماموریت هفته') as HTMLTextAreaElement).value).toBe('')
  expect((screen.getByLabelText('راهنمای مشاور برای طراحی (اختیاری)') as HTMLTextAreaElement).value).toBe('')
  expect(vi.mocked(api).mock.calls.some(([,options])=>options?.method==='POST')).toBe(false)
@@ -88,5 +89,5 @@ test('failed publication keeps the filled draft',async()=>{
  fireEvent.click(screen.getByRole('button',{name:'ویرایش بازه تمرین ریاضی'}))
  fireEvent.click(screen.getByRole('button',{name:'ذخیره و انتشار برنامه'}))
  await screen.findByText('انتشار ناموفق بود')
- expect((screen.getByLabelText('توضیحات (تا ۳ خط)') as HTMLTextAreaElement).value).toBe('تمرین ریاضی')
+ expect(screen.getByRole('textbox',{name:'توضیحات بازه'}).textContent).toBe('تمرین ریاضی')
 })

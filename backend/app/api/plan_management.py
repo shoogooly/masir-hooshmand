@@ -75,6 +75,18 @@ def update_draft(plan_id: str, payload: DraftInput, user: User = Depends(roles("
     return store_draft(db, user, payload, editable(db, plan_id, user))
 
 
+@router.delete("/plan-drafts/{plan_id}")
+def delete_draft(plan_id: str, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
+    plan = editable(db, plan_id, user)
+    audit(db, user.id, "plan.draft_deleted", "weekly_plan", plan.id,
+          before={"title": plan.title, "student_id": plan.student_id})
+    db.execute(delete(StudyReport).where(StudyReport.plan_id == plan.id))
+    db.execute(delete(Notification).where(Notification.related_id == plan.id))
+    db.delete(plan)
+    db.commit()
+    return {"success": True, "data": {"deleted": True}, "meta": {}}
+
+
 @router.put("/plans/{plan_id}")
 def complete_draft(plan_id: str, payload: PlanCreate, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
     plan = editable(db, plan_id, user)
@@ -82,13 +94,15 @@ def complete_draft(plan_id: str, payload: PlanCreate, user: User = Depends(roles
         raise HTTPException(422, "دانش‌آموز برنامه قابل تغییر نیست")
     from app.book_service import validate_allocations
     validate_allocations(db, payload.student_id, payload.activities)
+    from app.api.academic_calendars import selected_topic_ids
+    topic_ids = selected_topic_ids(db, payload.student_id, payload.activities)
     plan.title, plan.week_label = payload.title, payload.week_label
     plan.weekly_mission, plan.plan_mode = payload.weekly_mission, payload.plan_mode
     plan.day_start_time, plan.day_end_time = payload.day_start_time, payload.day_end_time
     plan.schedule_days_json = json.dumps(payload.days, ensure_ascii=False)
     plan.time_slots_json = json.dumps(payload.time_slots, ensure_ascii=False)
     plan.activities.clear()
-    for item in payload.activities:
+    for item, selected_ids in zip(payload.activities, topic_ids):
         color = item.get("color", "")
         if not isinstance(color, str) or (color and not re.fullmatch(r"#[0-9a-fA-F]{6}", color)):
             raise HTTPException(422, "رنگ بازه معتبر نیست")
@@ -96,7 +110,8 @@ def complete_draft(plan_id: str, payload: PlanCreate, user: User = Depends(roles
         sh, sm = map(int, start.split(":")); eh, em = map(int, end.split(":"))
         plan.activities.append(Activity(day=item["day"], subject=item.get("subject", "عمومی"), title=item.get("title", ""),
             color=color, start_time=start, end_time=end, planned_minutes=eh*60+em-sh*60-sm,
-            book_topic_id=item.get("book_topic_id") or "", book_question_count=item.get("book_question_count", 0)))
+            book_topic_id=item.get("book_topic_id") or "", book_question_count=item.get("book_question_count", 0),
+            calendar_topic_ids_json=json.dumps(selected_ids)))
     # If publication fails, reopening the draft must show the latest validated edits.
     plan.draft_state_json = "{}"
     audit(db, user.id, "plan.draft_completed", "weekly_plan", plan.id)

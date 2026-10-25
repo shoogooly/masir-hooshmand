@@ -38,6 +38,7 @@ class DraftRequest(BaseModel):
 class DraftActivity(BaseModel):
     book_topic_id: str = Field(default="",max_length=36)
     book_question_count: int = Field(default=0,ge=0,le=10000)
+    calendar_topic_ids: list[str] = Field(default_factory=list,max_length=20)
     day: Literal["شنبه","یکشنبه","دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه"]
     title: str = Field(min_length=1,max_length=180)
     start_time: str = Field(pattern=TIME)
@@ -87,6 +88,15 @@ def generate_draft(student_id:str,payload:DraftRequest,user=Depends(roles("advis
     db.commit()
     try:
         context,coverage=ai.student_context(db,student_id,advisor_id=user.id);db.commit()
+        requested_year,requested_month,_=map(int,payload.start_date.split("/"))
+        requested_academic_year=requested_year if requested_month>=7 else requested_year-1
+        if context.get("academic_calendar"):
+            calendar=context["academic_calendar"]
+            calendar["requested_academic_year_start"]=requested_academic_year
+            calendar["requested_academic_year_end"]=requested_academic_year+1
+            for entry in [*calendar.get("nodes",[]),*calendar.get("items",[])]:
+                if entry.get("month"):
+                    entry["jalali_year_for_requested_week"]=requested_academic_year+(entry["month"]<7)
         result=ai.complete(config,
             "Design a concrete EDITABLE seven-day study timetable draft, not just advice. "
             "Use ONLY the supplied student_identity and student_context. Respect the advisor's requested dates and daily bounds. "
@@ -99,6 +109,11 @@ def generate_draft(student_id:str,payload:DraftRequest,user=Depends(roles("advis
             "the lessons scheduled at school tomorrow must be studied today. Never schedule today's school lessons merely "
             "because they appear in today's school timetable; today's timetable is only an availability constraint. "
             "Use academic_calendar deadlines and both site and external exam results to set priorities. "
+            "Calendar deadlines contain only Jalali month and day and repeat every academic year. The academic year "
+            "runs from 1 Mehr (month 7) through the last day of Shahrivar (month 6) in the following Jalali year. "
+            "Compare requested_week with each deadline using that rollover; never interpret Farvardin as before Mehr "
+            "within the same academic year. Respect tree ancestors and selected calendar_topic_ids in earlier plans. "
+            "For each new activity about a supplied calendar topic, return its exact node id in calendar_topic_ids. "
             "Consider prior plans, work reports, human chats, AI chats, advisor evaluation and all supplied student profile evidence. "
             "Apply advisor_preferences as educational scheduling constraints: preserve explicitly requested rest windows as empty gaps, "
             "respect requested subject priorities and workload, and explain any conflicting or infeasible preference in cautions. "
@@ -119,6 +134,9 @@ def generate_draft(student_id:str,payload:DraftRequest,user=Depends(roles("advis
              "daily_end":payload.day_end_time,"advisor_preferences":payload.instructions},DraftResult,6500)
         from app.book_service import validate_allocations,inventory
         validate_allocations(db,student_id,[a.model_dump() for a in result.activities])
+        from app.api.academic_calendars import selected_topic_ids
+        for activity,ids in zip(result.activities,selected_topic_ids(db,student_id,[a.model_dump() for a in result.activities])):
+            activity.calendar_topic_ids=ids
         topics={t["id"]:(b,t) for b in inventory(db,student_id) for t in b["topics"]}
         for activity in result.activities:
             if activity.book_topic_id:

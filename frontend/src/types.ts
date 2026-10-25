@@ -2,11 +2,11 @@ export type Role = 'student' | 'advisor' | 'secretary' | 'expert' | 'content_edi
 
 export interface ProfilePhoto {content_type:'image/jpeg'|'image/png'|'image/webp';content_base64:string}
 export interface User { id: string; phone: string; full_name: string; role: Role; status: string; onboarding_step?: string; referred_by_advisor_id?:string; profile_photo?:ProfilePhoto|null; pending_profile_photo?:ProfilePhoto|null; profile_photo_pending?:boolean; subscription_expired?:boolean; server_time?:string; subscription?:{expires_at:string;status:string}|null }
-export interface ApiResponse<T> { success: boolean; data: T; meta: Record<string, unknown>; error?: { message: string; code?: string } }
+export interface ApiResponse<T> { success: boolean; data: T; meta: Record<string, unknown>; error?: { message: string; code?: string; details?: Array<{loc?: Array<string|number>; msg?: string}> } }
 export interface Activity { id: string; day: string; subject: string; title: string; planned_minutes: number; actual_minutes: number; status: string }
 export interface Insight { id: string; kind: string; title: string; evidence: string; recommendation: string; confidence: number; status: string }
 
-export interface PlanActivity extends Activity { color?:string; book_topic_id?:string; book_question_count?:number; start_time:string; end_time:string; test_count:number; note:string }
+export interface PlanActivity extends Activity { color?:string; book_topic_id?:string; book_question_count?:number; calendar_topic_ids?:string[]; start_time:string; end_time:string; test_count:number; note:string }
 export interface PlanDay { label:string; date:string }
 export interface TimeSlot { start:string; end:string }
 export interface WeeklyPlan { plan_mode?:'timed'|'volume'; draft_state?:Record<string,unknown>|null; id:string; student_id:string; title:string; week_label:string; version:number; status:string; published_at?:string; day_start_time?:string; day_end_time?:string; weekly_mission?:string; days:PlanDay[]; time_slots:TimeSlot[]; activities:PlanActivity[] }

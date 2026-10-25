@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import jdatetime
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 import httpx
@@ -115,6 +116,7 @@ def student_context(db, student_id, advisor_id=None):
         activities=[]
         for a in sorted(p.activities,key=lambda a:(a.day,a.start_time))[:100]:
             activities.append({"id":a.id,"day":a.day,"title":cut(a.title,300),"start":a.start_time,"end":a.end_time,
+                "calendar_topic_ids":parse(a.calendar_topic_ids_json,[]),
                 "planned_minutes":a.planned_minutes,"legacy_status":a.status,
                 "legacy_actual_minutes":a.actual_minutes,"legacy_note":cut(a.note,300),
                 "report":report_map.get((p.id,"activity:"+a.id),{})})
@@ -151,10 +153,20 @@ def student_context(db, student_id, advisor_id=None):
         **parse(row.details_json,{})} for row in external_rows]
     selected_calendar=db.get(StudentAcademicCalendar,student_id)
     calendar=db.get(AcademicCalendar,selected_calendar.calendar_id) if selected_calendar else None
+    calendar_nodes=(parse(selected_calendar.override_nodes_json,[]) if selected_calendar and selected_calendar.override_nodes_json is not None
+                    else [{"id":node.id,"parent_id":node.parent_id,"subject":node.subject,"title":node.title,"month":node.month,"day":node.day} for node in calendar.nodes] if calendar else [])
+    calendar_items=(parse(selected_calendar.override_items_json,[]) if selected_calendar and selected_calendar.override_items_json is not None
+                    else [{"month":item.month,"day":item.day,"subject":item.subject,"topics":item.topics} for item in calendar.items] if calendar else [])
+    today=jdatetime.date.fromgregorian(date=utcnow().astimezone(IRAN).date())
+    school_year=today.year if today.month>=7 else today.year-1
     academic_calendar={"id":calendar.id,"title":calendar.title,"grade":calendar.grade,"major":calendar.major,
+        "recurrence":"Every academic year begins on 1 Mehr (month 7) and ends on the last day of Shahrivar (month 6). Dates are month/day only; months 1-6 belong to the following Jalali calendar year.",
+        "current_academic_year_start":school_year,
         "designer":{"name":calendar.designer_name,"role":calendar.designer_role},
-        "items":[{"month":item.month,"day":item.day,"subject":item.subject,"topics":cut(item.topics,1400)}
-                 for item in calendar.items]} if calendar else None
+        "student_customized":bool(selected_calendar and selected_calendar.override_nodes_json is not None),
+        "nodes":[{**node,"academic_year_order":((node["month"]-7)%12)*31+node["day"] if node.get("month") and node.get("day") else None,
+                  "jalali_year_this_cycle":school_year+(1 if node.get("month") and node["month"]<7 else 0)} for node in calendar_nodes],
+        "items":[{**item,"topics":cut(item["topics"],1400)} for item in calendar_items]} if calendar else None
     coverage={"plans":len(plans),"total_plans":total_plans,"reports":len(reports),"messages":len(chat),
         "total_messages":total_messages,"ai_messages":len(ai_chat),"exams":len(results)+len(legacy),
         "external_exams":len(external_results),"academic_calendar":bool(academic_calendar),
@@ -291,5 +303,7 @@ def analyze(config,context):
         "a realistic proposed week (Saturday to Friday, minutes per day), prioritized advisor actions and useful follow-up questions. "
         "Evidence must cite supplied plan week/day, exam title/date or dated chat/report. Clearly separate inference from observation. "
         "Respect school/extra classes, prior actual study capacity, rest and incomplete data. Do not infer laziness from missing data. "
+        "Academic calendar month/day deadlines recur yearly: the school year starts on 1 Mehr (month 7) and ends "
+        "in Shahrivar (month 6) of the next Jalali year. Evaluate upcoming and overdue topics using this rollover. "
         "Risk means educational follow-up priority only. Data quality reflects evidence completeness. Proposed week is a draft, never a published plan.",
         context,AnalysisResult,5000).model_dump()

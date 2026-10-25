@@ -43,12 +43,32 @@ test('new planner starts closed and preserves entered draft when toggled',async(
  expect(screen.queryByRole('button',{name:/افزودن بازه برای/})).toBeNull()
  fireEvent.click(start)
  fireEvent.click(screen.getAllByRole('button',{name:/افزودن بازه برای/})[0])
- const input=screen.getByRole('textbox',{name:'توضیحات (تا ۳ خط)'})
- fireEvent.change(input,{target:{value:'پیش‌نویس حفظ شود'}})
+ const input=screen.getByRole('textbox',{name:'توضیحات بازه'}) as HTMLElement
+ input.textContent='پیش‌نویس حفظ شود';input.innerText='پیش‌نویس حفظ شود';fireEvent.input(input)
  fireEvent.click(start)
  expect(start.getAttribute('aria-expanded')).toBe('false')
  fireEvent.click(screen.getByRole('button',{name:'نسخه‌های قبلی برنامه'}))
  await screen.findByRole('button',{name:/برنامه 1/})
  fireEvent.click(start)
- expect((screen.getByRole('textbox',{name:'توضیحات (تا ۳ خط)'}) as HTMLTextAreaElement).value).toBe('پیش‌نویس حفظ شود')
+ expect(screen.getByRole('textbox',{name:'توضیحات بازه'}).textContent).toBe('پیش‌نویس حفظ شود')
+})
+
+test('advisor deletes a selected draft while published plans remain available',async()=>{
+ const draft={id:'draft-1',student_id:'s',title:'پیش‌نویس آزمایشی',week_label:'هفته جدید',version:3,status:'draft',activities:[],days:[],time_slots:[]}
+ let all=[...plans,draft]
+ vi.mocked(api).mockImplementation(async(path,options)=>{
+  if(path==='/plans'&&!options)return all as never
+  if(path==='/plan-drafts/draft-1'&&options?.method==='DELETE'){all=all.filter(plan=>plan.id!==draft.id);return {deleted:true} as never}
+  return [] as never
+ })
+ vi.spyOn(window,'confirm').mockReturnValue(true)
+ const deleted=vi.fn()
+ setup(<AdvisorPlanArchive studentId="s" studentName="دانش‌آموز" advisorName="مشاور" onEditDraft={vi.fn()} onDraftDeleted={deleted}/> )
+ fireEvent.click(await screen.findByRole('button',{name:'پیش‌نویس‌ها'}))
+ fireEvent.click(await screen.findByRole('button',{name:'حذف پیش‌نویس پیش‌نویس آزمایشی'}))
+ await waitFor(()=>expect(api).toHaveBeenCalledWith('/plan-drafts/draft-1',{method:'DELETE'}))
+ await waitFor(()=>expect(screen.queryByText('پیش‌نویس آزمایشی')).toBeNull())
+ expect(deleted).toHaveBeenCalledWith('draft-1')
+ fireEvent.click(screen.getByRole('button',{name:'برنامه‌های ارسال‌شده'}))
+ expect(await screen.findByRole('button',{name:/برنامه 1/})).toBeTruthy()
 })

@@ -191,6 +191,7 @@ class Activity(Base, TimeMixin):
     subject: Mapped[str] = mapped_column(String(80))
     book_topic_id: Mapped[str] = mapped_column(String(36), default="")
     book_question_count: Mapped[int] = mapped_column(Integer, default=0)
+    calendar_topic_ids_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     color: Mapped[str] = mapped_column(String(7), default="")
     title: Mapped[str] = mapped_column(String(180))
     start_time: Mapped[str] = mapped_column(String(5), default="08:00")
@@ -236,6 +237,20 @@ class AcademicCalendar(Base, TimeMixin):
     source_student_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     items: Mapped[list[AcademicCalendarItem]] = relationship(cascade="all, delete-orphan", order_by="AcademicCalendarItem.sort_order")
+    nodes: Mapped[list[AcademicCalendarNode]] = relationship(cascade="all, delete-orphan", order_by="AcademicCalendarNode.sort_order")
+
+
+class AcademicCalendarNode(Base):
+    __tablename__ = "academic_calendar_nodes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    calendar_id: Mapped[str] = mapped_column(ForeignKey("academic_calendars.id", ondelete="CASCADE"), index=True)
+    parent_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    subject: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(180))
+    depth: Mapped[int] = mapped_column(Integer)
+    sort_order: Mapped[int] = mapped_column(Integer)
+    month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    day: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class AcademicCalendarItem(Base):
@@ -254,6 +269,8 @@ class StudentAcademicCalendar(Base, TimeMixin):
     student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     calendar_id: Mapped[str] = mapped_column(ForeignKey("academic_calendars.id"), index=True)
     selected_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    override_nodes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    override_items_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Message(Base, TimeMixin):

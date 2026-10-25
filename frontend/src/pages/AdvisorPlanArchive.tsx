@@ -1,15 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Download } from 'lucide-react'
+import { ChevronDown, Download, Trash2 } from 'lucide-react'
 import { api } from '../api'
 import type { WeeklyPlan } from '../types'
 import type { StudyReports } from './studyReportTypes'
 import StudyReportPlan from './StudyReportPlan'
 import '../styles/advisor-plan-sections.css'
 
-export default function AdvisorPlanArchive({studentId,studentName,advisorName,reports=false,renderPlan,onEditDraft}:{studentId:string;studentName:string;advisorName:string;reports?:boolean;renderPlan?:(plan:WeeklyPlan)=>ReactNode;onEditDraft?:(plan:WeeklyPlan)=>void}){
+export default function AdvisorPlanArchive({studentId,studentName,advisorName,reports=false,renderPlan,onEditDraft,onDraftDeleted}:{studentId:string;studentName:string;advisorName:string;reports?:boolean;renderPlan?:(plan:WeeklyPlan)=>ReactNode;onEditDraft?:(plan:WeeklyPlan)=>void;onDraftDeleted?:(id:string)=>void}){
  const {data=[],isLoading,error,refetch}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')})
  const [open,setOpen]=useState(''),[busy,setBusy]=useState(''),[failure,setFailure]=useState<{id:string;message:string}|null>(null)
+ const [deleting,setDeleting]=useState('')
  const [category,setCategory]=useState<'published'|'draft'>('published')
  const [readyFile,setReadyFile]=useState<{url:string;filename:string}|null>(null)
  useEffect(()=>()=>{if(readyFile)URL.revokeObjectURL(readyFile.url)},[readyFile])
@@ -30,6 +31,13 @@ export default function AdvisorPlanArchive({studentId,studentName,advisorName,re
   }catch(e){setFailure({id:plan.id,message:e instanceof Error?e.message:'دانلود گزارش ناموفق بود'})}
   finally{setBusy('')}
  }
+ async function deleteDraft(plan:WeeklyPlan){
+  if(!window.confirm(`پیش‌نویس «${plan.title}» حذف شود؟ این کار قابل بازگشت نیست.`))return
+  setDeleting(plan.id);setFailure(null)
+  try{await api(`/plan-drafts/${plan.id}`,{method:'DELETE'});setOpen('');onDraftDeleted?.(plan.id);await qc.invalidateQueries({queryKey:['plans','advisor']})}
+  catch(e){setFailure({id:plan.id,message:e instanceof Error?e.message:'حذف پیش‌نویس ناموفق بود'})}
+  finally{setDeleting('')}
+ }
  if(isLoading)return <p className="page-state">در حال دریافت برنامه‌ها…</p>
  if(error)return <div role="alert">دریافت برنامه‌ها ناموفق بود. <button onClick={()=>void refetch()}>تلاش دوباره</button></div>
  return <div className="advisor-plan-archive">
@@ -44,7 +52,7 @@ export default function AdvisorPlanArchive({studentId,studentName,advisorName,re
      <ChevronDown aria-hidden="true"/><span><b>{plan.title}</b><small>{plan.week_label} · نسخه {plan.version.toLocaleString('fa-IR')} · {plan.status==='published'?'منتشرشده':'پیش‌نویس'}</small></span>
     </button>
     {!reports&&category==='published'&&<button className="btn btn-outline" aria-label={'دانلود PDF برنامه '+plan.week_label} disabled={Boolean(busy)} onClick={()=>void downloadPlans([plan])}><Download/>{busy===plan.id?'در حال ساخت…':'دانلود PDF برنامه'}</button>}
-    {!reports&&category==='draft'&&onEditDraft&&<button className="btn btn-primary" onClick={()=>onEditDraft(plan)}>ادامه ویرایش</button>}
+    {!reports&&category==='draft'&&<><button className="btn btn-primary" onClick={()=>onEditDraft?.(plan)} disabled={Boolean(deleting)||!onEditDraft}>ادامه ویرایش</button><button className="btn btn-outline advisor-draft-delete" aria-label={'حذف پیش‌نویس '+plan.title} disabled={Boolean(deleting)} onClick={()=>void deleteDraft(plan)}><Trash2/>{deleting===plan.id?'در حال حذف…':'حذف پیش‌نویس'}</button></>}
     {reports&&<button className="btn btn-outline advisor-report-download" aria-label={'دانلود PDF گزارش کار '+plan.week_label} disabled={Boolean(busy)} onClick={()=>void download(plan)}><Download/>{busy===plan.id?'در حال ساخت…':'دانلود PDF گزارش کار'}</button>}
    </div>
    {failure?.id===plan.id&&<p role="alert">{failure.message}</p>}

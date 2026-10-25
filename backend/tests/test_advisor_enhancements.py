@@ -59,6 +59,29 @@ def test_draft_resume_volume_publish_and_admin_delete():
             assert not db.scalars(select(Notification).where(Notification.related_id==pid)).all()
 
 
+def test_advisor_can_delete_only_own_unpublished_draft():
+    with TestClient(app) as advisor, TestClient(app) as student:
+        login(advisor,'09120000002','advisor')
+        sid=login(student,'09120000001','student')
+        payload={'student_id':sid,'title':'پیش‌نویس قابل حذف','draft_state':{'items':[]}}
+        made=advisor.post('/api/v1/plan-drafts',json=payload)
+        assert made.status_code==200,made.text
+        pid=made.json()['data']['id']
+        assert student.delete(f'/api/v1/plan-drafts/{pid}').status_code==403
+        removed=advisor.delete(f'/api/v1/plan-drafts/{pid}')
+        assert removed.status_code==200,removed.text
+        assert advisor.get(f'/api/v1/plans/{pid}').status_code==404
+        assert advisor.delete(f'/api/v1/plan-drafts/{pid}').status_code==404
+        published=advisor.post('/api/v1/plans',json={'student_id':sid,'title':'برنامه ارسال‌شده',
+            'week_label':'هفته نمونه','days':[{'label':'شنبه'}],
+            'activities':[{'day':'شنبه','title':'مطالعه ریاضی','start_time':'08:00','end_time':'09:00'}]})
+        assert published.status_code==200,published.text
+        published_id=published.json()['data']['id']
+        assert advisor.post(f'/api/v1/plans/{published_id}/publish').status_code==200
+        assert advisor.delete(f'/api/v1/plan-drafts/{published_id}').status_code==409
+        assert advisor.get(f'/api/v1/plans/{published_id}').status_code==200
+
+
 def test_external_results_shared_history_permissions_and_conflicts():
     with TestClient(app) as advisor, TestClient(app) as student:
         login(advisor,'09120000002','advisor');sid=login(student,'09120000001','student')
@@ -123,6 +146,102 @@ def test_academic_calendars_are_shared_by_grade_and_major_and_selected_per_stude
         assert removed.json()['data']['student_selections_removed']==1
         own=student.get(f'/api/v1/students/{sid}/academic-calendar').json()['data']
         assert own['selected_id'] is None and own['calendars']==[]
+
+
+def test_student_calendar_customization_keeps_shared_template_and_restores_topics():
+    with TestClient(app) as advisor, TestClient(app) as student, TestClient(app) as admin:
+        login(advisor,'09120000002','advisor');sid=login(student,'09120000001','student')
+        login(admin,'09120000003','super_admin')
+        with SessionLocal() as db:
+            profile=db.scalar(select(StudentProfile).where(StudentProfile.user_id==sid))
+            grade,major=profile.grade,profile.major
+        root_id,old_id,new_id=[str(uuid4()) for _ in range(3)]
+        original=[{'id':root_id,'parent_id':None,'subject':'ریاضی','title':'ریاضی','month':None,'day':None},
+                  {'id':old_id,'parent_id':root_id,'subject':'ریاضی','title':'تابع','month':8,'day':15}]
+        made=admin.post('/api/v1/academic-calendars',json={'title':'تقویم مشترک آزمون','grade':grade,
+            'major':major,'nodes':original})
+        assert made.status_code==200,made.text
+        calendar_id=made.json()['data']['id']
+        path=f'/api/v1/students/{sid}/academic-calendar'
+        assert advisor.put(f'{path}/{calendar_id}').status_code==200
+        customized=[original[0],{'id':new_id,'parent_id':root_id,'subject':'ریاضی','title':'حد و پیوستگی','month':9,'day':3}]
+        result=advisor.put(f'{path}/customization/current',json={'nodes':customized,'items':[]})
+        assert result.status_code==200,result.text
+        assert result.json()['data']['customized'] is True
+        own=student.get(path).json()['data']['calendars'][0]
+        assert [node['id'] for node in own['nodes']]==[root_id,new_id]
+        assert [node['id'] for node in own['original_nodes']]==[root_id,old_id]
+        shared=admin.get(f'/api/v1/academic-calendars?grade={grade}&major={major}').json()['data']
+        assert [node['id'] for node in next(row for row in shared if row['id']==calendar_id)['nodes']]==[root_id,old_id]
+        topics=advisor.get(f'/api/v1/students/{sid}/planner-topics').json()['data']
+        assert new_id in [node['id'] for node in topics]
+        assert old_id not in [node['id'] for node in topics]
+        assert next(node for node in topics if node['id']==root_id)['is_leaf'] is False
+        assert next(node for node in topics if node['id']==new_id)['is_leaf'] is True
+        from app import ai_service as ai
+        with SessionLocal() as db:
+            context,_=ai.student_context(db,sid)
+            assert new_id in [node['id'] for node in context['academic_calendar']['nodes']]
+            assert old_id not in [node['id'] for node in context['academic_calendar']['nodes']]
+        restored=advisor.delete(f'{path}/customization/current')
+        assert restored.status_code==200,restored.text
+        assert restored.json()['data']['customized'] is False
+        assert old_id in [node['id'] for node in student.get(path).json()['data']['calendars'][0]['nodes']]
+
+
+def test_five_level_calendar_tree_with_only_leaf_deadline_can_be_saved():
+    with TestClient(app) as admin:
+        login(admin,'09120000003','super_admin')
+        ids=[str(uuid4()) for _ in range(5)]
+        titles=['فیزیک','فصل ۱','بخش ۱','درس ۱','حرکت‌شناسی']
+        nodes=[{'id':ids[index],'parent_id':ids[index-1] if index else None,
+                'subject':'فیزیک','title':titles[index],
+                'month':8 if index==4 else None,'day':10 if index==4 else None,
+                'depth':index+1} for index in range(5)]
+        saved=admin.post('/api/v1/academic-calendars',json={
+            'title':'تقویم فیزیک','grade':'دوازدهم','major':'تجربی','items':[],'nodes':nodes})
+        assert saved.status_code==200,saved.text
+        assert len(saved.json()['data']['nodes'])==5
+        assert saved.json()['data']['nodes'][-1]['day']==10
+
+
+def test_manager_edits_shared_calendar_without_breaking_kept_topics_and_detaches_removed_book_topic():
+    with TestClient(app) as admin, TestClient(app) as advisor, TestClient(app) as student:
+        login(admin,'09120000003','super_admin')
+        login(advisor,'09120000002','advisor')
+        sid=login(student,'09120000001','student')
+        with SessionLocal() as db:
+            profile=db.scalar(select(StudentProfile).where(StudentProfile.user_id==sid))
+            grade,major=profile.grade,profile.major
+        root_id,kept_id,removed_id,new_id=[str(uuid4()) for _ in range(4)]
+        nodes=[{'id':root_id,'subject':'فیزیک','title':'فیزیک'},
+               {'id':kept_id,'parent_id':root_id,'subject':'فیزیک','title':'حرکت‌شناسی'},
+               {'id':removed_id,'parent_id':root_id,'subject':'فیزیک','title':'بردار'}]
+        made=admin.post('/api/v1/academic-calendars',json={'title':'تقویم اصلی فیزیک',
+            'grade':grade,'major':major,'nodes':nodes})
+        assert made.status_code==200,made.text
+        calendar_id=made.json()['data']['id']
+        assert advisor.put(f'/api/v1/students/{sid}/academic-calendar/{calendar_id}').status_code==200
+        book=admin.post('/api/v1/books',json={'title':'کتاب فیزیک','subject':'فیزیک','publication_year':1405})
+        book_id=book.json()['data']['id']
+        topic=admin.post(f'/api/v1/books/{book_id}/topics',json={'title':'بردار','calendar_topic_id':removed_id,
+            'question_type':'test','question_count':20})
+        assert topic.status_code==200,topic.text
+        changed=[nodes[0],{'id':kept_id,'parent_id':root_id,'subject':'فیزیک','title':'حرکت‌شناسی جدید','month':8,'day':10},
+                 {'id':new_id,'parent_id':kept_id,'subject':'فیزیک','title':'سرعت'}]
+        url=f'/api/v1/academic-calendars/{calendar_id}'
+        assert advisor.put(url,json={'title':'غیرمجاز','version':1,'nodes':changed}).status_code==403
+        edited=admin.put(url,json={'title':'تقویم ویرایش‌شده','version':1,'nodes':changed})
+        assert edited.status_code==200,edited.text
+        data=edited.json()['data']
+        assert data['version']==2 and data['title']=='تقویم ویرایش‌شده'
+        assert [node['id'] for node in data['nodes']]==[root_id,kept_id,new_id]
+        assert data['nodes'][1]['title']=='حرکت‌شناسی جدید' and data['nodes'][2]['depth']==3
+        selected=student.get(f'/api/v1/students/{sid}/academic-calendar').json()['data']['calendars'][0]
+        assert selected['title']=='تقویم ویرایش‌شده' and selected['nodes'][1]['title']=='حرکت‌شناسی جدید'
+        assert admin.put(url,json={'title':'ویرایش قدیمی','version':1,'nodes':changed}).status_code==409
+        books=admin.get('/api/v1/books').json()['data']
+        assert next(row for row in books if row['id']==book_id)['topics'][0]['calendar_topic_id']==''
 
 
 def test_group_exam_atomic_permissions_and_idempotent_retry():

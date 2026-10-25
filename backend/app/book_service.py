@@ -1,22 +1,25 @@
 import json
 from collections import defaultdict
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from app.book_models import Book, BookTopic, StudentBook
 from app.models import Activity, WeeklyPlan, StudyReport, utcnow
 from app.study_reporting import report_bounds
 
 def catalog(db,student_id=None):
-    books=db.scalars(select(Book).order_by(Book.title,Book.publication_year.desc())).all()
+    visibility=(Book.created_for_student_id.is_(None) if student_id is None else
+                or_(Book.created_for_student_id.is_(None),Book.created_for_student_id==student_id))
+    books=db.scalars(select(Book).where(visibility).order_by(Book.title,Book.publication_year.desc())).all()
     topics=db.scalars(select(BookTopic).order_by(BookTopic.title)).all()
     owned={row.book_id:row.owned for row in db.scalars(select(StudentBook).where(StudentBook.student_id==student_id)).all()} if student_id else {}
-    done=defaultdict(int);reserved=defaultdict(int)
+    done=defaultdict(int);reserved=defaultdict(int);assigned_count=defaultdict(int)
     if student_id:
         pairs=db.execute(select(Activity,WeeklyPlan).join(WeeklyPlan,Activity.plan_id==WeeklyPlan.id).where(
             WeeklyPlan.student_id==student_id,WeeklyPlan.status=="published",Activity.book_topic_id!="")).all()
         plan_ids={p.id for a,p in pairs}
         reports={(r.plan_id,r.scope):json.loads(r.data_json) for r in db.scalars(select(StudyReport).where(StudyReport.plan_id.in_(plan_ids))).all()} if plan_ids else {}
         for a,p in pairs:
+            assigned_count[a.book_topic_id]+=1
             report=reports.get((p.id,"activity:"+a.id))
             completed=report.get("status")=="done" if report is not None else a.status=="completed"
             if completed:
@@ -33,9 +36,12 @@ def catalog(db,student_id=None):
             if t.book_id!=book.id:continue
             remaining=max(0,t.question_count-done[t.id])
             rows.append({"id":t.id,"title":t.title,"question_type":t.question_type,"question_count":t.question_count,
+                "calendar_topic_id":t.calendar_topic_id,
                 "completed":done[t.id],"remaining":remaining,"reserved":reserved[t.id],
+                "assigned_count":assigned_count[t.id],
                 "available":max(0,remaining-reserved[t.id])})
-        result.append({"id":book.id,"title":book.title,"publication_year":book.publication_year,"active":book.active,
+        result.append({"id":book.id,"title":book.title,"subject":book.subject,"publication_year":book.publication_year,"active":book.active,
+            "created_for_student_id":book.created_for_student_id,
             "owned":owned.get(book.id,False),"topics":rows})
     return result
 

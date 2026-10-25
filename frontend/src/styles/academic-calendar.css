@@ -3,3 +3,12 @@
 .calendar-filters{display:flex;gap:14px;flex-wrap:wrap}
 .calendar-grade-filter input{font:inherit;border:1px solid #d9cfea;border-radius:10px;padding:11px;background:#fff;box-sizing:border-box;width:100%}.calendar-help{margin:0;background:#f7f3fd;color:#564663;padding:10px 14px;border-radius:10px}.calendar-row-actions{display:flex;align-items:center;gap:8px;min-width:230px}.calendar-row-actions .small-secondary{display:flex;align-items:center;gap:5px;white-space:nowrap}
 .calendar-delete{color:#a4283b!important;border-color:#e5b9c0!important}
+.calendar-design-modes{display:flex;gap:8px;flex-wrap:wrap}
+.calendar-tree-editor{display:grid;gap:12px}.calendar-tree-editor>p{margin:0;color:#453959}
+.calendar-tree-list{display:grid;gap:7px;max-width:100%;overflow-x:auto}
+.calendar-tree-node{display:flex;align-items:end;gap:8px;flex-wrap:wrap;border:1px solid #e2d9ec;border-radius:9px;padding:8px;background:#fbf9ff}
+.calendar-tree-node>label{display:grid;gap:4px;min-width:110px;flex:1}.calendar-tree-node>label:first-child{flex:2;min-width:210px}
+.calendar-tree-node input,.calendar-tree-node select{min-height:38px;padding:6px 8px}
+.calendar-tree-preview-node{display:flex;align-items:center;gap:12px;border-right:3px solid #a789dd;padding:7px 10px;background:#faf7ff;border-radius:7px}
+.calendar-tree-preview-node small{font-size:13px;color:#4f405f}
+.calendar-shared-edit{display:grid;gap:14px;border-top:1px solid #e8e1f0;padding-top:14px}.calendar-shared-edit>label{display:grid;gap:6px;max-width:420px}.calendar-shared-edit>label input{font:inherit;border:1px solid #d9cfea;border-radius:10px;padding:10px;background:#fff}

@@ -104,6 +104,119 @@
 .on-chart-editor .on-chart-actions button{font-size:13px;padding:9px 12px}
 @media(max-width:650px){.editable-day-chart{grid-template-columns:minmax(0,1fr) 48px;gap:6px}.add-chart-range{padding:4px;font-size:10px}.on-chart-editor{width:calc(100% + 54px);padding:12px}.on-chart-times{gap:12px}.on-chart-editor .split-clock{width:114px}.on-chart-editor .split-clock input{width:48px}}
 
+/* Seven days remain visible on a desktop screen without shrinking the reading text. */
+.timeline-planner .timeline-editor-day>header{padding:5px 7px;gap:2px;justify-content:center}
+.timeline-planner .timeline-editor-body{padding:4px 7px;gap:3px}
+.timeline-planner .timeline-editor-day{grid-template-columns:118px minmax(0,1fr)}
+.timeline-planner .day-copy-actions{margin:3px 0;gap:3px}
+.timeline-planner .day-copy-actions button{padding:2px 4px;font-size:11px}
+.timeline-planner .day-school-schedule{padding-top:3px;gap:1px;line-height:1.25}
+.timeline-planner .day-school-schedule strong,.timeline-planner .day-school-schedule small{font-size:11px}
+.compact-day-chart{grid-template-columns:minmax(0,1fr) 100px;gap:5px;align-items:start}
+.compact-day-chart .timeline-fit .inline-timeline{height:87px}
+.compact-day-chart .timeline-fit .timeline-block{height:71px;top:4px;gap:2px}
+.compact-day-chart .timeline-fit .timeline-block b{font-size:clamp(11px,18cqi,16px);padding:2px;line-height:1.28}
+.compact-day-chart .timeline-fit .timeline-block small{min-height:19px;padding:1px;font-size:clamp(7px,12cqi,12px)}
+.compact-day-chart .timeline-edge{font-size:11px}
+.compact-add-range{display:grid;gap:2px;padding:1px}
+.compact-add-range .time-field{font-size:10px;gap:0}
+.compact-add-range .split-clock{width:100%;gap:2px}
+.compact-add-range .split-clock input{height:22px;width:42px;padding:1px;font-size:12px}
+.compact-add-range .add-chart-range{min-height:24px;flex-direction:row;gap:2px;padding:1px 3px;font-size:11px}
+.compact-add-range>small{color:#a4283b;font-size:11px}
+.timeline-inline-description{box-sizing:border-box;width:100%;flex:1;min-height:0;resize:none;border:1px solid #6640b0;border-radius:5px;background:#fff;color:#20162c;text-align:center;font:500 14px/1.25 Vazirmatn,Tahoma,sans-serif}
+.range-inline-tools{grid-column:1/-1;display:flex;gap:6px;border:1px solid #d8c8eb;border-radius:9px;background:#fff;padding:6px}
+.range-action-column{display:flex;flex-direction:column;gap:3px;flex:none}
+.range-action-column button{min-width:38px;min-height:27px;border:1px solid #d7c8e5;border-radius:6px;background:#f5effc;color:#442566;font:500 11px Vazirmatn,Tahoma,sans-serif;cursor:pointer}
+.range-action-column button:first-child{font-size:20px;color:#aa2439}
+.range-color-dot{display:block;width:16px;height:16px;border-radius:4px;margin:auto;border:1px solid #766584}
+.range-inline-content{display:grid;gap:6px;min-width:0;flex:1;font-size:13px}
+.range-inline-head,.range-inline-times,.range-panel{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.range-inline-head{justify-content:space-between}
+.range-inline-times .split-clock input{height:27px;padding:2px;font-size:13px}
+.range-inline-times .time-field{gap:2px;font-size:12px}
+.range-inline-content>small{color:#514362;font-size:11px}
+.range-panel{padding:7px;background:#f9f6fd;border-radius:7px}
+.range-panel label{display:grid;gap:4px;flex:1;min-width:170px}
+.range-panel select,.range-panel input[type=number]{min-height:32px;width:100%;border:1px solid #cfbfdf;border-radius:6px;padding:3px;font:inherit}
+.range-panel input[type=color]{width:52px;height:31px}
+.range-topic-list{max-height:none;overflow:visible;display:grid;align-items:start;grid-template-columns:minmax(0,1fr)}
+.range-topic-list label{display:flex;align-items:center;gap:6px;min-width:0;padding:4px;border-bottom:1px solid #e9e1f0}
+.range-topic-list input{flex:none}.range-topic-list span{flex:1;min-width:0;white-space:nowrap}.range-topic-list small{color:#685279;white-space:nowrap}
+@media(max-width:850px){.compact-day-chart{grid-template-columns:minmax(0,1fr) 90px}.timeline-planner .timeline-editor-day{grid-template-columns:minmax(0,1fr)}}
+
+/* Dense, readable advisor workbench: controls share rows and the weekly board gets the space. */
+.timeline-planner{display:grid;gap:8px;padding:12px;border:1px solid #ded2ee;border-radius:14px;background:linear-gradient(180deg,#fff,#fcfaff)}
+.timeline-planner .planner-mode-switch{margin:0;gap:5px}
+.timeline-planner .planner-mode-switch .btn{min-height:32px;padding:5px 11px;font-size:13px;border-radius:8px}
+.timeline-planner .planner-mode-switch svg{width:15px;height:15px}
+.timeline-planner .draft-badge,.timeline-planner .volume-guidance{margin:0;padding:4px 8px;font-size:12px;line-height:1.4}
+.ai-builder-disclosure{border:1px solid #dcd0ef;border-radius:9px;background:#f7f2ff}
+.ai-builder-disclosure>summary{display:flex;align-items:center;gap:7px;min-height:32px;padding:4px 10px;color:#583681;font-size:14px;font-weight:700;cursor:pointer;list-style:none}
+.ai-builder-disclosure>summary::-webkit-details-marker{display:none}
+.ai-builder-disclosure>summary:after{content:'⌄';margin-inline-start:auto;font-size:19px;line-height:1}
+.ai-builder-disclosure[open]>summary:after{transform:rotate(180deg)}
+.ai-builder-disclosure>summary span{font-size:12px;font-weight:400;color:#69567a}
+.ai-builder-disclosure .ai-plan-designer{margin:0;border:0;border-top:1px solid #dcd0ef;border-radius:0 0 9px 9px;padding:12px}
+.planner-setup{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,1fr);gap:8px;align-items:stretch}
+.timeline-planner .planner-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin:0;padding:8px;border:1px solid #e5dcef;border-radius:9px;background:#fff}
+.timeline-planner .planner-meta label{gap:2px;font-size:12px;line-height:1.3;color:#372b43}
+.timeline-planner .planner-meta input{height:32px;padding:4px 8px;font-size:14px;line-height:1.4}
+.timeline-planner .planner-meta .mission-field{grid-column:1/-1}
+.timeline-planner .planner-meta .mission-field textarea{min-height:42px;max-height:110px;padding:5px 8px;font-size:14px;line-height:1.5}
+.timeline-planner .planner-calendar-row{display:grid;grid-template-columns:minmax(0,1fr);align-content:center;gap:5px;margin:0;padding:8px;border:1px solid #e5dcef;border-radius:9px;background:#fff;min-width:0}
+.timeline-planner .planner-calendar-row>div:first-child{min-width:0;width:100%}
+.timeline-planner .planner-calendar-row b{font-size:13px}
+.timeline-planner .planner-calendar-row p{display:none}
+.timeline-planner .planner-calendar-row .persian-date-selector{display:flex;gap:3px;width:100%}
+.timeline-planner .planner-calendar-row .persian-date-selector>label{flex:1;min-width:0}
+.timeline-planner .planner-calendar-row .persian-date-selector select,.timeline-planner .planner-calendar-row .persian-date-selector select:first-child{min-width:0;width:100%}
+.timeline-planner .planner-calendar-row .persian-date-selector select{min-height:32px;padding:3px;font-size:13px}
+.timeline-planner .daily-range-fields{display:flex;gap:10px;flex-wrap:nowrap;justify-content:flex-start}
+.timeline-planner .daily-range-fields .time-field{gap:2px;font-size:11px}
+.timeline-planner .daily-range-fields .split-clock{width:104px;gap:2px}
+.timeline-planner .daily-range-fields .split-clock input{width:47px;height:30px;padding:3px;font-size:14px}
+.timeline-planner .timeline-editor-list{border:1px solid #ded5e8;border-radius:10px;overflow:hidden;background:#fff}
+.timeline-planner .timeline-editor-day{grid-template-columns:130px minmax(0,1fr);border-bottom:1px solid #e7dfef;min-height:94px}
+.timeline-planner .timeline-editor-day:nth-child(even)>header{background:#f4eeff}
+.timeline-planner .timeline-editor-day>header{display:grid;grid-template-columns:1fr 1fr;align-content:start;align-items:center;justify-items:start;gap:1px 4px;padding:4px 6px;background:#faf7ff;border-left:1px solid #e6ddef}
+.timeline-planner .timeline-editor-day>header>b{font-size:15px;line-height:1.2}
+.timeline-planner .timeline-editor-day>header>span{font-size:12px;color:#3e304e}
+.timeline-planner .day-copy-actions{grid-column:1/-1;display:flex;flex-wrap:nowrap;width:100%;gap:3px;margin:1px 0}
+.timeline-planner .day-copy-actions button{flex:1 1 0;min-width:0;min-height:23px;padding:2px 3px;font-size:10px;white-space:nowrap}
+.timeline-planner .day-copy-actions button svg{width:11px;height:11px;flex:none}
+.timeline-planner .day-school-schedule{grid-column:1/-1;display:flex;flex-wrap:wrap;align-content:start;gap:2px 4px;max-height:38px;overflow:auto;width:100%;border:0;padding:2px 0 0;line-height:1.15}
+.timeline-planner .day-school-schedule strong{width:100%;font-size:11px;color:#50316d}
+.timeline-planner .day-school-schedule small{font-size:11px;color:#3b2d49;background:#ece5f6;border-radius:4px;padding:1px 3px;line-height:1.2}
+.timeline-planner .timeline-editor-body{padding:3px 5px}
+.timeline-planner .timeline-editor-body>.day-school-schedule{display:flex;align-items:stretch;flex-wrap:nowrap;gap:4px;width:100%;max-height:none;min-height:22px;overflow:visible;border:0;padding:0 0 2px;margin:0;background:transparent;font-family:Vazirmatn,Tahoma,sans-serif}
+.timeline-planner .timeline-editor-body>.day-school-schedule strong{width:auto;flex:none;min-width:45px;padding:2px 4px;background:#e8def7;border-radius:5px;color:#51346e;font:700 11px/1.35 Vazirmatn,Tahoma,sans-serif;text-align:center}
+.timeline-planner .timeline-editor-body>.day-school-schedule small{flex:1 1 0;min-width:0;max-width:none;overflow:visible;white-space:normal;overflow-wrap:anywhere;padding:2px 5px;background:#f1ecf8;border:1px solid #e8ddf1;border-radius:5px;color:#32263e;font:500 11px/1.35 Vazirmatn,Tahoma,sans-serif;text-align:center}
+.timeline-planner .compact-day-chart .timeline-fit .inline-timeline{height:115px}
+.timeline-planner .compact-day-chart .timeline-fit .timeline-block{height:99px}
+.timeline-planner .compact-day-chart .timeline-inline-description{caret-color:currentColor;outline:1px solid #644287;outline-offset:-2px}
+.compact-day-chart{position:relative}
+.compact-day-chart .timeline-fit .inline-timeline .timeline-block{position:absolute}
+.compact-day-chart .timeline-fit .inline-timeline .timeline-block>b,.compact-day-chart .timeline-fit .inline-timeline .timeline-block>small,.compact-day-chart .timeline-fit .inline-timeline .timeline-block>textarea{width:calc(100% - 27px);margin-left:27px}
+.compact-day-chart .timeline-fit .inline-timeline .timeline-block>small{cursor:pointer}
+.timeline-block-actions{position:absolute;left:2px;top:3px;bottom:3px;z-index:4;display:flex;flex-direction:column;justify-content:space-between;width:23px}
+.timeline-block-actions button{display:grid;place-items:center;width:23px;min-height:17px;padding:0;border:1px solid #ceb8e4;border-radius:4px;background:#faf5ff;color:#4f3072;font:700 9px/1 Vazirmatn,Tahoma,sans-serif;cursor:pointer}
+.timeline-block-actions button:first-child{color:#b12c43;font-size:16px}
+.timeline-block-actions button:hover{background:#e8daf8}
+.timeline-block-actions .range-color-dot{width:12px;height:12px}
+.timeline-planner .timeline-editor-day:has(.range-popover){position:relative;z-index:25}
+.range-popover{position:absolute;z-index:30;top:2px;right:110px;width:min(760px,calc(100vw - 150px));max-height:240px;overflow-y:auto;overflow-x:hidden;padding:9px;border:1px solid #bca4d6;border-radius:9px;background:#fff;box-shadow:0 12px 28px #2f204530}
+.range-popover .range-inline-content{font-size:13px}
+@media(max-width:650px){.range-popover{right:4px;top:100%;width:calc(100% - 8px);max-height:270px}}
+.range-popover .range-topic-list{padding:4px 7px}.range-popover .range-topic-list label{min-width:0;flex-wrap:nowrap}.range-popover .range-topic-list span{overflow:hidden;text-overflow:ellipsis}
+.timeline-planner .planner-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin:0;padding:4px 0}
+.timeline-planner .planner-actions>span{margin-inline-end:auto;font-size:12px;color:#443452}
+.timeline-planner .planner-actions .btn,.timeline-planner .planner-actions .small-secondary{min-height:31px;padding:5px 10px;font-size:12px}
+.timeline-planner .planner-actions svg{width:15px;height:15px}
+@media(max-width:1100px){.planner-setup{grid-template-columns:1fr}.timeline-planner .planner-calendar-row{justify-content:space-between}}
+@media(max-width:850px){.timeline-planner .timeline-editor-day{grid-template-columns:120px minmax(0,1fr)}.timeline-planner .timeline-editor-day>header{flex-direction:unset;border-left:1px solid #e6ddef;border-bottom:0}}
+@media(max-width:650px){.timeline-planner{padding:7px}.timeline-planner .planner-meta{grid-template-columns:1fr}.timeline-planner .planner-calendar-row{flex-wrap:wrap}.timeline-planner .timeline-editor-day{grid-template-columns:1fr}.timeline-planner .timeline-editor-day>header{grid-template-columns:auto auto 1fr;border-left:0;border-bottom:1px solid #e6ddef}.timeline-planner .day-copy-actions{grid-column:3}.timeline-planner .day-school-schedule{grid-column:1/-1;max-height:unset}.ai-builder-disclosure>summary span{display:none}}
+
 .detected-subject{display:flex;align-items:center;gap:7px;color:#645172;font-size:12px}.detected-subject>span{width:13px;height:13px;border-radius:4px;flex-shrink:0}
 
 .subject-color-choice{display:grid;gap:10px;background:#f6f0fb;border-radius:9px;padding:12px;font-size:13px}.subject-color-choice>div{display:flex;flex-wrap:wrap;gap:8px}.subject-color-choice button{border:0;border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer}
