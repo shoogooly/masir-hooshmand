@@ -18,7 +18,7 @@ export function BaleDownloadPage(){
  const download=async()=>{if(!data||!source.current)return;setBusy(true);try{if(data.kind==='plan')await exportPlanPdf(source.current,data.plan,false);else if(data.reports)await exportStudyReportPdf(data.plan,data.reports,data.student_name,data.advisor_name)}finally{setBusy(false)}}
  useEffect(()=>{if(data&&source.current)void download()},[data])
  return <main className="bale-public"><div className="bale-download-card"><img src="/brand/mahyaad-logo.png" alt="مهیاد"/><h1>{error?'دریافت فایل ممکن نشد':'فایل شما آماده است'}</h1><p>{error||'اگر دانلود به‌صورت خودکار آغاز نشد، دکمه زیر را بزنید.'}</p>{data&&<button className="btn btn-primary" disabled={busy} onClick={download}><Download/>{busy?'در حال ساخت PDF…':'دانلود دوباره PDF'}</button>}<small>این پیوند زمان‌دار و مخصوص حساب شماست.</small></div>
-  {data&&<div ref={source} className="bale-pdf-source"><div className="pdf-reference-header"><h1>{data.plan.title}</h1><p>{data.student_name} · مشاور: {data.advisor_name}</p></div></div>}</main>
+  {data&&<div ref={source} className="bale-pdf-source"><div className="pdf-reference-header" data-student-name={data.student_name} data-advisor-name={data.advisor_name}><h1>{data.plan.title}</h1><p>{data.student_name} · مشاور: {data.advisor_name}</p></div></div>}</main>
 }
 export function BaleAccessPage(){
  const {token=''}=useParams(),[params]=useSearchParams(),nav=useNavigate(),[error,setError]=useState('')

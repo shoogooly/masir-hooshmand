@@ -35,9 +35,9 @@ test('a manual range color can override and then restore its subject color',()=>
  fireEvent.click(within(block).getByRole('button',{name:'رنگ بازه'}))
  const color=screen.getByLabelText('رنگ دلخواه بازه')
  fireEvent.change(color,{target:{value:'#ffff00'}})
- expect((block.querySelector('.timeline-inline-description') as HTMLElement).style.background).toBe('rgb(255, 255, 0)')
+ expect((block.querySelector('.timeline-inline-description') as HTMLElement).style.background).toBe('rgb(255, 255, 184)')
  fireEvent.click(screen.getByRole('button',{name:'رنگ خودکار درس'}))
- expect((block.querySelector('.timeline-inline-description') as HTMLElement).style.background).not.toBe('rgb(255, 255, 0)')
+ expect((block.querySelector('.timeline-inline-description') as HTMLElement).style.background).not.toBe('rgb(255, 255, 184)')
 })
 
 test('topic picker shows only final branches with their full path and prior count',async()=>{

@@ -172,6 +172,7 @@ class WeeklyPlan(Base, TimeMixin):
     day_start_time: Mapped[str] = mapped_column(String(5), default="08:00")
     day_end_time: Mapped[str] = mapped_column(String(5), default="24:00")
     weekly_mission: Mapped[str] = mapped_column(Text, default="")
+    motivational_quote: Mapped[str] = mapped_column(String(240), default="", server_default="")
     plan_mode: Mapped[str] = mapped_column(String(20), default="timed", server_default="timed")
     draft_state_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
     version: Mapped[int] = mapped_column(Integer, default=1)

@@ -51,3 +51,9 @@ export function subjectBlockStyle(text:string,preferred?:string,customColor?:str
  const color=customColor&&/^#[0-9a-f]{6}$/i.test(customColor)?customColor:detectSubjectColor(text,preferred).color
  return {background:color,borderColor:color,color:readableTextColor(color)}
 }
+export function lightSubjectBlockStyle(text:string,preferred?:string,customColor?:string){
+ const base=subjectBlockStyle(text,preferred,customColor).background
+ const rgb=base.replace('#','').match(/.{2}/g)!.map(part=>parseInt(part,16))
+ const blend=(ratio:number)=>'#'+rgb.map(channel=>Math.round(channel*ratio+255*(1-ratio)).toString(16).padStart(2,'0')).join('')
+ return {background:blend(.28),borderColor:blend(.62),color:'#17152c'}
+}

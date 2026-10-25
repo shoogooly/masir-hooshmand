@@ -2,6 +2,7 @@ from app.api.external_results import router as external_results_router
 from app.api.academic_calendars import router as academic_calendars_router
 from app.api.plan_management import router as plan_management_router
 from app.api.books import router as books_router
+from app.api.motivational_quotes import router as motivational_quotes_router
 from app.api.onboarding_flow import router as onboarding_flow_router
 from app.api.exam_files import router as exam_files_router
 from app.api.passwords import router as passwords_router
@@ -118,6 +119,7 @@ app.include_router(exam_files_router, prefix="/api/v1", dependencies=[Depends(cs
 app.include_router(passwords_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(study_reports_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(books_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
+app.include_router(motivational_quotes_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(ai_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(ai_planner_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])
 app.include_router(advisor_evaluation_router, prefix="/api/v1", dependencies=[Depends(csrf_guard)])

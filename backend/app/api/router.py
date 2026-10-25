@@ -181,7 +181,7 @@ def plan_dict(plan: WeeklyPlan):
     return {"id": plan.id, "student_id": plan.student_id, "title": plan.title, "week_label": plan.week_label,
         "version": plan.version, "status": plan.status, "published_at": plan.published_at,
         "day_start_time": plan.day_start_time, "day_end_time": plan.day_end_time,
-        "weekly_mission": plan.weekly_mission, "plan_mode": plan.plan_mode,
+        "weekly_mission": plan.weekly_mission, "motivational_quote": plan.motivational_quote, "plan_mode": plan.plan_mode,
         "draft_state": json.loads(plan.draft_state_json or "{}") if plan.status == "draft" else None,
         "days": days, "time_slots": slots, "activities": [activity_dict(activity) for activity in plan.activities]}
 
@@ -1002,7 +1002,9 @@ def publish_plan(plan_id: str, user: User = Depends(roles("advisor", "super_admi
     validate_allocations(db,plan.student_id,[{"book_topic_id":a.book_topic_id,"book_question_count":a.book_question_count} for a in plan.activities],lock=True)
     if not plan.activities or any(not a.title.strip() for a in plan.activities):
         raise HTTPException(422, "برنامه پیش از انتشار باید حداقل یک بازه کامل داشته باشد")
+    from app.api.motivational_quotes import quote_for_publication
     before = plan.status; now = utcnow(); plan.status = "published"; plan.published_at = now
+    plan.motivational_quote = quote_for_publication(db, now)
     plan.draft_state_json = "{}"
     plan.ends_at = now + timedelta(days=7)
     plan.ends_at = report_bounds(plan)[1]
