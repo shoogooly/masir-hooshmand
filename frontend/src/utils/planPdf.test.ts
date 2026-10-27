@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { singlePageSize, timelineSegments } from './planPdf'
+import { restDuration, singlePageSize, timelineSegments } from './planPdf'
 import type { WeeklyPlan } from '../types'
 
 test('study, internal rest and boundary rests use their actual minutes on every day',()=>{
@@ -12,6 +12,11 @@ test('study, internal rest and boundary rests use their actual minutes on every 
  expect(spans.map(x=>x.rest)).toEqual([true,false,true,false,true])
  expect(spans.reduce((sum,x)=>sum+x.end-x.start,0)).toBe(1260)
  expect(timelineSegments(plan,'یکشنبه')).toEqual([{start:180,end:1440,title:'',rest:true}])
+})
+test('rest labels omit zero hours and preserve hours plus minutes',()=>{
+ expect(restDuration(15)).toBe('۱۵ دقیقه')
+ expect(restDuration(60)).toBe('۱ ساعت')
+ expect(restDuration(135)).toBe('۲ ساعت و ۱۵ دقیقه')
 })
 test.each([[1280,700],[1280,1700],[1280,4000]])('always fits the whole sheet on A4 (%i × %i)',(width,height)=>{
  const page=singlePageSize(width,height)

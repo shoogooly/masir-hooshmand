@@ -8,13 +8,15 @@ vi.mock('../api',()=>({api:vi.fn(async(path:string)=>path==='/plans'?[]:null)}))
 let client:QueryClient
 afterEach(()=>{cleanup();client?.clear()})
 function setup(){client=new QueryClient({defaultOptions:{queries:{retry:false}}});return render(<QueryClientProvider client={client}><PlanBuilder studentId="student"/></QueryClientProvider>)}
-function editDescription(value:string){const description=screen.getByRole('textbox',{name:'توضیحات بازه'}) as HTMLElement;description.textContent=value;description.innerText=value;fireEvent.input(description);return description}
+function descriptionInputs(){return screen.getAllByRole('textbox',{name:/^توضیحات بازه/}) as HTMLInputElement[]}
+function descriptionText(){return descriptionInputs().map(input=>input.value).join('\n')}
+function editDescription(value:string){const parts=value.split('\n');while(descriptionInputs().length>parts.length){const last=descriptionInputs().at(-1)!;fireEvent.change(last,{target:{value:''}});last.setSelectionRange(0,0);fireEvent.keyDown(last,{key:'Backspace'})}parts.forEach((part,index)=>{if(!descriptionInputs()[index])fireEvent.keyDown(descriptionInputs()[index-1],{key:'Enter'});fireEvent.change(descriptionInputs()[index],{target:{value:part}})});return descriptionInputs()}
 
 test('three description lines stay editable in the range and its actions stay beside it',()=>{
  const {container}=setup()
  fireEvent.click(screen.getAllByRole('button',{name:/افزودن بازه برای/})[0])
- const description=editDescription('مطالعه\nتمرین\nمرور')
- expect(description.textContent).toBe('مطالعه\nتمرین\nمرور')
+ editDescription('مطالعه\nتمرین\nمرور')
+ expect(descriptionText()).toBe('مطالعه\nتمرین\nمرور')
  expect(screen.queryByRole('dialog')).toBeNull()
  const block=screen.getByRole('button',{name:/ویرایش بازه مطالعه/})
  expect(within(block).getByRole('button',{name:'حذف بازه'})).toBeTruthy()
@@ -25,6 +27,18 @@ test('three description lines stay editable in the range and its actions stay be
  fireEvent.click(within(block).getByRole('button',{name:'حذف بازه'}))
  expect(screen.queryByRole('button',{name:/ویرایش بازه مطالعه/})).toBeNull()
  expect(container.querySelector('.range-inline-tools')).toBeNull()
+})
+
+test('typing after Enter fills the third line and a fourth line is rejected',()=>{
+ setup()
+ fireEvent.click(screen.getAllByRole('button',{name:/افزودن بازه برای/})[0])
+ editDescription('مطالعه\nتمرین')
+ expect(fireEvent.keyDown(descriptionInputs()[1],{key:'Enter'})).toBe(false)
+ expect(descriptionInputs()).toHaveLength(3)
+ fireEvent.change(descriptionInputs()[2],{target:{value:'مرور'}})
+ expect(descriptionText()).toBe('مطالعه\nتمرین\nمرور')
+ expect(fireEvent.keyDown(descriptionInputs()[2],{key:'Enter'})).toBe(false)
+ expect(descriptionInputs()).toHaveLength(3)
 })
 
 test('a manual range color can override and then restore its subject color',()=>{
@@ -54,7 +68,15 @@ test('topic picker shows only final branches with their full path and prior coun
  expect(await screen.findByText('دوازدهم · فصل ۱، درس ۱، حرکت')).toBeTruthy()
  expect(screen.getByText('۲ بار')).toBeTruthy()
  expect(screen.queryByText('دوازدهم · فصل ۱')).toBeNull()
+ editDescription('فیزیک\nمرور\nنوشته قبلی')
  fireEvent.click(screen.getByRole('checkbox'))
- await waitFor(()=>expect(screen.getByRole('textbox',{name:'توضیحات بازه'}).textContent).toContain('حرکت'))
- expect(screen.getByRole('textbox',{name:'توضیحات بازه'}).textContent).not.toContain('فصل ۱')
+ await waitFor(()=>expect(descriptionText()).toBe('فیزیک\nمرور\nحرکت'))
+ expect(descriptionText()).not.toContain('فصل ۱')
+ fireEvent.click(screen.getByRole('checkbox'))
+ editDescription('فیزیک\nمرور')
+ fireEvent.click(screen.getByRole('checkbox'))
+ await waitFor(()=>expect(descriptionText()).toBe('فیزیک\nمرور\nحرکت'))
+ editDescription('فیزیک\nمرور\nحرکت و تست')
+ expect(screen.getByRole('checkbox',{checked:true})).toBeTruthy()
+ expect(descriptionText()).toBe('فیزیک\nمرور\nحرکت و تست')
 })

@@ -212,13 +212,58 @@ function TimeSelect({value,onChange,min=0,max=1440,label}:{value:string;onChange
   return <TimeFields value={value} onChange={onChange} label={label}/>
 }
 
+function FittedDescriptionLine({text,label,onChange,onEnter,onBackspace,register,onPaste}:{text:string;label?:string;onChange?:(value:string)=>void;onEnter?:()=>void;onBackspace?:()=>void;register?:(node:HTMLInputElement|null)=>void;onPaste?:(event:React.ClipboardEvent<HTMLInputElement>)=>void}){
+  const element=useRef<HTMLElement|null>(null)
+  useEffect(()=>{
+    const node=element.current;if(!node)return
+    const fit=()=>{
+      const parent=node.parentElement;if(!parent)return
+      const width=node.clientWidth-4,style=getComputedStyle(parent),base=parseFloat(style.fontSize)
+      if(width<=0||!Number.isFinite(base))return
+      const probe=document.createElement('span')
+      probe.style.cssText='position:absolute;visibility:hidden;white-space:nowrap;pointer-events:none'
+      probe.style.fontFamily=style.fontFamily;probe.style.fontWeight=style.fontWeight;probe.style.fontSize=`${base}px`
+      probe.textContent=text||' '
+      parent.appendChild(probe)
+      const measured=probe.getBoundingClientRect().width
+      probe.remove()
+      node.style.fontSize=`${Math.max(6,Math.min(base,base*width/Math.max(measured,1)))}px`
+    }
+    fit()
+    void document.fonts?.ready.then(fit)
+    if(typeof ResizeObserver==='undefined')return
+    const observer=new ResizeObserver(fit);observer.observe(node.parentElement!);return()=>observer.disconnect()
+  },[text])
+  const ref=(node:HTMLElement|null)=>{element.current=node;register?.(node as HTMLInputElement|null)}
+  return onChange?<input ref={ref} className="timeline-description-line" aria-label={label} value={text} onClick={event=>event.stopPropagation()} onChange={event=>onChange(event.target.value)} onPaste={onPaste} onKeyDown={event=>{event.stopPropagation();if(event.key==='Enter'){event.preventDefault();onEnter?.()}else if(event.key==='Backspace'&&event.currentTarget.selectionStart===0&&event.currentTarget.selectionEnd===0&&text===''){event.preventDefault();onBackspace?.()}}}/>:<span ref={ref} className="timeline-description-line" title={text}>{text||'\u00a0'}</span>
+}
+
 function InlineDescriptionEditor({item,onChange,style}:{item:{id:string;title:string};onChange:(id:string,value:string)=>void;style?:CSSProperties}){
-  const [initialText]=useState(item.title==='برنامه جدید'?'':item.title)
-  const editor=useRef<HTMLElement>(null)
-  useEffect(()=>{const element=editor.current;if(!element)return;element.focus();const selection=window.getSelection();const range=document.createRange();range.selectNodeContents(element);range.collapse(false);selection?.removeAllRanges();selection?.addRange(range)},[])
-  const normalize=(text:string)=>text.replace(/\r/g,'').split('\n').slice(0,3).join('\n').slice(0,180)
-  useEffect(()=>{const element=editor.current;if(!element)return;const expected=item.title==='برنامه جدید'?'':item.title;if(normalize(element.innerText??element.textContent??'')!==expected)element.textContent=expected},[item.title])
-  return <b ref={editor} className="timeline-inline-description" role="textbox" aria-label="توضیحات بازه" aria-multiline="true" contentEditable suppressContentEditableWarning style={style} onClick={event=>event.stopPropagation()} onKeyDown={event=>{event.stopPropagation();if(event.key==='Enter'&&(editor.current?.innerText.split('\n').length??0)>=3)event.preventDefault()}} onPaste={event=>{event.preventDefault();document.execCommand('insertText',false,normalize(event.clipboardData.getData('text/plain')))}} onInput={event=>{const value=normalize(event.currentTarget.innerText);if(value!==event.currentTarget.innerText){event.currentTarget.innerText=value;const selection=window.getSelection();const range=document.createRange();range.selectNodeContents(event.currentTarget);range.collapse(false);selection?.removeAllRanges();selection?.addRange(range)}onChange(item.id,value)}}>{initialText}</b>
+  const value=item.title==='برنامه جدید'?'':item.title
+  const lines=value.split('\n').slice(0,3)
+  const editors=useRef<Array<HTMLInputElement|null>>([])
+  const pendingFocus=useRef<number|null>(null)
+  const normalize=(text:string)=>text.replace(/\r\n?/g,'\n').split('\n').slice(0,3).join('\n').slice(0,180)
+  const focusLine=(index:number)=>{const element=editors.current[index];element?.focus();element?.setSelectionRange(element.value.length,element.value.length)}
+  useEffect(()=>{focusLine(lines.length-1)},[])
+  useEffect(()=>{if(pendingFocus.current===null)return;focusLine(pendingFocus.current);pendingFocus.current=null},[value])
+  const update=(index:number,next:string)=>{const updated=[...lines];updated[index]=next.replace(/\r?\n/g,' ');onChange(item.id,normalize(updated.join('\n')))}
+  const enter=(index:number)=>{if(index>=2)return;if(lines[index+1]!==undefined){focusLine(index+1);return}pendingFocus.current=index+1;onChange(item.id,normalize([...lines,''].join('\n')))}
+  const backspace=(index:number)=>{if(index===0)return;const updated=lines.filter((_,position)=>position!==index);pendingFocus.current=index-1;onChange(item.id,normalize(updated.join('\n')))}
+  const paste=(index:number,event:React.ClipboardEvent<HTMLInputElement>)=>{
+    const pasted=event.clipboardData.getData('text/plain').replace(/\r\n?/g,'\n')
+    if(!pasted.includes('\n'))return
+    event.preventDefault()
+    const input=event.currentTarget,parts=pasted.split('\n'),updated=[...lines]
+    const before=lines[index].slice(0,input.selectionStart??0),after=lines[index].slice(input.selectionEnd??0)
+    updated[index]=before+parts[0]
+    for(let part=1;part<parts.length&&index+part<3;part++)updated[index+part]=parts[part]
+    const last=Math.min(2,index+parts.length-1)
+    updated[last]=(updated[last]||'')+after
+    pendingFocus.current=last
+    onChange(item.id,normalize(updated.join('\n')))
+  }
+  return <b className="timeline-inline-description timeline-description-lines" style={style} onClick={event=>event.stopPropagation()}>{lines.map((line,index)=><FittedDescriptionLine key={index} text={line} label={index===0?'توضیحات بازه':`توضیحات بازه، خط ${index+1}`} register={node=>{editors.current[index]=node}} onChange={next=>update(index,next)} onEnter={()=>enter(index)} onBackspace={()=>backspace(index)} onPaste={event=>paste(index,event)}/>)}</b>
 }
 
 function TimelineTrack({items,rangeStart,rangeEnd,fit=false,volume=false,onSelect,editingId,onTitleChange,renderActions,onTimeSelect}:{items:{id:string;start_time:string;end_time:string;title:string;subject?:string;color?:string;book_topic_id?:string;book_question_count?:number}[];rangeStart:string;rangeEnd:string;fit?:boolean;volume?:boolean;onSelect?:(id:string)=>void;editingId?:string|null;onTitleChange?:(id:string,value:string)=>void;renderActions?:(id:string)=>ReactNode;onTimeSelect?:(id:string)=>void}){
@@ -247,7 +292,7 @@ function TimelineTrack({items,rangeStart,rangeEnd,fit=false,volume=false,onSelec
             }
           }
           shrink(time,2)
-          shrink(description,4)
+          if(!description?.classList.contains('timeline-description-lines'))shrink(description,4)
         }))
       }
       resize()
@@ -264,7 +309,7 @@ function TimelineTrack({items,rangeStart,rangeEnd,fit=false,volume=false,onSelec
     element.querySelectorAll('.timeline-block').forEach(block=>observer.observe(block))
     return ()=>observer.disconnect()
   },[items,rangeStart,rangeEnd,fit])
-  return <div className={fit?"timeline-scroll timeline-fit":"timeline-scroll"}><div ref={track} className="timeline-track inline-timeline" dir="rtl" style={{minWidth:fit?0:minWidth,backgroundSize:`${hourWidth}% 100%`}}>{!volume&&<><span className="timeline-edge start">{faDigits(rangeStart)}</span><span className="timeline-edge end">{faDigits(rangeEnd)}</span></>}{valid.map(item=><article className="timeline-block" key={item.id} role={onSelect?"button":undefined} tabIndex={onSelect?0:undefined} aria-label={onSelect?"ویرایش بازه "+item.title:undefined} onClick={()=>onSelect?.(item.id)} onKeyDown={event=>{if(onSelect&&(event.key==="Enter"||event.key===" ")){event.preventDefault();onSelect(item.id)}}} title={item.title+" · "+(volume?`${timeToMinutes(item.end_time)-timeToMinutes(item.start_time)} دقیقه`:faDigits(item.start_time)+" تا "+faDigits(item.end_time))} style={softPositions?.get(item.id)??timelinePosition(item.start_time,item.end_time,rangeStart,rangeEnd)}>{editingId===item.id&&onTitleChange?<InlineDescriptionEditor item={item} onChange={onTitleChange} style={fit?{...lightSubjectBlockStyle(item.title,item.subject,item.color),borderColor:'rgba(45,35,55,.35)'}:undefined}/>:<b style={fit?{...lightSubjectBlockStyle(item.title,item.subject,item.color),borderColor:'rgba(45,35,55,.35)'}:undefined}>{item.title}</b>}<small onClick={event=>{if(onTimeSelect){event.stopPropagation();onTimeSelect(item.id)}}}>{volume?`${faDigits(String(timeToMinutes(item.end_time)-timeToMinutes(item.start_time)))} دقیقه`: <><span>{faDigits(item.start_time)}</span><span>تا</span><span>{faDigits(item.end_time)}</span></>}</small>{renderActions?.(item.id)}</article>)}</div></div>
+  return <div className={fit?"timeline-scroll timeline-fit":"timeline-scroll"}><div ref={track} className="timeline-track inline-timeline" dir="rtl" style={{minWidth:fit?0:minWidth,backgroundSize:`${hourWidth}% 100%`}}>{!volume&&<><span className="timeline-edge start">{faDigits(rangeStart)}</span><span className="timeline-edge end">{faDigits(rangeEnd)}</span></>}{valid.map(item=><article className="timeline-block" key={item.id} role={onSelect?"button":undefined} tabIndex={onSelect?0:undefined} aria-label={onSelect?"ویرایش بازه "+item.title:undefined} onClick={()=>onSelect?.(item.id)} onKeyDown={event=>{if(onSelect&&(event.key==="Enter"||event.key===" ")){event.preventDefault();onSelect(item.id)}}} title={item.title+" · "+(volume?`${timeToMinutes(item.end_time)-timeToMinutes(item.start_time)} دقیقه`:faDigits(item.start_time)+" تا "+faDigits(item.end_time))} style={softPositions?.get(item.id)??timelinePosition(item.start_time,item.end_time,rangeStart,rangeEnd)}>{editingId===item.id&&onTitleChange?<InlineDescriptionEditor item={item} onChange={onTitleChange} style={fit?{...lightSubjectBlockStyle(item.title,item.subject,item.color),borderColor:'rgba(45,35,55,.35)'}:undefined}/>:fit?<b className="timeline-description-lines" style={{...lightSubjectBlockStyle(item.title,item.subject,item.color),borderColor:'rgba(45,35,55,.35)'}}>{item.title.split('\n').slice(0,3).map((line,index)=><FittedDescriptionLine key={index} text={line}/>)}</b>:<b>{item.title}</b>}<small onClick={event=>{if(onTimeSelect){event.stopPropagation();onTimeSelect(item.id)}}}>{volume?`${faDigits(String(timeToMinutes(item.end_time)-timeToMinutes(item.start_time)))} دقیقه`: <><span>{faDigits(item.start_time)}</span><span>تا</span><span>{faDigits(item.end_time)}</span></>}</small>{renderActions?.(item.id)}</article>)}</div></div>
 }
 
 

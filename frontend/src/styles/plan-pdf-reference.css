@@ -16,3 +16,41 @@
 .print-theme-mono{background:#fff!important;color:#111!important}.print-theme-mono .print-hero-tile,.print-theme-mono .print-hero-brand,.print-theme-mono .print-plan-date{background:#f0f0f0!important;color:#111!important;border-color:#999!important;box-shadow:none}.print-theme-mono .print-hero-tile *,.print-theme-mono .print-hero-brand *{color:#111!important}.print-theme-mono .print-hero-brand img{filter:grayscale(1)}.print-theme-mono .print-plan-day{--day-border:#777;--day-light:#eee}.print-theme-mono .print-plan-card,.print-theme-mono .print-plan-rest{background:#fff!important;border-color:#888!important;color:#111!important}.print-theme-mono .print-plan-time,.print-theme-mono .print-plan-rest .print-plan-time{background:#eee!important;color:#333!important}.print-theme-mono .print-plan-rest-icon svg{stroke:#333}.print-theme-mono .print-day-sky{background:linear-gradient(to left,#ddd,#aaa,#666,#333)!important}.print-theme-mono .print-day-sky:after{background:#444}.print-theme-mono .print-day-ticks{border-color:#444}.print-theme-mono .print-day-ticks span{color:#111}.print-theme-mono .print-day-ticks span:before{background:#555}
 .planner-pdf-sheet .print-day-cycle{flex:0 0 76px;height:76px;min-height:76px;overflow:hidden;border-radius:0;background:#fff}.planner-pdf-sheet .print-day-cycle img{display:block;width:100%;height:100%;object-fit:fill}.print-theme-mono .print-day-cycle img{filter:grayscale(1)}
 .planner-pdf-sheet .print-day-cycle{position:relative}.planner-pdf-sheet .print-day-cycle img{position:absolute;left:0;top:0;width:calc(100% + 6px)}
+.planner-pdf-sheet .print-plan-card{grid-template-columns:minmax(0,1fr)}
+.planner-pdf-sheet .print-plan-card .print-plan-time{box-sizing:border-box;display:flex!important;align-self:stretch;justify-self:stretch;width:100%;height:100%;min-width:0;margin:0!important;padding:0 1px!important;border-radius:0!important;white-space:nowrap!important;overflow:hidden!important;font:900 15px/1 PlanTitr,"B Titr",Tahoma,sans-serif!important}
+.planner-pdf-sheet .print-plan-time-text{display:block;flex:none;white-space:nowrap}
+.planner-pdf-sheet .print-plan-rest .print-plan-time{font-weight:900!important}
+.planner-pdf-sheet .print-plan-rest .print-plan-time{direction:rtl}
+.planner-pdf-sheet .print-plan-rest .print-plan-time-text{direction:rtl;unicode-bidi:isolate}
+.planner-pdf-sheet .print-hero-week{gap:2px}
+.planner-pdf-sheet .print-hero-week .print-hero-date{max-height:none;white-space:nowrap;font:900 19px/1.1 PlanTitr,"B Titr",Tahoma,sans-serif}
+.planner-pdf-sheet .print-hero-week .print-hero-date{flex:0 0 auto;max-width:100%}
+.planner-pdf-sheet .print-plan-date span{font:900 15px/1.1 PlanTitr,"B Titr",Tahoma,sans-serif}
+.planner-pdf-sheet .print-plan-date b{font:900 23px/1.2 PlanTitr,"B Titr",Tahoma,sans-serif}
+.planner-pdf-sheet .print-plan-card .print-plan-card-title{flex-direction:column;font:800 18px/1.2 Vazirmatn,Tahoma,sans-serif}
+.planner-pdf-sheet .print-plan-card-first-line{display:block;font-weight:900;font-size:1.04em;line-height:1.18}
+.planner-pdf-sheet .print-plan-card-detail{display:block;font-weight:700;white-space:pre-wrap;line-height:1.15}
+.planner-pdf-sheet .print-plan-date{position:relative;overflow:hidden}
+.planner-pdf-sheet .print-plan-date::before{content:"";position:absolute;left:0;top:0;bottom:0;width:9px;background:var(--day-border)}
+.planner-pdf-sheet .print-hero-tile{position:relative}
+.planner-pdf-sheet .print-hero-tile:not(.print-hero-week){padding-left:57px;text-align:right;align-items:flex-end}
+.planner-pdf-sheet .print-hero-tile:not(.print-hero-week)>small,.planner-pdf-sheet .print-hero-tile:not(.print-hero-week)>strong{width:100%}
+.planner-pdf-sheet .print-hero-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:43px;height:43px;border-radius:50%;background:#c7e4ff;color:#1269d8}
+.planner-pdf-sheet .print-hero-icon svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:2.3;stroke-linecap:round;stroke-linejoin:round}
+.planner-pdf-sheet .print-hero-quote .print-hero-icon{background:#c4e9e7;color:#166d7c}
+.planner-pdf-sheet .print-hero-quote .print-hero-icon svg{fill:currentColor;stroke:none}
+.planner-pdf-sheet .print-hero-mission .print-hero-icon{background:#ffd0df;color:#df245b}
+.planner-pdf-sheet .print-hero-advisor .print-hero-icon{background:#ffd2eb;color:#ed2474}
+.planner-pdf-sheet .print-hero-week{padding-top:19px}
+.planner-pdf-sheet .print-hero-week .print-hero-icon{left:auto;right:5px;top:3px;transform:none;width:25px;height:25px;background:#ddd0ff;color:#623ed7}
+.planner-pdf-sheet .print-hero-week .print-hero-icon svg{width:17px;height:17px;stroke-width:2.5}
+.planner-pdf-sheet.print-theme-mono .print-hero-icon{background:#ddd!important;color:#333!important}
+.planner-pdf-sheet.print-theme-color{background:linear-gradient(180deg,#e6f3ff 0%,#f4faff 45%,#fff 100%)}
+.planner-pdf-sheet.print-theme-color .print-plan-day{background:var(--day-light)}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(1){--day-border:#e5bd4d;--day-light:#fff3cd}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(2){--day-border:#75b3eb;--day-light:#e1f0ff}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(3){--day-border:#55c8b6;--day-light:#ddf8f1}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(4){--day-border:#a58bec;--day-light:#eee6ff}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(5){--day-border:#ee88b7;--day-light:#ffe2ef}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(6){--day-border:#58c5d2;--day-light:#dff7fa}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(7){--day-border:#a789ea;--day-light:#e9e0ff}

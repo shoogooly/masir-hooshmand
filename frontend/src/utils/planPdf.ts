@@ -11,7 +11,20 @@ export function singlePageSize(_width:number,_height:number){
 function node(tag:string,className:string,text?:string){const el=document.createElement(tag);el.className=className;if(text!==undefined)el.textContent=text;return el}
 const minutes=(time:string)=>{const [h,m]=time.split(':').map(Number);return h*60+m}
 const clock=(value:number)=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(value%60).padStart(2,'0')}`
-const faClock=(value:number,compact=false)=>(compact?clock(value).replace(/:00$/,''):clock(value)).replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[Number(d)])
+const faClock=(value:number)=>clock(value).replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[Number(d)])
+const faNumber=(value:number)=>value.toLocaleString('fa-IR')
+const jalaliMonths=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
+export function shortJalaliDate(value?:string){
+ if(!value)return ''
+ const normalized=value.replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+ const match=normalized.match(/^(?:\d{4}[/-])?(\d{1,2})[/-](\d{1,2})$/)
+ if(match){const month=Number(match[1]),day=Number(match[2]);if(month>=1&&month<=12&&day>=1&&day<=31)return `${faNumber(day)} ${jalaliMonths[month-1]}`}
+ return value
+}
+export function restDuration(totalMinutes:number){
+ const hours=Math.floor(totalMinutes/60),remaining=totalMinutes%60
+ return [hours?`${faNumber(hours)} ساعت`:'',remaining?`${faNumber(remaining)} دقیقه`:''].filter(Boolean).join(' و ')||'۰ دقیقه'
+}
 export function timelineSegments(plan:WeeklyPlan,day:string){
  const items=plan.activities.filter(item=>item.day===day).sort((a,b)=>minutes(a.start_time)-minutes(b.start_time))
  if(plan.plan_mode==='volume')return items.map(item=>({start:minutes(item.start_time),end:minutes(item.end_time),title:item.title,rest:false,subject:item.subject,color:item.color}))
@@ -42,7 +55,24 @@ function restIcon(day:string,start:number,end:number){
  icon.innerHTML=restIcons[index]
  return icon
 }
-function heroTile(className:string,label:string,value:string){const tile=node('div','print-hero-tile '+className);tile.append(node('small','',label),node('strong','',value));return tile}
+const heroIconPaths={
+ week:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18m-13 4h2m4 0h2m-8 4h2"/>',
+ quote:'<path d="M3 12c0-4 2-7 7-8v3c-2 .8-3 2-3 4h4v9H3v-8Zm11 0c0-4 2-7 7-8v3c-2 .8-3 2-3 4h4v9h-8v-8Z"/>',
+ mission:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/><path d="m12 12 8-9m-2 0h2v2"/>',
+ advisor:'<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2 20v-2a6 6 0 0 1 12 0v2H2Zm13 0v-2a5 5 0 0 0-1-3 5 5 0 0 1 8 4v1h-7Z"/>',
+ student:'<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2H4Z"/>'
+} as const
+type HeroIcon=keyof typeof heroIconPaths
+function heroIcon(kind:HeroIcon){
+ const icon=node('span','print-hero-icon')
+ icon.setAttribute('aria-hidden','true')
+ const svg=document.createElementNS('http://www.w3.org/2000/svg','svg')
+ svg.setAttribute('viewBox','0 0 24 24')
+ svg.innerHTML=heroIconPaths[kind]
+ icon.append(svg)
+ return icon
+}
+function heroTile(className:string,label:string,value:string,icon:HeroIcon){const tile=node('div','print-hero-tile '+className);tile.append(node('small','',label),node('strong','',value),heroIcon(icon));return tile}
 export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=false){
  const sheet=node('section','planner-pdf-sheet print-theme-'+(colored?'color':'mono'));sheet.dir='rtl'
  const reference=source.querySelector<HTMLElement>('.pdf-reference-header')
@@ -50,12 +80,18 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
  const advisorName=reference?.dataset.advisorName||reference?.querySelector('p')?.textContent||'—'
  const header=node('header','print-hero')
  const dates=plan.days.map(day=>day.date).filter(Boolean)
- const week=heroTile('print-hero-week',plan.plan_mode==='volume'?'برنامه حجمی':'برنامه زمانی',plan.week_label)
- week.append(node('span','',dates.length?`${dates[0]} تا ${dates.at(-1)}`:''))
- const quote=heroTile('print-hero-quote','هر روز یک قدم جلوتر',plan.motivational_quote?.trim()||'با برنامه، هر روز یک قدم جلوتر!')
- const mission=heroTile('print-hero-mission','مأموریت این هفته',plan.weekly_mission?.trim()||'با پشتکار به هدف این هفته نزدیک شو.')
- const advisor=heroTile('print-hero-advisor','مشاور',advisorName)
- const student=heroTile('print-hero-student','دانش‌آموز',studentName)
+ const week=node('div','print-hero-tile print-hero-week')
+ week.append(node('small','',plan.plan_mode==='volume'?'برنامه حجمی':'برنامه زمانی'))
+ if(dates.length){
+  const first=shortJalaliDate(dates[0]),last=shortJalaliDate(dates.at(-1))
+  week.append(node('strong','print-hero-date',first))
+  if(last!==first)week.append(node('strong','print-hero-date',last))
+ }else week.append(node('strong','',plan.week_label))
+ week.append(heroIcon('week'))
+ const quote=heroTile('print-hero-quote','هر روز یک قدم جلوتر',plan.motivational_quote?.trim()||'با برنامه، هر روز یک قدم جلوتر!','quote')
+ const mission=heroTile('print-hero-mission','مأموریت این هفته',plan.weekly_mission?.trim()||'با پشتکار به هدف این هفته نزدیک شو.','mission')
+ const advisor=heroTile('print-hero-advisor','مشاور',advisorName,'advisor')
+ const student=heroTile('print-hero-student','دانش‌آموز',studentName,'student')
  const brand=node('div','print-hero-brand'),logo=document.createElement('img')
  logo.src='/brand/mahyaad-logo.png';logo.alt='لوگوی مهیاد'
  brand.append(logo,node('strong','','مهیاد'),node('small','','برنامه هفتگی دانش‌آموز'))
@@ -64,7 +100,7 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
  for(const [dayIndex,day] of plan.days.entries()){
   const row=node('section','print-plan-day');row.dataset.day=String(dayIndex)
   const label=node('header','print-plan-date')
-  label.append(node('b','',day.label),node('span','',day.date||''));row.append(label)
+  label.append(node('b','',day.label),node('span','',shortJalaliDate(day.date)));row.append(label)
   const items=timelineSegments(plan,day.label),cards=node('div','print-plan-cards')
   cards.style.gridTemplateColumns=items.map(item=>`minmax(0,${plan.plan_mode==='volume'?item.end-item.start:timelineWeight(item.end-item.start)}fr)`).join(' ')
   for(const item of items){
@@ -72,11 +108,20 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
    card.dataset.minutes=String(item.end-item.start)
    if(colored&&!item.rest){const style=lightSubjectBlockStyle(item.title,item.subject,item.color);card.style.background=style.background;card.style.borderColor=style.borderColor;card.style.color=style.color;card.style.setProperty('--card-head',style.borderColor)}
    const time=node('small','print-plan-time')
-   if(plan.plan_mode==='volume')time.textContent=(item.end-item.start).toLocaleString('fa-IR')+' دقیقه'
-   else{const compact=item.end-item.start<=60;time.textContent=faClock(item.start,compact)+'–'+faClock(item.end,compact)}
+   const timeText=node('span','print-plan-time-text')
+   if(item.rest){timeText.dir='rtl';timeText.textContent=restDuration(item.end-item.start)}
+   else if(plan.plan_mode==='volume')timeText.textContent=restDuration(item.end-item.start)
+   else timeText.textContent=faClock(item.start)+' – '+faClock(item.end)
+   time.append(timeText)
    card.append(time)
    if(item.rest){const symbol=node('div','print-plan-rest-icon');symbol.setAttribute('aria-label','استراحت');symbol.append(restIcon(day.label,item.start,item.end));card.append(symbol)}
-   else card.append(node('p','print-plan-card-title',item.title))
+   else{
+    const title=node('p','print-plan-card-title')
+    const [firstLine,...otherLines]=item.title.split(/\r?\n/)
+    title.append(node('span','print-plan-card-first-line',firstLine))
+    if(otherLines.length)title.append(node('span','print-plan-card-detail',otherLines.join('\n')))
+    card.append(title)
+   }
    cards.append(card)
   }
   row.append(cards);table.append(row)
@@ -119,12 +164,21 @@ export function fitPrintText(sheet:HTMLElement){
  }
  for(const time of sheet.querySelectorAll<HTMLElement>('.print-plan-time')){
   let size=13
-  while(size>8&&time.scrollWidth>time.clientWidth+1){size-=.5;time.style.fontSize=size+'px'}
+  const label=time.querySelector<HTMLElement>('.print-plan-time-text')!
+  while(size>5.5&&label.getBoundingClientRect().width>time.clientWidth-2){size-=.5;time.style.fontSize=size+'px'}
  }
- for(const tile of sheet.querySelectorAll<HTMLElement>('.print-hero-tile')){
+ for(const tile of sheet.querySelectorAll<HTMLElement>('.print-hero-tile:not(.print-hero-week)')){
   const value=tile.querySelector<HTMLElement>('strong')!
   let size=18
   while(size>11&&value.scrollHeight>value.clientHeight+1){size-=.5;value.style.fontSize=size+'px'}
+ }
+ for(const week of sheet.querySelectorAll<HTMLElement>('.print-hero-week')){
+  const dates=[...week.querySelectorAll<HTMLElement>('.print-hero-date')]
+  let size=19
+  while(size>12&&dates.some(date=>date.scrollWidth>date.clientWidth+1)){
+   size-=.5
+   dates.forEach(date=>date.style.fontSize=size+'px')
+  }
  }
 }
 export async function exportPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false){
