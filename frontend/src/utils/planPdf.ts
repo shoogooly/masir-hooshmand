@@ -111,7 +111,10 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
    const timeText=node('span','print-plan-time-text')
    if(item.rest){timeText.dir='rtl';timeText.textContent=restDuration(item.end-item.start)}
    else if(plan.plan_mode==='volume')timeText.textContent=restDuration(item.end-item.start)
-   else timeText.textContent=faClock(item.start)+' – '+faClock(item.end)
+   else{
+    timeText.classList.add('print-plan-range-time')
+    timeText.append(node('span','print-plan-time-start',faClock(item.start)),node('span','print-plan-time-separator',' تا '),node('span','print-plan-time-end',faClock(item.end)))
+   }
    time.append(timeText)
    card.append(time)
    if(item.rest){const symbol=node('div','print-plan-rest-icon');symbol.setAttribute('aria-label','استراحت');symbol.append(restIcon(day.label,item.start,item.end));card.append(symbol)}
@@ -163,9 +166,16 @@ export function fitPrintText(sheet:HTMLElement){
   }
  }
  for(const time of sheet.querySelectorAll<HTMLElement>('.print-plan-time')){
-  let size=13
   const label=time.querySelector<HTMLElement>('.print-plan-time-text')!
-  while(size>5.5&&label.getBoundingClientRect().width>time.clientWidth-2){size-=.5;time.style.fontSize=size+'px'}
+  const available=Math.max(1,time.clientWidth-2)
+  let size=15
+  label.style.setProperty('font-size',`${size}px`,'important')
+  const measured=label.getBoundingClientRect().width
+  if(measured>available){
+   size=Math.max(2,Math.min(size,size*available/measured))
+   label.style.setProperty('font-size',`${size}px`,'important')
+   while(size>2&&label.getBoundingClientRect().width>available){size=Math.max(2,size-.25);label.style.setProperty('font-size',`${size}px`,'important')}
+  }
  }
  for(const tile of sheet.querySelectorAll<HTMLElement>('.print-hero-tile:not(.print-hero-week)')){
   const value=tile.querySelector<HTMLElement>('strong')!
@@ -174,7 +184,7 @@ export function fitPrintText(sheet:HTMLElement){
  }
  for(const week of sheet.querySelectorAll<HTMLElement>('.print-hero-week')){
   const dates=[...week.querySelectorAll<HTMLElement>('.print-hero-date')]
-  let size=19
+  let size=16
   while(size>12&&dates.some(date=>date.scrollWidth>date.clientWidth+1)){
    size-=.5
    dates.forEach(date=>date.style.fontSize=size+'px')
