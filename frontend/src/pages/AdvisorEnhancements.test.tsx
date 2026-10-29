@@ -24,7 +24,7 @@ test('volume ranges copy to another day and save incomplete drafts without publi
  const secondDay=addButtons[1].getAttribute('aria-label')!.replace('افزودن بازه برای ','')
  fireEvent.change(screen.getByLabelText(`مدت بازه جدید ${firstDay}`),{target:{value:'90'}})
  fireEvent.click(addButtons[0])
- const description=screen.getByRole('textbox',{name:'توضیحات بازه'}) as HTMLElement;description.textContent='ریاضی';description.innerText='ریاضی';fireEvent.input(description)
+ fireEvent.change(screen.getByRole('textbox',{name:'توضیحات بازه'}),{target:{value:'ریاضی'}})
  fireEvent.click(screen.getByRole('button',{name:`کپی برنامه ${firstDay}`}))
  fireEvent.click(screen.getByRole('button',{name:`جایگذاری برنامه ${secondDay}`}))
  expect(screen.getAllByRole('button',{name:/ویرایش بازه/}).map(block=>block.getAttribute('aria-label'))).toEqual(['ویرایش بازه ریاضی','ویرایش بازه ریاضی'])

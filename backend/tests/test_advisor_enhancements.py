@@ -82,6 +82,25 @@ def test_advisor_can_delete_only_own_unpublished_draft():
         assert advisor.get(f'/api/v1/plans/{published_id}').status_code==200
 
 
+def test_publication_numbers_ignore_drafts_and_are_stable():
+    with TestClient(app) as advisor, TestClient(app) as student:
+        login(advisor,'09120000002','advisor')
+        sid=login(student,'09120000001','student')
+        payload={'student_id':sid,'title':'برنامه شمارشی','week_label':'هفته نمونه',
+            'days':[{'label':'شنبه'}],
+            'activities':[{'day':'شنبه','title':'مطالعه ریاضی','start_time':'08:00','end_time':'09:00'}]}
+        first=advisor.post('/api/v1/plans',json=payload).json()['data']['id']
+        draft=advisor.post('/api/v1/plans',json=payload).json()['data']['id']
+        second=advisor.post('/api/v1/plans',json=payload).json()['data']['id']
+        assert advisor.get(f'/api/v1/plans/{draft}').json()['data']['publication_number'] is None
+        first_number=advisor.post(f'/api/v1/plans/{first}/publish').json()['data']['publication_number']
+        second_number=advisor.post(f'/api/v1/plans/{second}/publish').json()['data']['publication_number']
+        assert second_number==first_number+1
+        assert advisor.post(f'/api/v1/plans/{first}/publish').json()['data']['status']=='published'
+        assert advisor.get(f'/api/v1/plans/{first}').json()['data']['publication_number']==first_number
+        assert advisor.get(f'/api/v1/plans/{draft}').json()['data']['publication_number'] is None
+
+
 def test_external_results_shared_history_permissions_and_conflicts():
     with TestClient(app) as advisor, TestClient(app) as student:
         login(advisor,'09120000002','advisor');sid=login(student,'09120000001','student')

@@ -179,7 +179,7 @@ def plan_dict(plan: WeeklyPlan):
         activity_slots = {(activity.start_time, activity.end_time) for activity in plan.activities}
         slots = [{"start": start, "end": end} for start, end in sorted(activity_slots)] or [item.copy() for item in DEFAULT_TIME_SLOTS]
     return {"id": plan.id, "student_id": plan.student_id, "title": plan.title, "week_label": plan.week_label,
-        "version": plan.version, "status": plan.status, "published_at": plan.published_at,
+        "version": plan.version, "publication_number": plan.publication_number, "status": plan.status, "published_at": plan.published_at,
         "day_start_time": plan.day_start_time, "day_end_time": plan.day_end_time,
         "weekly_mission": plan.weekly_mission, "motivational_quote": plan.motivational_quote, "plan_mode": plan.plan_mode,
         "draft_state": json.loads(plan.draft_state_json or "{}") if plan.status == "draft" else None,
@@ -997,12 +997,16 @@ def publish_plan(plan_id: str, user: User = Depends(roles("advisor", "super_admi
     plan = db.scalar(select(WeeklyPlan).where(WeeklyPlan.id == plan_id).with_for_update())
     if not plan or (user.role == "advisor" and plan.advisor_id != user.id): raise HTTPException(404, "برنامه یافت نشد")
     if plan.status == "published":
-        return ok({"id":plan.id,"status":plan.status})
+        return ok({"id":plan.id,"status":plan.status,"publication_number":plan.publication_number})
     from app.book_service import validate_allocations
     validate_allocations(db,plan.student_id,[{"book_topic_id":a.book_topic_id,"book_question_count":a.book_question_count} for a in plan.activities],lock=True)
     if not plan.activities or any(not a.title.strip() for a in plan.activities):
         raise HTTPException(422, "برنامه پیش از انتشار باید حداقل یک بازه کامل داشته باشد")
     from app.api.motivational_quotes import quote_for_publication
+    # Lock the student's row so two advisors cannot assign the same publication number.
+    db.scalar(select(User.id).where(User.id == plan.student_id).with_for_update())
+    last_number = db.scalar(select(func.max(WeeklyPlan.publication_number)).where(WeeklyPlan.student_id == plan.student_id)) or 0
+    plan.publication_number = last_number + 1
     before = plan.status; now = utcnow(); plan.status = "published"; plan.published_at = now
     plan.motivational_quote = quote_for_publication(db, now)
     plan.draft_state_json = "{}"
@@ -1012,7 +1016,7 @@ def publish_plan(plan_id: str, user: User = Depends(roles("advisor", "super_admi
     plan.advisor_expiry_notified_at = None
     add_notification(db, plan.student_id, "plan_published", "برنامه هفتگی جدید", f"برنامه جدید شما توسط {user.full_name} منتشر شد.", "/app/student/plan", user.id, plan.id)
     audit(db, user.id, "plan.published", "weekly_plan", plan.id, before={"status": before}, after={"status": plan.status})
-    db.commit(); return ok({"id": plan.id, "status": plan.status})
+    db.commit(); return ok({"id": plan.id, "status": plan.status, "publication_number": plan.publication_number})
 
 
 @router.patch("/activities/{activity_id}")

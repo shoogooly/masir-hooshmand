@@ -49,7 +49,7 @@ export default function AdvisorPlanArchive({studentId,studentName,advisorName,re
   {plans.map(plan=><article className={'advisor-plan-entry'+(open===plan.id?' expanded':'')} key={plan.id}>
    <div className="advisor-plan-entry-heading">
     <button className="advisor-plan-toggle" aria-expanded={open===plan.id} aria-controls={'plan-content-'+plan.id} onClick={()=>{if(category==='draft'&&onEditDraft)onEditDraft(plan);else setOpen(open===plan.id?'':plan.id)}}>
-     <ChevronDown aria-hidden="true"/><span><b>{plan.title}</b><small>{plan.week_label} · نسخه {plan.version.toLocaleString('fa-IR')} · {plan.status==='published'?'منتشرشده':'پیش‌نویس'}</small></span>
+     <ChevronDown aria-hidden="true"/><span><b>{plan.title}{plan.status==='published'&&plan.publication_number?` · برنامهٔ ${plan.publication_number.toLocaleString('fa-IR')}`:''}</b><small>{plan.week_label} · {plan.status==='published'?'منتشرشده':'پیش‌نویس'}</small></span>
     </button>
     {!reports&&category==='published'&&<button className="btn btn-outline" aria-label={'دانلود PDF برنامه '+plan.week_label} disabled={Boolean(busy)} onClick={()=>void downloadPlans([plan])}><Download/>{busy===plan.id?'در حال ساخت…':'دانلود PDF برنامه'}</button>}
     {!reports&&category==='draft'&&<><button className="btn btn-primary" onClick={()=>onEditDraft?.(plan)} disabled={Boolean(deleting)||!onEditDraft}>ادامه ویرایش</button><button className="btn btn-outline advisor-draft-delete" aria-label={'حذف پیش‌نویس '+plan.title} disabled={Boolean(deleting)} onClick={()=>void deleteDraft(plan)}><Trash2/>{deleting===plan.id?'در حال حذف…':'حذف پیش‌نویس'}</button></>}

@@ -176,6 +176,7 @@ class WeeklyPlan(Base, TimeMixin):
     plan_mode: Mapped[str] = mapped_column(String(20), default="timed", server_default="timed")
     draft_state_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
     version: Mapped[int] = mapped_column(Integer, default=1)
+    publication_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activities: Mapped[list[Activity]] = relationship(back_populates="plan", cascade="all, delete-orphan")

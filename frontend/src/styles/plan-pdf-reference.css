@@ -4,7 +4,7 @@
 .print-hero-tile small{font-size:14px;line-height:1.3;color:#495b8a;font-weight:700}.print-hero-tile strong{font-size:18px;line-height:1.45;font-weight:800;white-space:pre-wrap;overflow:hidden;max-height:60px}.print-hero-week{background:#dceaff;text-align:center}.print-hero-week span{font-size:12px}.print-hero-quote{background:#e2f6f5}.print-hero-quote strong{font-size:16px}.print-hero-mission{background:#ffe1e9}.print-hero-mission strong{color:#b41550}.print-hero-advisor{background:#f1e7ff}.print-hero-student{background:#e2f1ff}.print-hero-brand{position:relative;align-items:center;text-align:center;background:linear-gradient(120deg,#eef5ff,#dce7ff);padding-right:72px}.print-hero-brand img{position:absolute;width:75px;height:75px;object-fit:contain;right:3px;top:8px}.print-hero-brand strong{font-size:30px;line-height:1.1;color:#272070}.print-hero-brand small{font-size:12px;color:#3a3b80}
 .print-theme-color .print-plan-days,.print-theme-mono .print-plan-days{display:grid;grid-auto-rows:minmax(0,1fr);align-content:stretch;flex:1;min-height:0;gap:6px}
 .print-theme-color .print-plan-day,.print-theme-mono .print-plan-day{direction:rtl;display:grid;grid-template-columns:110px minmax(0,1fr);gap:4px;min-height:0;border:1.5px solid var(--day-border);border-radius:12px;padding:3px;background:#fff;overflow:hidden}
-.print-plan-day{--day-border:#7db2f5;--day-light:#dceaff}.print-plan-day:nth-child(2){--day-border:#69bdc7;--day-light:#d9f8f4}.print-plan-day:nth-child(3){--day-border:#9280f4;--day-light:#e6deff}.print-plan-day:nth-child(4){--day-border:#ed97c2;--day-light:#ffe0f0}.print-plan-day:nth-child(5){--day-border:#78d4b7;--day-light:#d7f9eb}.print-plan-day:nth-child(6){--day-border:#70bddc;--day-light:#daf5fb}.print-plan-day:nth-child(7){--day-border:#bd9cf2;--day-light:#e8ddff}
+.print-plan-day{--day-border:#7db2f5;--day-light:#dceaff}.print-plan-day:nth-of-type(2){--day-border:#69bdc7;--day-light:#d9f8f4}.print-plan-day:nth-of-type(3){--day-border:#9280f4;--day-light:#e6deff}.print-plan-day:nth-of-type(4){--day-border:#ed97c2;--day-light:#ffe0f0}.print-plan-day:nth-of-type(5){--day-border:#78d4b7;--day-light:#d7f9eb}.print-plan-day:nth-of-type(6){--day-border:#70bddc;--day-light:#daf5fb}.print-plan-day:nth-of-type(7){--day-border:#bd9cf2;--day-light:#e8ddff}
 .print-theme-color .print-plan-date,.print-theme-mono .print-plan-date{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;min-width:0;min-height:0;padding:5px;border:0;border-radius:8px;background:var(--day-light);font-family:Vazirmatn,Tahoma,sans-serif;text-align:center;color:#101342}
 .print-plan-date b{font-size:23px;line-height:1.25;font-weight:900}.print-plan-date span{font-size:12px;line-height:1.2;white-space:nowrap}
 .print-theme-color .print-plan-cards,.print-theme-mono .print-plan-cards{display:grid;gap:3px;min-width:0;min-height:0;align-items:stretch}
@@ -49,10 +49,44 @@
 .planner-pdf-sheet.print-theme-mono .print-hero-icon{background:#ddd!important;color:#333!important}
 .planner-pdf-sheet.print-theme-color{background:linear-gradient(180deg,#e6f3ff 0%,#f4faff 45%,#fff 100%)}
 .planner-pdf-sheet.print-theme-color .print-plan-day{background:var(--day-light)}
-.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(1){--day-border:#e5bd4d;--day-light:#fff3cd}
-.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(2){--day-border:#75b3eb;--day-light:#e1f0ff}
-.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(3){--day-border:#55c8b6;--day-light:#ddf8f1}
-.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(4){--day-border:#a58bec;--day-light:#eee6ff}
-.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(5){--day-border:#ee88b7;--day-light:#ffe2ef}
-.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(6){--day-border:#58c5d2;--day-light:#dff7fa}
-.planner-pdf-sheet.print-theme-color .print-plan-day:nth-child(7){--day-border:#a789ea;--day-light:#e9e0ff}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-of-type(1){--day-border:#e5bd4d;--day-light:#fff3cd}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-of-type(2){--day-border:#75b3eb;--day-light:#e1f0ff}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-of-type(3){--day-border:#55c8b6;--day-light:#ddf8f1}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-of-type(4){--day-border:#a58bec;--day-light:#eee6ff}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-of-type(5){--day-border:#ee88b7;--day-light:#ffe2ef}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-of-type(6){--day-border:#58c5d2;--day-light:#dff7fa}
+.planner-pdf-sheet.print-theme-color .print-plan-day:nth-of-type(7){--day-border:#a789ea;--day-light:#e9e0ff}
+
+/* Seasonal single-piece banner, with readable text over its light and dark areas. */
+.planner-pdf-sheet .print-hero{position:relative;display:grid;grid-template-columns:245px minmax(0,1fr) 225px;align-items:stretch;gap:15px;flex:0 0 205px;min-height:205px;overflow:hidden;border-radius:22px;border:2px solid #cbd8ff;box-shadow:0 4px 11px #1b2f6a33;isolation:isolate}
+.planner-pdf-sheet .print-hero-backdrop{position:absolute;left:0;top:0;width:100%;height:auto;min-height:100%;max-width:none;transform:translateY(-14%);z-index:-2}
+.planner-pdf-sheet .print-hero::before{content:"";position:absolute;inset:0;background:transparent;z-index:-1}
+.planner-pdf-sheet .print-hero-identity{display:flex;flex-direction:column;align-items:center;gap:9px;padding:12px 6px 8px;min-width:0;color:#0a1544;text-align:center;text-shadow:0 1px 1px #fff9}
+.planner-pdf-sheet .print-hero-number{display:grid;place-items:center;width:64px;height:64px;flex:none;border:2px solid #173572;border-radius:13px;background:#ffffffcf;color:#0c2059;font:900 43px/1 PlanTitr,"B Titr",Tahoma,sans-serif;box-shadow:0 2px 8px #14275433}
+.planner-pdf-sheet .print-hero-number.print-hero-draft{display:flex;flex-direction:column;gap:1px;font:900 11px/1.1 Vazirmatn,Tahoma,sans-serif}
+.planner-pdf-sheet .print-hero-number svg{width:32px;height:32px}
+.planner-pdf-sheet .print-hero-names{display:flex;flex-direction:column;justify-content:center;min-width:0;max-width:100%;max-height:70px;overflow:hidden;font:900 19px/1.4 Vazirmatn,Tahoma,sans-serif;white-space:nowrap}
+.planner-pdf-sheet .print-hero-message{display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:9px;min-width:0;min-height:0;padding:9px 2px;color:white;text-align:center;text-shadow:0 2px 4px #101044,0 0 4px #101044}
+.planner-pdf-sheet .print-hero-quote{box-sizing:border-box;display:flex;align-items:center;justify-content:center;min-width:0;min-height:58px;max-height:58px;flex:0 0 58px;overflow:hidden;padding:4px 12px;border:0;border-radius:16px;background:linear-gradient(130deg,#e4edff55,#ffffff3b);box-shadow:0 5px 16px #09143624;color:#10131b;font:900 22px/1.2 Vazirmatn,Tahoma,sans-serif;white-space:pre-wrap;backdrop-filter:blur(5px)}
+.planner-pdf-sheet .print-hero-mission{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;min-height:48px;max-height:90px;overflow:hidden;padding:4px 12px;border:0;border-radius:16px;background:linear-gradient(130deg,#e4edff55,#ffffff3b);box-shadow:0 5px 16px #09143624;color:#10131b;backdrop-filter:blur(5px)}
+.planner-pdf-sheet .print-hero-mission-label{flex:none;font:900 19px/1.2 Vazirmatn,Tahoma,sans-serif}
+.planner-pdf-sheet .print-hero-mission strong{display:block;min-width:0;max-height:78px;overflow:hidden;color:#10131b;font:800 23px/1.25 Vazirmatn,Tahoma,sans-serif;white-space:pre-wrap}
+.planner-pdf-sheet .print-hero-brand{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;min-height:0;padding:7px;background:transparent;border:0;box-shadow:none;color:#fff;text-align:center;text-shadow:0 2px 4px #07184f,0 0 4px #07184f}
+.planner-pdf-sheet .print-hero-logo-halo{display:grid;place-items:center;width:92px;height:92px;flex:none;border-radius:50%;background:radial-gradient(circle,#fff9 0%,#fff6 42%,#fff0 74%);box-shadow:0 0 18px 7px #fff8}
+.planner-pdf-sheet .print-hero-brand img{position:static;width:85px;height:85px;object-fit:contain;filter:drop-shadow(0 1px 3px #00124a)}
+.planner-pdf-sheet .print-hero-brand strong{font:900 31px/1.1 PlanTitr,"B Titr",Tahoma,sans-serif;color:#fff}
+.planner-pdf-sheet .print-hero-brand small{font:800 12px/1.2 Vazirmatn,Tahoma,sans-serif;color:#fff}
+.planner-pdf-sheet .print-plan-days{display:flex!important;flex-direction:column;gap:3px!important}
+.planner-pdf-sheet .print-plan-day{flex:1 1 0;min-height:0}
+.planner-pdf-sheet .print-day-divider{height:4px;flex:0 0 4px;margin:0 12px;border-radius:99px;background:linear-gradient(to left,#facf54,#5bbcea,#a06ceb,#f181ba,#63cdb4);box-shadow:0 1px 3px #5b5e9b33}
+.planner-pdf-sheet .print-plan-range-time{flex-direction:row-reverse!important}
+.planner-pdf-sheet.print-theme-mono .print-hero-backdrop{filter:grayscale(1)}
+.planner-pdf-sheet.print-theme-mono .print-hero::before{background:transparent}
+.planner-pdf-sheet.print-theme-mono .print-hero-number{background:#fff;border-color:#444;color:#111}
+.planner-pdf-sheet.print-theme-mono .print-hero-brand,.planner-pdf-sheet.print-theme-mono .print-hero-message{color:#fff}
+.planner-pdf-sheet.print-theme-mono .print-hero-brand strong,.planner-pdf-sheet.print-theme-mono .print-hero-brand small{color:#fff!important}
+.planner-pdf-sheet.print-theme-mono .print-day-divider{background:linear-gradient(to left,#aaa,#ddd,#888)}
+.planner-pdf-sheet .print-hero-message,.planner-pdf-sheet .print-hero-message .print-hero-quote,.planner-pdf-sheet .print-hero-message .print-hero-mission,.planner-pdf-sheet .print-hero-message .print-hero-mission strong{color:#10131b;-webkit-text-stroke:0;text-shadow:0 1px 2px #fff,0 0 5px #fff}
+.planner-pdf-sheet .print-hero-brand,.planner-pdf-sheet .print-hero-brand strong,.planner-pdf-sheet .print-hero-brand small{color:#fff;-webkit-text-stroke:0;text-shadow:0 2px 4px #08112c}
+.planner-pdf-sheet .print-hero-identity,.planner-pdf-sheet .print-hero-number{color:#0a1544;-webkit-text-stroke:0;text-shadow:0 1px 2px #fff}
+.planner-pdf-sheet.print-theme-mono .print-hero-identity,.planner-pdf-sheet.print-theme-mono .print-hero-number{color:#111}

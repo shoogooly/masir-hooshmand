@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.core.config import settings
@@ -166,7 +166,12 @@ def handle_callback(db,query):
         plan=db.get(WeeklyPlan,data[8:])
         if not plan or plan.advisor_id!=user.id or plan.status!="draft":
             api(db,"answerCallbackQuery",{"callback_query_id":query_id,"text":"برنامه معتبر نیست","show_alert":True}); return
+        db.scalar(select(User.id).where(User.id == plan.student_id).with_for_update())
+        last_number=db.scalar(select(func.max(WeeklyPlan.publication_number)).where(WeeklyPlan.student_id==plan.student_id)) or 0
+        plan.publication_number=last_number+1
         plan.status="published"; plan.published_at=utcnow()
+        from app.api.motivational_quotes import quote_for_publication
+        plan.motivational_quote=quote_for_publication(db,plan.published_at)
         api(db,"answerCallbackQuery",{"callback_query_id":query_id,"text":"برنامه منتشر شد","show_alert":True}); return
     if data.startswith("renew:") and user.role=="student":
         plan=db.get(SubscriptionPlan,data[6:])

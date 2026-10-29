@@ -150,7 +150,7 @@ def seed_database(db: Session):
     plan = WeeklyPlan(student_id=student.id, advisor_id=advisor.id, title="برنامه آمادگی هفتگی", week_label="۲۰ تا ۲۶ مرداد",
         schedule_days_json=json.dumps([{"label": day, "date": ""} for day in ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]], ensure_ascii=False),
         time_slots_json=json.dumps([{"start": start, "end": end} for start, end in [("08:00", "10:00"), ("10:00", "12:00"), ("12:00", "14:00"), ("14:00", "16:00"), ("16:00", "18:00"), ("18:00", "20:00")]]),
-        status="published", published_at=utcnow())
+        status="published", published_at=utcnow(), publication_number=1)
     db.add(plan)
     db.add(AdvisorProfile(user_id=advisor.id, national_code="0012345678", education_degree="کارشناسی ارشد", education_field="مشاوره تحصیلی", experience_years=8, bio="مشاور تحصیلی مهیاد با سابقه برنامه‌ریزی کنکور", support_capacity=30, approval_status="approved", lead_approval_status="approved", admin_approval_status="approved", reviewed_by=admin.id, reviewed_at=utcnow()))
     db.flush()

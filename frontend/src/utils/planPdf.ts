@@ -72,30 +72,42 @@ function heroIcon(kind:HeroIcon){
  icon.append(svg)
  return icon
 }
-function heroTile(className:string,label:string,value:string,icon:HeroIcon){const tile=node('div','print-hero-tile '+className);tile.append(node('small','',label),node('strong','',value),heroIcon(icon));return tile}
+export function planSeason(date?:string){
+ const normalized=(date||'').replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+ const month=Number(normalized.match(/^(?:\d{4}[/-])?(\d{1,2})[/-]\d{1,2}$/)?.[1])
+ if(month>=1&&month<=3)return 'spring'
+ if(month>=4&&month<=6)return 'summer'
+ if(month>=10&&month<=12)return 'winter'
+ return 'autumn'
+}
 export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=false){
  const sheet=node('section','planner-pdf-sheet print-theme-'+(colored?'color':'mono'));sheet.dir='rtl'
  const reference=source.querySelector<HTMLElement>('.pdf-reference-header')
  const studentName=reference?.dataset.studentName||reference?.querySelector('h1')?.textContent||plan.title
  const advisorName=reference?.dataset.advisorName||reference?.querySelector('p')?.textContent||'—'
- const header=node('header','print-hero')
- const dates=plan.days.map(day=>day.date).filter(Boolean)
- const week=node('div','print-hero-tile print-hero-week')
- week.append(node('small','',plan.plan_mode==='volume'?'برنامه حجمی':'برنامه زمانی'))
- if(dates.length){
-  const first=shortJalaliDate(dates[0]),last=shortJalaliDate(dates.at(-1))
-  week.append(node('strong','print-hero-date',first))
-  if(last!==first)week.append(node('strong','print-hero-date',last))
- }else week.append(node('strong','',plan.week_label))
- week.append(heroIcon('week'))
- const quote=heroTile('print-hero-quote','هر روز یک قدم جلوتر',plan.motivational_quote?.trim()||'با برنامه، هر روز یک قدم جلوتر!','quote')
- const mission=heroTile('print-hero-mission','مأموریت این هفته',plan.weekly_mission?.trim()||'با پشتکار به هدف این هفته نزدیک شو.','mission')
- const advisor=heroTile('print-hero-advisor','مشاور',advisorName,'advisor')
- const student=heroTile('print-hero-student','دانش‌آموز',studentName,'student')
+ const header=node('header','print-hero print-season-'+planSeason(plan.days.find(day=>day.date)?.date))
+ const backdrop=document.createElement('img')
+ backdrop.className='print-hero-backdrop';backdrop.src=`/brand/header-${planSeason(plan.days.find(day=>day.date)?.date)}.png`;backdrop.alt=''
+ header.append(backdrop)
+ const identity=node('div','print-hero-identity')
+ const number=node('div','print-hero-number')
+ if(plan.status==='published'&&plan.publication_number){number.textContent=faNumber(plan.publication_number);number.setAttribute('aria-label',`برنامه شماره ${plan.publication_number}`)}
+ else {number.classList.add('print-hero-draft');number.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5zM15 3v5h5M8 13h7M8 17h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/><path d="m16 15 3-3 2 2-3 3-3 1z" fill="currentColor"/></svg><span>پیش‌نویس</span>';number.setAttribute('aria-label','پیش‌نویس')}
+ identity.append(number)
+ const names=node('div','print-hero-names')
+ names.append(node('div','',`دانش‌آموز: ${studentName}`),node('div','',`مشاور: ${advisorName}`))
+ identity.append(names)
+ const message=node('div','print-hero-message')
+ const quote=node('div','print-hero-quote',plan.motivational_quote?.trim()||'با برنامه، هر روز یک قدم جلوتر به رؤیاهایت نزدیک‌تر شو.')
+ const mission=node('div','print-hero-mission')
+ mission.append(node('span','print-hero-mission-label','مأموریت هفته'),node('strong','',plan.weekly_mission?.trim()||'با پشتکار به هدف این هفته نزدیک شو.'))
+ message.append(quote,mission)
  const brand=node('div','print-hero-brand'),logo=document.createElement('img')
  logo.src='/brand/mahyaad-logo.png';logo.alt='لوگوی مهیاد'
- brand.append(logo,node('strong','','مهیاد'),node('small','','برنامه هفتگی دانش‌آموز'))
- header.append(week,quote,mission,advisor,student,brand);sheet.append(header)
+ const logoHalo=node('div','print-hero-logo-halo')
+ logoHalo.append(logo)
+ brand.append(logoHalo,node('strong','','مهیاد'),node('small','','مسیر هوشمند یادگیری'))
+ header.append(identity,message,brand);sheet.append(header)
  const table=node('main','print-plan-days')
  for(const [dayIndex,day] of plan.days.entries()){
   const row=node('section','print-plan-day');row.dataset.day=String(dayIndex)
@@ -128,11 +140,9 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
    cards.append(card)
   }
   row.append(cards);table.append(row)
+  if(dayIndex<plan.days.length-1)table.append(node('div','print-day-divider'))
  }
  sheet.append(table)
- const footer=node('footer','print-day-cycle'),cycle=document.createElement('img')
- cycle.src='/brand/plan-day-cycle.png';cycle.alt='چرخهٔ تصویری صبح تا شب'
- footer.append(cycle);sheet.append(footer)
  return sheet
 }
 export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false,appendTo?:PdfDocument){
@@ -177,17 +187,13 @@ export function fitPrintText(sheet:HTMLElement){
    while(size>2&&label.getBoundingClientRect().width>available){size=Math.max(2,size-.25);label.style.setProperty('font-size',`${size}px`,'important')}
   }
  }
- for(const tile of sheet.querySelectorAll<HTMLElement>('.print-hero-tile:not(.print-hero-week)')){
-  const value=tile.querySelector<HTMLElement>('strong')!
-  let size=18
-  while(size>11&&value.scrollHeight>value.clientHeight+1){size-=.5;value.style.fontSize=size+'px'}
- }
- for(const week of sheet.querySelectorAll<HTMLElement>('.print-hero-week')){
-  const dates=[...week.querySelectorAll<HTMLElement>('.print-hero-date')]
-  let size=16
-  while(size>12&&dates.some(date=>date.scrollWidth>date.clientWidth+1)){
-   size-=.5
-   dates.forEach(date=>date.style.fontSize=size+'px')
+ for(const [selector,initial,minimum] of [['.print-hero-quote',22,12],['.print-hero-mission strong',23,11],['.print-hero-names',19,12]] as const){
+  const value=sheet.querySelector<HTMLElement>(selector)
+  if(!value)continue
+  let size=initial
+  value.style.fontSize=size+'px'
+  while(size>minimum&&(value.scrollHeight>value.clientHeight+1||value.scrollWidth>value.clientWidth+1)){
+   size-=.5;value.style.fontSize=size+'px'
   }
  }
 }

@@ -41,12 +41,12 @@ test('colored and monochrome PDFs share the illustrated layout with soft subject
  expect(cards[0].querySelector('.print-plan-time-text')?.textContent).toBe('۰۸:۰۰ تا ۰۹:۰۰')
  expect([...cards[0].querySelectorAll('.print-plan-range-time span')].map(part=>part.textContent)).toEqual(['۰۸:۰۰',' تا ','۰۹:۰۰'])
  expect(color.querySelector('.print-hero-brand img')?.getAttribute('src')).toBe('/brand/mahyaad-logo.png')
- expect(color.querySelectorAll('.print-hero-tile .print-hero-icon svg')).toHaveLength(5)
- expect(color.querySelector('.print-day-cycle img')?.getAttribute('src')).toBe('/brand/plan-day-cycle.png')
+ expect(color.querySelector('.print-hero-backdrop')?.getAttribute('src')).toBe('/brand/header-summer.png')
+ expect(color.querySelector('.print-day-cycle')).toBeNull()
  expect(plain.querySelectorAll('.print-plan-day')).toHaveLength(color.querySelectorAll('.print-plan-day').length)
  expect(color.querySelector('.print-plan-date span')?.textContent).toBe('۲۱ شهریور')
- expect(color.querySelectorAll('.print-hero-week strong')).toHaveLength(1)
- expect(color.querySelector('.print-hero-week strong')?.textContent).toBe('۲۱ شهریور')
+ expect(color.querySelector('.print-hero-number')?.getAttribute('aria-label')).toBe('پیش‌نویس')
+ expect(color.querySelector('.print-hero-number')?.textContent).toBe('پیش‌نویس')
 })
 
 test('a narrow PDF time strip shrinks its own label to fit',()=>{
@@ -62,10 +62,24 @@ test('a narrow PDF time strip shrinks its own label to fit',()=>{
  expect(label.getBoundingClientRect().width).toBeLessThanOrEqual(38)
 })
 
-test('week dates are shown once on separate lines without a year',()=>{
+test('draft header uses its seasonal image and keeps day labels short',()=>{
  const plan={id:'preview',student_id:'student',version:1,status:'draft',time_slots:[],title:'برنامه',week_label:'از ۱۴۰۵/۰۸/۰۵ تا ۱۴۰۵/۰۸/۱۱',days:[{label:'شنبه',date:'۱۴۰۵/۰۸/۰۵'},{label:'جمعه',date:'۱۴۰۵/۰۸/۱۱'}],day_start_time:'08:00',day_end_time:'10:00',activities:[]} as WeeklyPlan
  const sheet=createPrintSheet(document.createElement('div'),plan,true)
- expect([...sheet.querySelectorAll('.print-hero-week strong')].map(item=>item.textContent)).toEqual(['۵ آبان','۱۱ آبان'])
+ expect(sheet.querySelector('.print-hero-backdrop')?.getAttribute('src')).toBe('/brand/header-autumn.png')
+ expect(sheet.querySelector('.print-hero-number')?.getAttribute('aria-label')).toBe('پیش‌نویس')
  expect([...sheet.querySelectorAll('.print-plan-date span')].map(item=>item.textContent)).toEqual(['۵ آبان','۱۱ آبان'])
  expect(sheet.textContent).not.toContain('۱۴۰۵')
+})
+
+test('published header shows stable number, quote, mission and correctly ordered times',()=>{
+ const plan={id:'sent',student_id:'student',version:5,publication_number:2,status:'published',title:'برنامه',week_label:'هفته',
+  motivational_quote:'با برنامه پیش برو',weekly_mission:'مرور مباحث',days:[{label:'شنبه',date:'۱۴۰۵/۱۰/۰۵'},{label:'یکشنبه',date:'۱۴۰۵/۱۰/۰۶'}],
+  day_start_time:'08:00',day_end_time:'09:00',activities:[{day:'شنبه',start_time:'08:00',end_time:'09:00',title:'ریاضی'}]} as WeeklyPlan
+ const sheet=createPrintSheet(document.createElement('div'),plan,true)
+ expect(sheet.querySelector('.print-hero-backdrop')?.getAttribute('src')).toBe('/brand/header-winter.png')
+ expect(sheet.querySelector('.print-hero-number')?.textContent).toBe('۲')
+ expect(sheet.querySelector('.print-hero-quote')?.textContent).toBe('با برنامه پیش برو')
+ expect(sheet.querySelector('.print-hero-mission strong')?.textContent).toBe('مرور مباحث')
+ expect(sheet.querySelectorAll('.print-day-divider')).toHaveLength(1)
+ expect([...sheet.querySelectorAll('.print-plan-range-time span')].slice(0,3).map(x=>x.textContent)).toEqual(['۰۸:۰۰',' تا ','۰۹:۰۰'])
 })
