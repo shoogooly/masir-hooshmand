@@ -138,5 +138,8 @@ if static_root and (static_root / "index.html").is_file():
             raise HTTPException(404, "یافت نشد")
         requested = (static_root / full_path).resolve()
         if requested.is_relative_to(static_root) and requested.is_file():
-            return FileResponse(requested)
-        return FileResponse(static_root / "index.html")
+            cache_control = ("public, max-age=31536000, immutable"
+                             if requested.parent == static_root / "assets" else
+                             "no-cache, must-revalidate")
+            return FileResponse(requested, headers={"Cache-Control": cache_control})
+        return FileResponse(static_root / "index.html", headers={"Cache-Control": "no-cache, must-revalidate"})
