@@ -57,10 +57,10 @@ def get_grant(db,raw,kind=None):
 @router.get("/download/{raw}")
 def download(raw:str,db:Session=Depends(get_db)):
     item=get_grant(db,raw); plan=db.get(WeeklyPlan,item.resource_id)
-    if item.kind not in {"plan","report"} or not plan: raise HTTPException(404,"فایل پیدا نشد")
+    if item.kind not in {"plan","plan_color","plan_mono","report"} or not plan: raise HTTPException(404,"فایل پیدا نشد")
     owner=db.get(User,item.user_id); student=db.get(User,plan.student_id); advisor=db.get(User,plan.advisor_id)
-    if item.kind=="plan" and plan.student_id!=item.user_id: raise HTTPException(403,"دسترسی مجاز نیست")
-    if item.kind=="report" and (not owner or owner.role!="advisor" or plan.advisor_id!=owner.id): raise HTTPException(403,"دسترسی مجاز نیست")
+    if item.kind.startswith("plan") and not (plan.student_id==item.user_id or (owner and owner.role=="advisor" and plan.advisor_id==owner.id)): raise HTTPException(403,"دسترسی مجاز نیست")
+    if item.kind=="report" and not (plan.student_id==item.user_id or (owner and owner.role=="advisor" and plan.advisor_id==owner.id)): raise HTTPException(403,"دسترسی مجاز نیست")
     return ok({"kind":item.kind,"plan":plan_dict(plan),"reports":snapshot(plan,db) if item.kind=="report" else None,
       "student_name":student.full_name if student else "دانش‌آموز","advisor_name":advisor.full_name if advisor else "مشاور"})
 @router.post("/session/{raw}")

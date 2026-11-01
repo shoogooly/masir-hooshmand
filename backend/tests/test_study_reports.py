@@ -74,33 +74,34 @@ def test_optional_fields_zero_validation_and_status_branches(report_setup):
     assert s.put(base+'/days/جمعه',headers=sh,json={'version':1,'stress_source':'نگرانی امتحان'}).status_code==200
     assert s.put(base+'/days/یکشنبه',headers=sh,json={}).status_code==404
 
-def test_deadline_iran_calendar_and_legacy_endpoint_cannot_bypass(report_setup,monkeypatch):
+@pytest.mark.parametrize('when', [datetime(2026,9,1,tzinfo=timezone.utc), datetime(2030,1,1,tzinfo=timezone.utc)])
+def test_reports_have_no_time_limit(report_setup,monkeypatch,when):
     s,a,sh,ah,pid,act=report_setup
     base=f'/api/v1/plans/{pid}/study-reports'
-    until=datetime(2026,9,20,20,30,tzinfo=timezone.utc)
+    monkeypatch.setattr(study_reporting,'utcnow',lambda:when)
+    monkeypatch.setattr(study_reports,'utcnow',lambda:when)
     initial=s.get(base).json()['data']
-    assert datetime.fromisoformat(initial['editable_until'])==until
-    monkeypatch.setattr(study_reporting,'utcnow',lambda:until-timedelta(microseconds=1))
-    assert s.put(base+'/activities/'+act,headers=sh,json={'quality':'آخرین لحظه'}).status_code==200
-    monkeypatch.setattr(study_reporting,'utcnow',lambda:until)
-    monkeypatch.setattr(study_reports,'utcnow',lambda:until)
-    assert s.put(base+'/activities/'+act,headers=sh,json={'version':1,'quality':'دیر'}).status_code==403
-    assert s.put(base+'/days/شنبه',headers=sh,json={'focus':5}).status_code==403
-    assert s.patch('/api/v1/activities/'+act,headers=sh,json={'status':'completed','idempotency_key':'deadline-bypass'}).status_code==403
-    assert s.get(base).json()['data']['editable'] is False
-    assert a.get(base).json()['data']['activities'][act]['values']['quality']=='آخرین لحظه'
-    # Republishing cannot grant a fresh editing window.
-    before=a.get(base).json()['data']['editable_until']
-    assert a.post(f'/api/v1/plans/{pid}/publish',headers=ah).status_code==200
-    assert a.get(base).json()['data']['editable_until']==before
+    assert initial['editable_until'] is None
+    assert initial['editable'] is True
+    assert s.put(base+'/activities/'+act,headers=sh,json={'quality':'بدون محدودیت زمانی'}).status_code==200
+    assert s.put(base+'/activities/'+act,headers=sh,json={'version':1,'quality':'ویرایش گزارش'}).status_code==200
+    assert s.put(base+'/days/شنبه',headers=sh,json={'focus':5}).status_code==200
+    assert s.put(base+'/days/شنبه',headers=sh,json={'version':1,'focus':4}).status_code==200
+    assert a.get(base).json()['data']['activities'][act]['values']['quality']=='ویرایش گزارش'
 
-def test_future_week_and_other_students_are_denied(report_setup,monkeypatch):
+def test_unpublished_and_other_students_are_denied(report_setup):
     s,a,sh,ah,pid,act=report_setup
     base=f'/api/v1/plans/{pid}/study-reports'
-    monkeypatch.setattr(study_reporting,'utcnow',lambda:datetime(2026,9,1,tzinfo=timezone.utc))
-    assert s.put(base+'/activities/'+act,headers=sh,json={}).status_code==403
     with SessionLocal() as db:
-        db.get(WeeklyPlan,pid).student_id=db.scalar(select(User.id).where(User.phone=='09120000004'))
+        db.get(WeeklyPlan,pid).status='draft'
+        db.commit()
+    assert s.put(base+'/activities/'+act,headers=sh,json={}).status_code==403
+    assert s.put(base+'/days/شنبه',headers=sh,json={}).status_code==403
+    with SessionLocal() as db:
+        plan=db.get(WeeklyPlan,pid)
+        plan.status='published'
+        plan.student_id=db.scalar(select(User.id).where(User.phone=='09120000004'))
         db.commit()
     assert s.get(base).status_code==403
     assert s.put(base+'/activities/'+act,headers=sh,json={}).status_code==403
+    assert s.put(base+'/days/شنبه',headers=sh,json={}).status_code==403

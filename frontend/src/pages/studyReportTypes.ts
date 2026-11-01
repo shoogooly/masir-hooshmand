@@ -1,7 +1,7 @@
 export type ActivityValues = {status?:'done'|'not_done'|null;actual_minutes?:number|null;question_count?:number|null;correct?:number|null;wrong?:number|null;unanswered?:number|null;quality?:string|null;not_done_reason?:string|null}
 export type DayValues = {focus?:number|null;distractions?:string|null;energy?:number|null;sleep_hours?:number|null;stress?:number|null;stress_source?:string|null}
 export type ReportRecord<T> = {values:T;version:number;updated_at?:string}
-export type StudyReports = {activities:Record<string,ReportRecord<ActivityValues>>;days:Record<string,ReportRecord<DayValues>>;editable:boolean;editable_until:string;starts_at:string;ends_at:string;server_time:string}
+export type StudyReports = {activities:Record<string,ReportRecord<ActivityValues>>;days:Record<string,ReportRecord<DayValues>>;editable:boolean;editable_until:string|null;starts_at:string;ends_at:string;server_time:string}
 const value=(n:number)=>n.toLocaleString('fa-IR')
 export function activityLines(r:ActivityValues = {},unansweredLabel='بی‌پاسخ'){
  const lines:string[]=[]

@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from app.main import app
 from app.db.session import SessionLocal
-from app.models import BaleAccountLink, OTPChallenge, Order, SiteSetting, Subscription, SubscriptionPlan, User, utcnow
+from app.models import Activity, AdvisorAssignment, BaleAccountLink, OTPChallenge, Order, SiteSetting, StudentProfile, StudyReport, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
 from app.core.security import hash_password
 from app import integration_recovery, integration_service, bale_service
 from app.integration_recovery import run as recover_integrations
@@ -199,11 +199,57 @@ def test_bale_password_is_deleted_and_never_stored(monkeypatch):
         with SessionLocal() as db:
             user=User(phone="09125550000",full_name="کاربر بله",role="student",status="active",password_hash=hash_password("Secret123"))
             db.add(user);db.commit()
+            bale_service.handle_message(db,{"message_id":0,"chat":{"id":7001},"text":"/start"})
+            bale_service.handle_callback(db,{"id":"role","message":{"chat":{"id":7001}},"data":"role:student"})
             bale_service.handle_message(db,{"message_id":1,"chat":{"id":7001},"text":"09125550000"})
             bale_service.handle_message(db,{"message_id":2,"chat":{"id":7001},"text":"Secret123"})
             db.commit();link=db.get(BaleAccountLink,"7001")
             assert link.user_id==user.id and link.pending_phone=="" and not hasattr(link,"password")
             assert any(method=="deleteMessage" and payload["message_id"]==2 for method,payload in calls)
+
+def test_bale_student_reports_sync_with_site_and_parent_advisor_can_read(monkeypatch):
+    calls=[]
+    monkeypatch.setattr(bale_service,"api",lambda db,method,payload=None,**kwargs:calls.append((method,payload)) or True)
+    with TestClient(app):
+        with SessionLocal() as db:
+            student=User(phone="09125550101",full_name="دانش‌آموز همگام",role="student",status="active",password_hash=hash_password("Secret123"))
+            advisor=User(phone="09125550102",full_name="مشاور همگام",role="advisor",status="active",password_hash=hash_password("Secret123"))
+            db.add_all([student,advisor]);db.flush()
+            db.add(StudentProfile(user_id=student.id,parent_name="والد",parent_phone="09125550103"))
+            db.add(AdvisorAssignment(advisor_id=advisor.id,student_id=student.id,active=True,approval_status="approved"))
+            plan=WeeklyPlan(student_id=student.id,advisor_id=advisor.id,title="برنامه همگام",week_label="هفته آزمون",status="published",
+                publication_number=7,published_at=utcnow(),schedule_days_json='[{"label":"شنبه","date":"۱۴۰۵/۰۸/۱۰"}]')
+            db.add(plan);db.flush();activity=Activity(plan_id=plan.id,day="شنبه",subject="ریاضی",title="تمرین تست",start_time="08:00",end_time="09:00")
+            db.add(activity);db.commit()
+
+            def callback(chat,data):
+                bale_service.handle_callback(db,{"id":"q-"+data,"message":{"chat":{"id":chat}},"data":data})
+            def message(chat,text,number=1):
+                bale_service.handle_message(db,{"message_id":number,"chat":{"id":chat},"text":text})
+
+            message(7101,"/start");callback(7101,"role:student");message(7101,student.phone);message(7101,"Secret123",2)
+            callback(7101,"svc:report");callback(7101,"report:"+plan.id);callback(7101,"entryday:"+plan.id+":0")
+            callback(7101,"activity:"+activity.id);callback(7101,"done:"+activity.id)
+            for answer in ("10","6","3","1"):message(7101,answer)
+            callback(7101,"daysummary:"+plan.id+":0")
+            for answer in ("4","5","7","2","صدای محیط","امتحان فردا"):message(7101,answer)
+            activity_report=db.get(StudyReport,(plan.id,"activity:"+activity.id))
+            day_report=db.get(StudyReport,(plan.id,"day:شنبه"))
+            assert '"question_count": 10' in activity_report.data_json and '"correct": 6' in activity_report.data_json
+            assert '"focus": 4' in day_report.data_json and "صدای محیط" in day_report.data_json
+            db.refresh(activity)
+            assert activity.status=="completed" and activity.test_count==10
+
+            message(7102,"/start");callback(7102,"role:parent");message(7102,student.phone);callback(7102,"parent:confirm")
+            callback(7102,"svc:report");callback(7102,"report:"+plan.id);callback(7102,"viewdays:"+plan.id);callback(7102,"viewday:"+plan.id+":0")
+            parent_text=[payload["text"] for method,payload in calls if method=="sendMessage" and "گزارش شنبه" in payload.get("text","")][-1]
+            assert "درست: 6" in parent_text and "تمرکز: 4 از ۵" in parent_text
+
+            message(7103,"/start");callback(7103,"role:advisor");message(7103,advisor.phone);message(7103,"Secret123",3)
+            callback(7103,"svc:students");callback(7103,"student:"+student.id);callback(7103,"svc:plan");callback(7103,"plan:"+plan.id)
+            inline_payloads=[payload for method,payload in calls if method=="sendMessage" and "inline_keyboard" in payload.get("reply_markup",{})]
+            assert any("نسخه رنگی" in str(payload) and "نسخه سیاه و سفید" in str(payload) for payload in inline_payloads)
+            db.rollback()
 def test_production_bootstrap_otp_is_limited_to_primary_admin(monkeypatch):
     class BootstrapDB:
         settings = {}

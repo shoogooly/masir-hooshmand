@@ -52,10 +52,10 @@ def snapshot(plan, db):
     records = {row.scope:{'values':json.loads(row.data_json),'version':row.version,'updated_at':row.updated_at} for row in rows}
     activities = {a.id:records.get('activity:'+a.id, {'values':legacy_report(a),'version':0}) for a in plan.activities}
     days = {key[4:]:value for key,value in records.items() if key.startswith('day:')}
-    start,end,deadline = report_bounds(plan)
+    start,end,_ = report_bounds(plan)
     now = utcnow()
-    return {'activities':activities,'days':days,'starts_at':start,'ends_at':end,'editable_until':deadline,
-        'editable':plan.status == 'published' and start <= now < deadline,'server_time':now}
+    return {'activities':activities,'days':days,'starts_at':start,'ends_at':end,'editable_until':None,
+        'editable':plan.status == 'published','server_time':now}
 
 @router.get('/plans/{plan_id}/study-reports')
 def get_reports(plan_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):

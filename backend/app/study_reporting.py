@@ -27,12 +27,8 @@ def report_bounds(plan):
     return start, end, end+timedelta(days=2)
 
 def ensure_report_editable(plan):
-    start, _, deadline = report_bounds(plan)
-    now = utcnow()
-    if plan.status != 'published' or now < start:
-        raise HTTPException(403, 'ثبت گزارش از شروع برنامه منتشرشده امکان‌پذیر است')
-    if now >= deadline:
-        raise HTTPException(403, 'مهلت ویرایش گزارش این هفته تمام شده است؛ گزارش همچنان قابل مشاهده است')
+    if plan.status != 'published':
+        raise HTTPException(403, 'ثبت گزارش فقط برای برنامه منتشرشده امکان‌پذیر است')
 
 def legacy_report(activity):
     result = {}

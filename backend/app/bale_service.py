@@ -1,5 +1,5 @@
 from __future__ import annotations
-import base64, hashlib, logging, re, secrets
+import base64, hashlib, json, logging, re, secrets
 from datetime import timedelta, timezone
 from urllib.parse import urlencode
 import httpx
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.security import active_subscription, hash_token, verify_password
 from app.models import (AdvisorAssignment, BaleAccessGrant, BaleAccountLink, BaleProcessedUpdate, Order, SiteSetting,
-    Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow)
+    Activity, StudentProfile, StudyReport, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow)
 
 logger=logging.getLogger("mahyaad-bale")
 
@@ -61,10 +61,52 @@ def normalize_phone(text):
     converted=str(text or "").translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩","01234567890123456789"))
     digits=re.sub(r"\D","",converted)
     return "0"+digits[2:] if digits.startswith("98") and len(digits)==12 else digits
-def menu(role):
-    return ([["دریافت برنامه هفتگی","ثبت گزارش کار"],["وضعیت اشتراک","تمدید اشتراک"],["خروج از حساب"]]
-      if role=="student" else [["گزارش کار دانش‌آموزان"],["برنامه‌ریزی دانش‌آموزان","انتشار برنامه‌های آماده"],["خروج از حساب"]])
-def create_grant(db,user_id,kind,resource_id="",minutes=10):
+def _context(link):
+    try: return json.loads(link.context_json or "{}")
+    except (TypeError, ValueError): return {}
+def _set_context(link, **values):
+    link.context_json=json.dumps(values,ensure_ascii=False)
+def _buttons(*labels):
+    return [[{"text":label,"callback_data":data}] for label,data in labels]
+def _main_menu(role):
+    if role=="student": return [["دانلود برنامه","ثبت گزارش کار"],["خروج از حساب"]]
+    if role=="advisor": return [["دانش‌آموزان من"],["خروج از حساب"]]
+    return [["دانلود برنامه","دریافت گزارش کار"],["خروج از حساب"]]
+def _main_inline(role):
+    if role=="student": return _buttons(("📥 دانلود برنامه","svc:plan"),("📝 ثبت گزارش کار","svc:report"))
+    if role=="advisor": return _buttons(("👥 دانش‌آموزان من","svc:students"))
+    return _buttons(("📥 دانلود برنامه","svc:plan"),("📊 دریافت گزارش کار","svc:report"))
+def _published_plans(db,student_id,limit=5):
+    return db.scalars(select(WeeklyPlan).where(WeeklyPlan.student_id==student_id,WeeklyPlan.status=="published")
+        .order_by(WeeklyPlan.published_at.desc(),WeeklyPlan.created_at.desc()).limit(limit)).all()
+def _plan_dates(plan):
+    try:
+        days=json.loads(plan.schedule_days_json or "[]")
+        dates=[str(day.get("date") or "") for day in days if day.get("date")]
+    except (TypeError,ValueError): dates=[]
+    return (dates[0],dates[-1]) if dates else ("نامشخص","نامشخص")
+def _plan_label(plan):
+    start,end=_plan_dates(plan)
+    number=plan.publication_number or plan.version
+    return f"برنامه {number} · {start} تا {end}"
+def _plan_rows(plans,prefix):
+    return [[{"text":_plan_label(plan),"callback_data":prefix+plan.id}] for plan in plans]
+def _assigned_student(db,advisor_id,student_id):
+    return db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id==advisor_id,
+        AdvisorAssignment.student_id==student_id,AdvisorAssignment.active.is_(True),
+        AdvisorAssignment.approval_status=="approved")) is not None
+def _student_for_link(db,link,user=None):
+    if link.access_role=="student" and user and user.role=="student": return user
+    if link.access_role=="parent" and link.student_id: return db.get(User,link.student_id)
+    return None
+def _authorized_plan(db,link,user,plan_id):
+    plan=db.get(WeeklyPlan,plan_id)
+    if not plan or plan.status!="published": return None
+    if link.access_role=="student" and user and plan.student_id==user.id: return plan
+    if link.access_role=="parent" and plan.student_id==link.student_id: return plan
+    if link.access_role=="advisor" and user and _assigned_student(db,user.id,plan.student_id): return plan
+    return None
+def create_grant(db,user_id,kind,resource_id="",minutes=15):
     raw=secrets.token_urlsafe(32)
     db.add(BaleAccessGrant(token_hash=hash_token(raw),user_id=user_id,kind=kind,resource_id=resource_id,expires_at=utcnow()+timedelta(minutes=minutes)))
     return raw
@@ -78,113 +120,287 @@ def _link(db,chat_id):
 def _latest_plan(db,student_id,status="published"):
     return db.scalar(select(WeeklyPlan).where(WeeklyPlan.student_id==student_id,WeeklyPlan.status==status).order_by(WeeklyPlan.created_at.desc()))
 def begin_login(db,chat_id):
-    link=_link(db,chat_id); link.user_id=None; link.pending_phone=""; link.state="await_phone"
-    send(db,chat_id,"برای اتصال امن حساب مهیاد، شماره موبایلی را که در سایت ثبت کرده‌اید وارد کنید.")
+    link=_link(db,chat_id);link.user_id=None;link.student_id=None;link.pending_phone="";link.access_role="";link.state="choose_role";_set_context(link)
+    return inline(db,chat_id,"به بازوی مهیاد خوش آمدید 🌱\nنوع ورود خود را انتخاب کنید:",_buttons(
+        ("🎓 ورود دانش‌آموز","role:student"),("👨‍👩‍👧 ورود والدین","role:parent"),("🧑‍🏫 ورود مشاور","role:advisor")))
+
+def _finish_login(db,chat_id,link,user,role):
+    if role in {"student","advisor"}:
+        old=db.scalar(select(BaleAccountLink).where(BaleAccountLink.user_id==user.id,BaleAccountLink.chat_id!=chat_id))
+        if old: old.user_id=None;old.access_role="";old.state="choose_role"
+        link.user_id=user.id
+        if role=="student": link.student_id=user.id
+    link.access_role=role;link.state="linked";link.pending_phone="";link.failed_attempts=0;link.linked_at=utcnow();_set_context(link)
+    send(db,chat_id,f"{user.full_name} عزیز، اتصال با موفقیت انجام شد ✅",_main_menu(role))
+    return inline(db,chat_id,"چه کاری می‌خواهید انجام دهید؟",_main_inline(role))
+
+def _number(text,minimum=0,maximum=10000):
+    converted=normalize_phone(text) if str(text).strip().startswith(("+","0")) else str(text).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹","0123456789")).strip()
+    try: result=int(converted)
+    except ValueError: return None
+    return result if minimum<=result<=maximum else None
+def _decimal(text,minimum=0,maximum=24):
+    converted=str(text).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٫","0123456789.")).strip().replace(",",".")
+    try: result=float(converted)
+    except ValueError: return None
+    return result if minimum<=result<=maximum else None
+
+def _save_activity(db,user,activity,values):
+    from app.api.study_reports import ActivityReportInput, persist
+    plan=db.get(WeeklyPlan,activity.plan_id)
+    row=db.get(StudyReport,(plan.id,"activity:"+activity.id))
+    payload=ActivityReportInput(version=row.version if row else 0,**values)
+    persist(plan,"activity:"+activity.id,payload,db,user,activity)
+
+def _save_day(db,user,plan,day,values):
+    from app.api.study_reports import DayReportInput, persist
+    row=db.get(StudyReport,(plan.id,"day:"+day))
+    persist(plan,"day:"+day,DayReportInput(version=row.version if row else 0,**values),db,user)
+
+def _continue_report_input(db,chat_id,link,user,text):
+    context=_context(link);state=link.state
+    activity=db.get(Activity,context.get("activity_id")) if context.get("activity_id") else None
+    if state=="activity_reason":
+        if not activity:return begin_login(db,chat_id)
+        _save_activity(db,user,activity,{"status":"not_done","not_done_reason":text[:2000]})
+        link.state="linked";_set_context(link);return send(db,chat_id,"دلیل انجام‌نشدن ثبت شد. ممنون که صادقانه گزارش دادی 🌱",_main_menu("student"))
+    if state.startswith("activity_q_"):
+        number=_number(text)
+        if number is None:return send(db,chat_id,"لطفاً یک عدد بین ۰ تا ۱۰۰۰۰ وارد کنید.")
+        if not activity:return begin_login(db,chat_id)
+        values=context.get("values",{})
+        if state=="activity_q_total":
+            values={"status":"done","question_count":number}
+            if number==0:
+                _save_activity(db,user,activity,values);link.state="linked";_set_context(link)
+                return send(db,chat_id,"آفرین! گزارش فعالیت ثبت شد ✅",_main_menu("student"))
+            context["values"]=values;link.state="activity_q_correct";link.context_json=json.dumps(context,ensure_ascii=False)
+            return send(db,chat_id,"تعداد پاسخ‌های درست را وارد کنید:")
+        total=values.get("question_count",0);used=sum(values.get(k,0) for k in ("correct","wrong","unanswered"))
+        if number>total-used:return send(db,chat_id,f"این عدد نمی‌تواند بیشتر از {total-used} باشد.")
+        if state=="activity_q_correct":
+            values["correct"]=number;link.state="activity_q_wrong";context["values"]=values;link.context_json=json.dumps(context,ensure_ascii=False)
+            return send(db,chat_id,"تعداد پاسخ‌های غلط را وارد کنید:")
+        if state=="activity_q_wrong":
+            values["wrong"]=number;link.state="activity_q_unanswered";context["values"]=values;link.context_json=json.dumps(context,ensure_ascii=False)
+            return send(db,chat_id,"تعداد سؤال‌های حل‌نشده را وارد کنید:")
+        values["unanswered"]=number;_save_activity(db,user,activity,values);link.state="linked";_set_context(link)
+        return send(db,chat_id,"آفرین! گزارش کامل فعالیت ثبت شد ✅",_main_menu("student"))
+    if state.startswith("day_"):
+        plan=db.get(WeeklyPlan,context.get("plan_id"));day=context.get("day");values=context.get("values",{})
+        if not plan or not day:return begin_login(db,chat_id)
+        steps=[("day_focus","focus","میزان انرژی را از ۱ تا ۵ وارد کنید:","day_energy"),
+               ("day_energy","energy","میزان خواب شب قبل را به ساعت وارد کنید (۰ تا ۲۴):","day_sleep"),
+               ("day_sleep","sleep_hours","میزان استرس را از ۱ تا ۵ وارد کنید:","day_stress")]
+        for current,key,prompt,next_state in steps:
+            if state==current:
+                maximum=24 if key=="sleep_hours" else 5;minimum=0 if key=="sleep_hours" else 1
+                number=_decimal(text,minimum,maximum) if key=="sleep_hours" else _number(text,minimum,maximum)
+                if number is None:return send(db,chat_id,f"لطفاً عددی بین {minimum} تا {maximum} وارد کنید.")
+                values[key]=number;context["values"]=values;link.context_json=json.dumps(context,ensure_ascii=False);link.state=next_state
+                return send(db,chat_id,prompt)
+        if state=="day_stress":
+            number=_number(text,1,5)
+            if number is None:return send(db,chat_id,"لطفاً عددی بین ۱ تا ۵ وارد کنید.")
+            values["stress"]=number;context["values"]=values;link.context_json=json.dumps(context,ensure_ascii=False);link.state="day_distractions"
+            return send(db,chat_id,"چه چیزهایی حواستان را پرت کرد؟ اگر موردی نبود، «نداشتم» بنویسید.")
+        if state=="day_distractions":
+            values["distractions"]="" if text=="نداشتم" else text[:2000];context["values"]=values;link.context_json=json.dumps(context,ensure_ascii=False);link.state="day_stress_source"
+            return send(db,chat_id,"چه چیزی باعث استرس شد؟ اگر موردی نبود، «نداشتم» بنویسید.")
+        values["stress_source"]="" if text=="نداشتم" else text[:2000];_save_day(db,user,plan,day,values);link.state="linked";_set_context(link)
+        return send(db,chat_id,"جمع‌بندی روز با موفقیت ثبت شد ✨",_main_menu("student"))
 
 def handle_message(db,message):
-    chat_id=str(message.get("chat",{}).get("id","")); text=str(message.get("text","")).strip()
-    if not chat_id: return
+    chat_id=str(message.get("chat",{}).get("id",""));text=str(message.get("text","")).strip()
+    if not chat_id:return
     link=_link(db,chat_id)
-    if text in {"/start","/login","ورود"}: return begin_login(db,chat_id)
+    if text in {"/start","/login","ورود"}:return begin_login(db,chat_id)
     if link.locked_until:
         locked=link.locked_until if link.locked_until.tzinfo else link.locked_until.replace(tzinfo=timezone.utc)
-        if locked>utcnow(): return send(db,chat_id,"به‌دلیل چند تلاش ناموفق، ورود ۱۵ دقیقه قفل شده است.")
-        link.locked_until=None; link.failed_attempts=0
-    if not link.user_id:
-        if link.state=="await_phone":
+        if locked>utcnow():return send(db,chat_id,"به‌دلیل چند تلاش ناموفق، ورود ۱۵ دقیقه قفل شده است.")
+        link.locked_until=None;link.failed_attempts=0
+    user=db.get(User,link.user_id) if link.user_id else None
+    if link.access_role=="student" and user and link.state.startswith(("activity_","day_")):
+        return _continue_report_input(db,chat_id,link,user,text)
+    linked=bool((link.access_role in {"student","advisor"} and user) or (link.access_role=="parent" and link.student_id))
+    if not linked:
+        if link.state=="await_parent_phone":
             phone=normalize_phone(text)
-            if not re.fullmatch(r"09\d{9}",phone): return send(db,chat_id,"شماره موبایل معتبر ۱۱ رقمی وارد کنید؛ نمونه: 09123456789")
-            user=db.scalar(select(User).where(User.phone==phone,User.role.in_(["student","advisor"]),User.status.notin_(["deleted","suspended"])))
-            if not user: return send(db,chat_id,"حساب فعال دانش‌آموز یا مشاور با این شماره پیدا نشد.")
-            link.pending_phone=phone; link.state="await_password"
-            return send(db,chat_id,"رمز عبور فعلی سایت مهیاد را وارد کنید. پیام رمز پس از دریافت حذف می‌شود.")
+            student=db.scalar(select(User).join(StudentProfile,StudentProfile.user_id==User.id).where(
+                User.phone==phone,User.role=="student",User.status.notin_(["deleted","suspended"])))
+            if not student:return send(db,chat_id,"دانش‌آموز فعالی با این شماره پیدا نشد. شماره ثبت‌شده در سایت را دوباره وارد کنید.")
+            link.pending_phone=phone;link.student_id=student.id;link.state="confirm_parent"
+            return inline(db,chat_id,f"دانش‌آموز «{student.full_name}» با این شماره پیدا شد.\nآیا مورد تأیید است؟",
+                [[{"text":"✅ بله، تأیید می‌کنم","callback_data":"parent:confirm"},{"text":"❌ خیر","callback_data":"parent:cancel"}]])
+        if link.state=="await_phone":
+            phone=normalize_phone(text);role=_context(link).get("role")
+            if not re.fullmatch(r"09\d{9}",phone):return send(db,chat_id,"شماره موبایل معتبر ۱۱ رقمی وارد کنید؛ نمونه: 09123456789")
+            user=db.scalar(select(User).where(User.phone==phone,User.role==role,User.status.notin_(["deleted","suspended"])))
+            if not user:return send(db,chat_id,f"حساب فعال {'دانش‌آموز' if role=='student' else 'مشاور'} با این شماره پیدا نشد.")
+            link.pending_phone=phone;link.state="await_password"
+            return send(db,chat_id,"رمز ورود سایت مهیاد را وارد کنید. پیام رمز بلافاصله حذف می‌شود.")
         if link.state=="await_password":
-            delete_message(db,chat_id,message.get("message_id"))
+            delete_message(db,chat_id,message.get("message_id"));role=_context(link).get("role")
             user=db.scalar(select(User).where(User.phone==link.pending_phone))
-            if not user or user.role not in {"student","advisor"} or user.status in {"deleted","suspended"} or not verify_password(text,user.password_hash):
+            if not user or user.role!=role or user.status in {"deleted","suspended"} or not verify_password(text,user.password_hash):
                 link.failed_attempts+=1
-                if link.failed_attempts>=5: link.locked_until=utcnow()+timedelta(minutes=15); link.failed_attempts=0
-                return send(db,chat_id,"شماره موبایل یا رمز عبور صحیح نیست.")
-            old=db.scalar(select(BaleAccountLink).where(BaleAccountLink.user_id==user.id,BaleAccountLink.chat_id!=chat_id))
-            if old: old.user_id=None; old.state="await_phone"
-            link.user_id=user.id; link.state="linked"; link.pending_phone=""; link.failed_attempts=0; link.linked_at=utcnow()
-            return send(db,chat_id,f"{user.full_name} عزیز، حساب شما با موفقیت به بازوی مهیاد متصل شد.",menu(user.role))
+                if link.failed_attempts>=5:link.locked_until=utcnow()+timedelta(minutes=15);link.failed_attempts=0
+                return send(db,chat_id,"شماره موبایل یا رمز ورود صحیح نیست.")
+            return _finish_login(db,chat_id,link,user,role)
         return begin_login(db,chat_id)
-    user=db.get(User,link.user_id)
-    if not user or user.status in {"deleted","suspended"}: link.user_id=None; return begin_login(db,chat_id)
-    if text=="خروج از حساب": link.user_id=None; link.state="await_phone"; return send(db,chat_id,"اتصال حساب قطع شد. برای ورود دوباره /login را بفرستید.")
-    return student_action(db,chat_id,user,text) if user.role=="student" else advisor_action(db,chat_id,user,text)
+    if text=="خروج از حساب":
+        link.user_id=None;link.student_id=None;link.access_role="";link.state="choose_role";_set_context(link)
+        return send(db,chat_id,"اتصال حساب قطع شد. برای ورود دوباره /start را بفرستید.")
+    if text in {"دانلود برنامه","دریافت برنامه هفتگی"}:return _show_plan_list(db,chat_id,link,user)
+    if text in {"ثبت گزارش کار","دریافت گزارش کار"}:return _show_report_list(db,chat_id,link,user)
+    if text=="دانش‌آموزان من":return _show_students(db,chat_id,user)
+    send(db,chat_id,"یکی از خدمات منو را انتخاب کنید.",_main_menu(link.access_role))
 
-def student_action(db,chat_id,user,text):
-    if text=="دریافت برنامه هفتگی":
-        plan=_latest_plan(db,user.id)
-        if not plan: return send(db,chat_id,"هنوز برنامه منتشرشده‌ای برای شما وجود ندارد.")
-        raw=create_grant(db,user.id,"plan",plan.id,15)
-        return send(db,chat_id,"نسخه PDF برنامه هفتگی شما آماده است (پیوند ۱۵ دقیقه اعتبار دارد):\n"+public_link(db,f"/bale-download/{raw}"))
-    if text=="ثبت گزارش کار":
-        plan=_latest_plan(db,user.id)
-        if not plan: return send(db,chat_id,"برای ثبت گزارش، ابتدا باید برنامه هفتگی منتشرشده داشته باشید.")
-        raw=create_grant(db,user.id,"session",plan.id,10)
-        return send(db,chat_id,"برای ثبت یا ویرایش گزارش کار وارد صفحه امن مهیاد شوید (پیوند یک‌بارمصرف است):\n"+public_link(db,f"/bale-access/{raw}",{"next":"/app/student/plan"}))
-    if text=="وضعیت اشتراک":
-        sub=active_subscription(db,user.id)
-        if not sub: return send(db,chat_id,"در حال حاضر اشتراک فعالی ندارید.")
-        expiry=sub.expires_at if sub.expires_at.tzinfo else sub.expires_at.replace(tzinfo=timezone.utc)
-        return send(db,chat_id,f"اشتراک شما فعال است.\nمانده: {max(0,(expiry-utcnow()).days)} روز\nتاریخ پایان: {expiry.date().isoformat()}")
-    if text=="تمدید اشتراک":
-        plans=db.scalars(select(SubscriptionPlan).where(SubscriptionPlan.active.is_(True)).order_by(SubscriptionPlan.price)).all()
-        rows=[[{"text":f"{p.name} · {p.price:,} تومان","callback_data":"renew:"+p.id}] for p in plans]
-        return inline(db,chat_id,"طرح موردنظر را انتخاب کنید:",rows) if rows else send(db,chat_id,"در حال حاضر تعرفه فعالی ثبت نشده است.")
-    send(db,chat_id,"یکی از خدمات منو را انتخاب کنید.",menu(user.role))
-
-def advisor_action(db,chat_id,user,text):
+def _show_students(db,chat_id,user):
     assignments=db.scalars(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id==user.id,
-      AdvisorAssignment.active.is_(True),AdvisorAssignment.approval_status=="approved")).all()
-    if text=="گزارش کار دانش‌آموزان":
-        sent=0
-        for assignment in assignments:
-            plan=_latest_plan(db,assignment.student_id); student=db.get(User,assignment.student_id)
-            if plan and student:
-                raw=create_grant(db,user.id,"report",plan.id,15)
-                send(db,chat_id,f"گزارش {student.full_name} · {plan.week_label}\n"+public_link(db,f"/bale-download/{raw}")); sent+=1
-        if not sent: send(db,chat_id,"گزارش قابل دانلودی برای دانش‌آموزان شما وجود ندارد.")
-        return
-    if text=="برنامه‌ریزی دانش‌آموزان":
-        raw=create_grant(db,user.id,"session","",10)
-        return send(db,chat_id,"برای ساخت و انتشار برنامه وارد برنامه‌ساز امن مهیاد شوید:\n"+public_link(db,f"/bale-access/{raw}",{"next":"/app/advisor/planner"}))
-    if text=="انتشار برنامه‌های آماده":
-        drafts=db.scalars(select(WeeklyPlan).where(WeeklyPlan.advisor_id==user.id,WeeklyPlan.status=="draft").order_by(WeeklyPlan.created_at.desc()).limit(20)).all()
-        rows=[[{"text":p.title+" · "+p.week_label,"callback_data":"publish:"+p.id}] for p in drafts]
-        return inline(db,chat_id,"برنامه‌ای را برای انتشار انتخاب کنید:",rows) if rows else send(db,chat_id,"برنامه پیش‌نویسی برای انتشار وجود ندارد.")
-    send(db,chat_id,"یکی از خدمات منو را انتخاب کنید.",menu(user.role))
+        AdvisorAssignment.active.is_(True),AdvisorAssignment.approval_status=="approved")).all()
+    rows=[]
+    for assignment in assignments:
+        student=db.get(User,assignment.student_id)
+        if student:rows.append([{"text":"🎓 "+student.full_name,"callback_data":"student:"+student.id}])
+    return inline(db,chat_id,"دانش‌آموز موردنظر را انتخاب کنید:",rows) if rows else send(db,chat_id,"دانش‌آموز فعالی به شما تخصیص داده نشده است.")
+
+def _target_student(db,link,user):
+    if link.access_role=="advisor":
+        student_id=_context(link).get("student_id")
+        return db.get(User,student_id) if student_id and _assigned_student(db,user.id,student_id) else None
+    return _student_for_link(db,link,user)
+
+def _show_plan_list(db,chat_id,link,user):
+    student=_target_student(db,link,user)
+    if not student:return _show_students(db,chat_id,user) if link.access_role=="advisor" else send(db,chat_id,"دانش‌آموز در دسترس نیست.")
+    plans=_published_plans(db,student.id)
+    return inline(db,chat_id,"یکی از ۵ برنامه آخر را انتخاب کنید:",_plan_rows(plans,"plan:")) if plans else send(db,chat_id,"هنوز برنامه منتشرشده‌ای وجود ندارد.")
+
+def _show_report_list(db,chat_id,link,user):
+    student=_target_student(db,link,user)
+    if not student:return _show_students(db,chat_id,user) if link.access_role=="advisor" else send(db,chat_id,"دانش‌آموز در دسترس نیست.")
+    plans=_published_plans(db,student.id)
+    return inline(db,chat_id,"برنامه موردنظر را برای گزارش کار انتخاب کنید:",_plan_rows(plans,"report:")) if plans else send(db,chat_id,"هنوز برنامه منتشرشده‌ای وجود ندارد.")
+
+def _show_days(db,chat_id,plan,prefix):
+    try:days=json.loads(plan.schedule_days_json or "[]")
+    except (TypeError,ValueError):days=[]
+    rows=[[{"text":f"{day.get('label','روز')} · {day.get('date','') or 'بدون تاریخ'}","callback_data":f"{prefix}:{plan.id}:{index}"}] for index,day in enumerate(days[:7])]
+    return inline(db,chat_id,"روز موردنظر را انتخاب کنید:",rows) if rows else send(db,chat_id,"روزی در این برنامه ثبت نشده است.")
+
+def _day_at(plan,index):
+    try:days=json.loads(plan.schedule_days_json or "[]");return days[index] if 0<=index<len(days) else None
+    except (TypeError,ValueError,IndexError):return None
+
+def _daily_report_text(db,plan,day):
+    from app.api.study_reports import snapshot
+    from app.study_reporting import legacy_report
+    data=snapshot(plan,db);label=day.get("label","روز");date=day.get("date","")
+    lines=[f"📅 گزارش {label} · {date}"]
+    activities=sorted((item for item in plan.activities if item.day==label),key=lambda item:item.start_time)
+    if not activities:lines.append("\nفعالیتی برای این روز ثبت نشده است.")
+    for item in activities:
+        values=data["activities"].get(item.id,{}).get("values",legacy_report(item))
+        status={"done":"✅ انجام شد","not_done":"❌ انجام نشد"}.get(values.get("status"),"⏳ تعیین نشده")
+        lines.append(f"\n• {item.title} ({item.start_time} تا {item.end_time})\n  {status}")
+        if values.get("question_count") is not None:lines.append(f"  سؤال: {values['question_count']} · درست: {values.get('correct',0)} · غلط: {values.get('wrong',0)} · حل‌نشده: {values.get('unanswered',0)}")
+        if values.get("not_done_reason"):lines.append("  دلیل: "+values["not_done_reason"])
+        if values.get("quality"):lines.append("  توضیحات: "+values["quality"])
+    day_values=data["days"].get(label,{}).get("values",{})
+    lines.append("\n✨ جمع‌بندی روز")
+    summaries=[("تمرکز","focus"," از ۵"),("انرژی","energy"," از ۵"),("خواب","sleep_hours"," ساعت"),("استرس","stress"," از ۵")]
+    details=[f"{title}: {day_values[key]}{suffix}" for title,key,suffix in summaries if day_values.get(key) is not None]
+    if day_values.get("distractions"):details.append("حواس‌پرتی: "+day_values["distractions"])
+    if day_values.get("stress_source"):details.append("عامل استرس: "+day_values["stress_source"])
+    lines.extend(details or ["هنوز جمع‌بندی ثبت نشده است."])
+    return "\n".join(lines)
+
+def _answer(db,query_id,text="انجام شد"):
+    if query_id:api(db,"answerCallbackQuery",{"callback_query_id":query_id,"text":text})
 
 def handle_callback(db,query):
-    query_id=query.get("id"); chat_id=str(query.get("message",{}).get("chat",{}).get("id","")); data=query.get("data","")
-    link=db.get(BaleAccountLink,chat_id); user=db.get(User,link.user_id) if link and link.user_id else None
-    if not user: api(db,"answerCallbackQuery",{"callback_query_id":query_id,"text":"ابتدا وارد حساب شوید","show_alert":True}); return
-    if data.startswith("publish:") and user.role=="advisor":
-        plan=db.get(WeeklyPlan,data[8:])
-        if not plan or plan.advisor_id!=user.id or plan.status!="draft":
-            api(db,"answerCallbackQuery",{"callback_query_id":query_id,"text":"برنامه معتبر نیست","show_alert":True}); return
-        db.scalar(select(User.id).where(User.id == plan.student_id).with_for_update())
-        last_number=db.scalar(select(func.max(WeeklyPlan.publication_number)).where(WeeklyPlan.student_id==plan.student_id)) or 0
-        plan.publication_number=last_number+1
-        plan.status="published"; plan.published_at=utcnow()
-        from app.api.motivational_quotes import quote_for_publication
-        plan.motivational_quote=quote_for_publication(db,plan.published_at)
-        api(db,"answerCallbackQuery",{"callback_query_id":query_id,"text":"برنامه منتشر شد","show_alert":True}); return
-    if data.startswith("renew:") and user.role=="student":
-        plan=db.get(SubscriptionPlan,data[6:])
-        if not plan or not plan.active:
-            api(db,"answerCallbackQuery",{"callback_query_id":query_id,"text":"تعرفه در دسترس نیست","show_alert":True}); return
-        order=Order(user_id=user.id,plan_id=plan.id,amount=plan.price,status="pending",idempotency_key="bale:"+secrets.token_urlsafe(18)); db.add(order); db.flush()
-        token=secret_value(db,"payment_token")
-        if not token:
-            api(db,"answerCallbackQuery",{"callback_query_id":query_id,"text":"درگاه بله هنوز تنظیم نشده است","show_alert":True}); return
-        api(db,"sendInvoice",{"chat_id":chat_id,"title":"تمدید اشتراک مهیاد","description":plan.name,
-            "payload":"mahyaad-order:"+order.id,"provider_token":token,"currency":"IRR",
-            "prices":[{"label":plan.name,"amount":plan.price*10}]})
-        api(db,"answerCallbackQuery",{"callback_query_id":query_id,"text":"صورت‌حساب ارسال شد"})
+    query_id=query.get("id");chat_id=str(query.get("message",{}).get("chat",{}).get("id",""));data=str(query.get("data",""))
+    link=_link(db,chat_id);user=db.get(User,link.user_id) if link.user_id else None
+    if data.startswith("role:"):
+        role=data.split(":",1)[1]
+        if role=="parent":
+            link.access_role="parent";link.state="await_parent_phone";link.user_id=None;link.student_id=None;_set_context(link);_answer(db,query_id)
+            return send(db,chat_id,"شماره موبایل دانش‌آموز را که در سایت ثبت شده وارد کنید.")
+        link.access_role=role;link.state="await_phone";link.user_id=None;link.student_id=None;_set_context(link,role=role);_answer(db,query_id)
+        return send(db,chat_id,f"شماره موبایل ثبت‌شده {'دانش‌آموز' if role=='student' else 'مشاور'} در سایت را وارد کنید.")
+    if data=="parent:cancel":
+        _answer(db,query_id);return begin_login(db,chat_id)
+    if data=="parent:confirm" and link.state=="confirm_parent":
+        student=db.get(User,link.student_id)
+        if not student:_answer(db,query_id,"دانش‌آموز یافت نشد");return begin_login(db,chat_id)
+        _answer(db,query_id);return _finish_login(db,chat_id,link,student,"parent")
+    linked=bool((link.access_role in {"student","advisor"} and user) or (link.access_role=="parent" and link.student_id))
+    if not linked:_answer(db,query_id,"ابتدا وارد شوید");return begin_login(db,chat_id)
+    if data=="svc:students" and link.access_role=="advisor":_answer(db,query_id);return _show_students(db,chat_id,user)
+    if data.startswith("student:") and link.access_role=="advisor":
+        student_id=data.split(":",1)[1]
+        if not _assigned_student(db,user.id,student_id):return _answer(db,query_id,"دسترسی مجاز نیست")
+        student=db.get(User,student_id);_set_context(link,student_id=student_id);_answer(db,query_id)
+        return inline(db,chat_id,f"خدمات «{student.full_name}» را انتخاب کنید:",_buttons(("📥 دانلود برنامه","svc:plan"),("📊 دریافت گزارش کار","svc:report")))
+    if data=="svc:plan":_answer(db,query_id);return _show_plan_list(db,chat_id,link,user)
+    if data=="svc:report":_answer(db,query_id);return _show_report_list(db,chat_id,link,user)
+    if data.startswith("plan:"):
+        plan=_authorized_plan(db,link,user,data.split(":",1)[1])
+        if not plan:return _answer(db,query_id,"برنامه در دسترس نیست")
+        _answer(db,query_id)
+        return inline(db,chat_id,_plan_label(plan)+"\nنسخه موردنظر را انتخاب کنید:",_buttons(
+            ("🌈 نسخه رنگی","format:color:"+plan.id),("⚫ نسخه سیاه و سفید","format:mono:"+plan.id)))
+    if data.startswith("format:"):
+        _,mode,plan_id=data.split(":",2);plan=_authorized_plan(db,link,user,plan_id)
+        if not plan:return _answer(db,query_id,"دسترسی مجاز نیست")
+        owner=user.id if user else link.student_id;raw=create_grant(db,owner,"plan_color" if mode=="color" else "plan_mono",plan.id)
+        _answer(db,query_id,"لینک آماده شد")
+        return send(db,chat_id,f"{'نسخه رنگی' if mode=='color' else 'نسخه سیاه و سفید'} آماده است (اعتبار لینک ۱۵ دقیقه):\n"+public_link(db,f"/bale-download/{raw}"))
+    if data.startswith("report:"):
+        plan=_authorized_plan(db,link,user,data.split(":",1)[1])
+        if not plan:return _answer(db,query_id,"برنامه در دسترس نیست")
+        _answer(db,query_id)
+        if link.access_role=="student":return _show_days(db,chat_id,plan,"entryday")
+        return inline(db,chat_id,_plan_label(plan),_buttons(("📄 دانلود PDF گزارش کل هفته","weekpdf:"+plan.id),("📅 دریافت گزارش کار روزانه","viewdays:"+plan.id)))
+    if data.startswith("weekpdf:"):
+        plan=_authorized_plan(db,link,user,data.split(":",1)[1])
+        if not plan:return _answer(db,query_id,"دسترسی مجاز نیست")
+        owner=user.id if user else link.student_id;raw=create_grant(db,owner,"report",plan.id);_answer(db,query_id,"لینک آماده شد")
+        return send(db,chat_id,"PDF گزارش کار کل هفته آماده است (اعتبار لینک ۱۵ دقیقه):\n"+public_link(db,f"/bale-download/{raw}"))
+    if data.startswith("viewdays:"):
+        plan=_authorized_plan(db,link,user,data.split(":",1)[1]);_answer(db,query_id)
+        return _show_days(db,chat_id,plan,"viewday") if plan else send(db,chat_id,"برنامه در دسترس نیست.")
+    if data.startswith(("viewday:","entryday:")):
+        prefix,plan_id,index=data.split(":",2);plan=_authorized_plan(db,link,user,plan_id);day=_day_at(plan,int(index)) if plan else None
+        if not day:return _answer(db,query_id,"روز در دسترس نیست")
+        _answer(db,query_id)
+        if prefix=="viewday":return send(db,chat_id,_daily_report_text(db,plan,day))
+        rows=[]
+        for activity in sorted((x for x in plan.activities if x.day==day["label"]),key=lambda x:x.start_time):
+            rows.append([{"text":f"{activity.start_time} · {activity.title}","callback_data":"activity:"+activity.id}])
+        rows.append([{"text":"✨ گزارش جمع‌بندی روز","callback_data":f"daysummary:{plan.id}:{index}"}])
+        return inline(db,chat_id,f"فعالیت‌های {day['label']} · {day.get('date','')}",rows)
+    if data.startswith("activity:") and link.access_role=="student":
+        activity=db.get(Activity,data.split(":",1)[1])
+        if not activity or not _authorized_plan(db,link,user,activity.plan_id):return _answer(db,query_id,"فعالیت در دسترس نیست")
+        _answer(db,query_id);return inline(db,chat_id,activity.title,_buttons(("✅ انجام شد","done:"+activity.id),("❌ انجام نشد","skip:"+activity.id)))
+    if data.startswith("done:") and link.access_role=="student":
+        activity=db.get(Activity,data.split(":",1)[1])
+        if not activity or not _authorized_plan(db,link,user,activity.plan_id):return _answer(db,query_id,"فعالیت در دسترس نیست")
+        link.state="activity_q_total";_set_context(link,activity_id=activity.id);_answer(db,query_id)
+        return send(db,chat_id,"چند سؤال حل کردی؟ عدد را وارد کن (اگر سؤال نداشتی ۰ بفرست).")
+    if data.startswith("skip:") and link.access_role=="student":
+        activity=db.get(Activity,data.split(":",1)[1])
+        if not activity or not _authorized_plan(db,link,user,activity.plan_id):return _answer(db,query_id,"فعالیت در دسترس نیست")
+        link.state="activity_reason";_set_context(link,activity_id=activity.id);_answer(db,query_id)
+        return send(db,chat_id,"دلیل انجام‌نشدن فعالیت را بنویس:")
+    if data.startswith("daysummary:") and link.access_role=="student":
+        _,plan_id,index=data.split(":",2);plan=_authorized_plan(db,link,user,plan_id);day=_day_at(plan,int(index)) if plan else None
+        if not day:return _answer(db,query_id,"روز در دسترس نیست")
+        link.state="day_focus";_set_context(link,plan_id=plan.id,day=day["label"],values={});_answer(db,query_id)
+        return send(db,chat_id,"میزان تمرکز امروز را از ۱ تا ۵ وارد کنید:")
+    _answer(db,query_id,"گزینه معتبر نیست")
 
 def answer_pre_checkout(db,query):
     payload=query.get("invoice_payload","")

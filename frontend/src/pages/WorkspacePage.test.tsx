@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import WorkspacePage from './WorkspacePage'
 import type { User } from '../types'
 
@@ -24,6 +24,7 @@ vi.mock('../api',()=>({
 const student:User={id:'student-1',phone:'09120000001',full_name:'پارسا رضایی',role:'student',status:'active'}
 
 const advisor:User={id:'advisor-1',phone:'09120000002',full_name:'مریم احمدی',role:'advisor',status:'active'}
+afterEach(cleanup)
 function setup(user:User=student,route='/app/student/overview'){
   const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
   return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[route]}><WorkspacePage user={user}/></MemoryRouter></QueryClientProvider>)
@@ -34,16 +35,24 @@ test('student sidebar opens the real plan route',async()=>{
   fireEvent.click(screen.getByRole('button',{name:/برنامه من/}))
   expect(screen.getByText('در حال باز کردن بخش…')).toBeTruthy()
   expect(await screen.findByText('مطالعه ریاضی')).toBeTruthy()
-  expect(screen.getByText('۱۴۰۵/۰۵/۲۷')).toBeTruthy()
+  expect(screen.getAllByText('۱۴۰۵/۰۵/۲۷')).toHaveLength(3)
   expect(screen.getByText(/برنامه هفتگی.*پارسا رضایی/)).toBeTruthy()
   expect(screen.getByText(/مشاور و برنامه‌ریز.*مریم احمدی/)).toBeTruthy()
   expect(screen.getByText(/مرور کامل فصل سوم/)).toBeTruthy()
-  expect(screen.getByText('مطالعه ریاضی').closest('.study-activity')).toBeTruthy()
-  expect(screen.getAllByRole('button',{name:/دانلود PDF/})).toHaveLength(2)
+  expect(screen.getByText('مطالعه ریاضی').closest('.student-activity')).toBeTruthy()
+  expect(screen.getByRole('button',{name:'دانلود رنگی برنامه'})).toBeTruthy()
+  expect(screen.getByRole('button',{name:'دانلود سیاه و سفید'})).toBeTruthy()
   expect(screen.getByRole('button',{name:/برنامه من/}).className).toContain('selected')
 })
 
 test('advisor student exams route opens the upload form',async()=>{
   setup(advisor,'/app/advisor/students/student-1/exams')
   expect(await screen.findByRole('heading',{name:'ارسال آزمون جدید'})).toBeTruthy()
+})
+test('advisor performance tab opens daily activity reports with optional overall charts',async()=>{
+ setup(advisor,'/app/advisor/students/student-1/report')
+ expect(await screen.findByRole('heading',{name:'گزارش روزبه‌روز و فعالیت‌ها'})).toBeTruthy()
+ expect(await screen.findByText('مطالعه ریاضی')).toBeTruthy()
+ expect(screen.getByText('نمایش آمار کلی و نمودارهای پیشرفت').closest('details')?.open).toBe(false)
+ expect(document.querySelector('.advisor-study-plan')).toBeTruthy()
 })

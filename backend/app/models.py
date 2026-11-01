@@ -487,6 +487,9 @@ class BaleAccountLink(Base, TimeMixin):
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    access_role: Mapped[str] = mapped_column(String(20), default="")
+    student_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    context_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
 
 
 class BaleAccessGrant(Base):
