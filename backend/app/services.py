@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from app.core.config import settings
+from app.curriculum_catalog import ensure_curriculum_catalog
 from app.models import Activity, AdvisorAssignment, AdvisorProfile, AuditLog, Exam, Insight, Question, StudentProfile, SubscriptionPlan, User, WeeklyPlan, utcnow
 
 
@@ -110,6 +111,7 @@ def seed_database(db: Session):
                 db.add(SubscriptionPlan(name=name, period=period, price=0, referral_price=0,
                                         features_json=json.dumps(features, ensure_ascii=False), active=False))
         db.commit()
+        ensure_curriculum_catalog(db, primary_admin)
         return
     if db.scalar(select(User.id).limit(1)):
         changed = False
