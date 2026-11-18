@@ -980,7 +980,7 @@ def create_plan(payload: PlanCreate, user: User = Depends(roles("advisor", "supe
     db.add(plan); db.flush()
     for item, selected_ids in zip(payload.activities, topic_ids):
         color=item.get("color","")
-        if not isinstance(color,str) or (color and not re.fullmatch(r"#[0-9a-fA-F]{6}",color)):
+        if not isinstance(color,str) or (color and not re.fullmatch(r"[#@][0-9a-fA-F]{6}",color)):
             raise HTTPException(422,"رنگ بازه معتبر نیست")
         start, end = item.get("start_time", "08:00"), item.get("end_time", "09:00")
         sh, sm = map(int, start.split(":")); eh, em = map(int, end.split(":"))

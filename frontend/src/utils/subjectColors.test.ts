@@ -1,5 +1,10 @@
 import {expect,test} from 'vitest'
-import {detectSubjectColor,detectSubjects,subjectBlockStyle,readableTextColor} from './subjectColors'
+import {detectSubjectColor,detectSubjects,subjectBlockStyle,readableTextColor,lightSubjectBlockStyle} from './subjectColors'
+
+test('dark range color stays saturated with white text',()=>{
+ expect(lightSubjectBlockStyle('فیزیک',undefined,'@245bb2')).toEqual({background:'#245bb2',borderColor:'#245bb2',color:'#ffffff'})
+ expect(lightSubjectBlockStyle('فیزیک',undefined,'#245bb2').color).toBe('#17152c')
+})
 test.each([
  ['تست فیزیک فصل دوم','physics'],
  ['مرور زيست‌شناسي','biology'],

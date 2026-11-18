@@ -104,7 +104,7 @@ def complete_draft(plan_id: str, payload: PlanCreate, user: User = Depends(roles
     plan.activities.clear()
     for item, selected_ids in zip(payload.activities, topic_ids):
         color = item.get("color", "")
-        if not isinstance(color, str) or (color and not re.fullmatch(r"#[0-9a-fA-F]{6}", color)):
+        if not isinstance(color, str) or (color and not re.fullmatch(r"[#@][0-9a-fA-F]{6}", color)):
             raise HTTPException(422, "رنگ بازه معتبر نیست")
         start, end = item["start_time"], item["end_time"]
         sh, sm = map(int, start.split(":")); eh, em = map(int, end.split(":"))

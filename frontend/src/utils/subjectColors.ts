@@ -48,11 +48,14 @@ export function readableTextColor(hex:string){
  return (luminance+.05)/.05>=1.05/(luminance+.05)?'#000000':'#ffffff'
 }
 export function subjectBlockStyle(text:string,preferred?:string,customColor?:string){
- const color=customColor&&/^#[0-9a-f]{6}$/i.test(customColor)?customColor:detectSubjectColor(text,preferred).color
+ const color=customColor&&/^[#@][0-9a-f]{6}$/i.test(customColor)?'#'+customColor.slice(1):detectSubjectColor(text,preferred).color
  return {background:color,borderColor:color,color:readableTextColor(color)}
 }
+export const isDarkSubjectColor=(color?:string)=>Boolean(color&&/^@[0-9a-f]{6}$/i.test(color))
+export const withSubjectColorMode=(color:string,dark:boolean)=>(dark?'@':'#')+color.slice(1)
 export function lightSubjectBlockStyle(text:string,preferred?:string,customColor?:string){
  const base=subjectBlockStyle(text,preferred,customColor).background
+ if(isDarkSubjectColor(customColor))return {background:base,borderColor:base,color:'#ffffff'}
  const rgb=base.replace('#','').match(/.{2}/g)!.map(part=>parseInt(part,16))
  const blend=(ratio:number)=>'#'+rgb.map(channel=>Math.round(channel*ratio+255*(1-ratio)).toString(16).padStart(2,'0')).join('')
  return {background:blend(.28),borderColor:blend(.62),color:'#17152c'}
