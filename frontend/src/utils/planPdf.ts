@@ -82,13 +82,94 @@ export function planSeason(date?:string){
 }
 export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=false){
  const sheet=node('section','planner-pdf-sheet print-theme-'+(colored?'color':'mono'));sheet.dir='rtl'
+ const season=planSeason(plan.days.find(day=>day.date)?.date)
+ sheet.classList.add('print-season-'+season)
+ const motifs={
+  autumn:['<path d="M16 29C1 23 2 9 6 3c16 0 25 13 10 26Z" fill="#d99a42"/><path d="M16 32 9 8m5 15-7-4m6-3 4-7" stroke="#98603b" fill="none"/>','<path d="m16 3 4 8 7-4-2 9 6 2-11 9-4 3-5-4L1 18l7-2-2-9 7 4Z" fill="#bf6940"/><path d="M16 33V12m0 11 8-6m-8 6-7-6" stroke="#8f5037" fill="none"/>'],
+  winter:['<g fill="none" stroke="#85b9d3" stroke-width="1.6"><path d="M16 2v28M4 9l24 14M4 23 28 9M12 5l4 4 4-4M12 27l4-4 4 4M4 14l6-2-1-6m14 20-1-6 6-2M4 18l6 2-1 6m14-20-1 6 6 2"/></g>'],
+  spring:['<g fill="#edb8c6"><ellipse cx="16" cy="10" rx="5" ry="8"/><ellipse cx="10" cy="17" rx="8" ry="5"/><ellipse cx="22" cy="17" rx="8" ry="5"/><ellipse cx="16" cy="23" rx="5" ry="8"/></g><circle cx="16" cy="17" r="4" fill="#dbb45b"/>'],
+  summer:['<g stroke="#e7b94e" stroke-width="2"><path d="M16 1v5m0 20v5M1 16h5m20 0h5M5 5l4 4m14 14 4 4M5 27l4-4M23 9l4-4"/></g><circle cx="16" cy="16" r="8" fill="#f2cd6b"/>']
+ }
+ const decor=node('div','print-season-decor');decor.setAttribute('aria-hidden','true')
+ const maple='M48 85 30 74 8 69 19 58 5 43 25 44 19 23 37 33 48 6 58 32 78 20 73 43 94 38 83 58 94 67 65 76 53 86Z'
+ const oak='M48 86C30 82 17 71 26 64 7 56 16 43 29 46 14 31 29 20 38 29 32 9 48 0 55 14 65 2 78 18 65 31 84 25 92 42 74 49 95 53 83 69 66 67 72 80 59 85 48 86Z'
+ const leaf='M48 87C12 77 6 42 48 7 91 38 85 74 48 87Z'
+ function ornament(index:number,size:number,angle:number){
+  const img=document.createElement('img');img.alt='';img.className='print-season-ornament'
+  const palette=[['#f8c754','#bd5a1e'],['#df7133','#8d292c'],['#cb4b39','#772d39'],['#edab35','#bd6224']][index%4]
+  const shape=[maple,oak,leaf][index%3]
+  const artwork=season==='autumn'?`<defs><linearGradient id="leaf" x2=".8" y2="1"><stop stop-color="${palette[0]}"/><stop offset="1" stop-color="${palette[1]}"/></linearGradient></defs><path d="${shape}" fill="url(#leaf)" stroke="${palette[1]}" stroke-width=".7"/><path d="M48 98 49 24M49 73 27 58m22 5 24-15M49 49 34 35m15 8 14-13" fill="none" stroke="#793c27" stroke-opacity=".6" stroke-width="1.4" stroke-linecap="round"/>`:motifs[season][index%motifs[season].length]
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 ${season==='autumn'?'100 100':'34 34'}">${artwork}</svg>`)
+  img.style.cssText=`width:${size}px;height:${size}px;transform:rotate(${angle}deg)`
+  if(season==='autumn'){
+   const variant=index%3
+   img.src='/brand/'+['autumn-natural-cluster.png','autumn-branch.png','autumn-maple.png'][variant]
+   img.style.width=size*(variant===2?1:1.65)+'px';img.style.height=size*(variant===0?.83:variant===1?1.1:.9)+'px'
+  }else{
+   const variant=index%3
+   const files=[`${season}-natural-v2-1.png`,`${season}-natural-v2-2.png`,`${season}-natural-v2-3.png`]
+   img.src='/brand/'+files[variant]
+   img.style.width=size*1.65+'px';img.style.height=size*.825+'px'
+   if(season==='winter')img.style.transform=`rotate(${Math.round(angle/90)*90+(index%3-1)*8}deg)`
+  }
+  return img
+ }
+ // Deliberate clusters at the corners; breathing room along the long edges.
+ const positions=[[0,0,65,-35],[3,-1,52,35],[7,0,42,95],[0,6,47,-60],[94,-1,65,40],[90,0,43,-30],[97,5,48,120],[0,88,58,10],[3,94,64,-50],[8,96,44,60],[95,92,68,35],[91,96,48,-70],[97,85,46,120],[22,-1,36,40],[51,0,32,-20],[75,-1,40,65],[27,96,36,-45],[65,97,38,45],[0,35,38,-40],[97,53,42,70],[0,69,34,20]]
+ for(const [i,[x,y,size,angle]] of positions.entries()){
+  const img=ornament(i,size,angle);img.style.left=x+'%';img.style.top=y+'%';decor.append(img)
+ }
+ if(season!=='autumn'){
+  decor.replaceChildren()
+  const xPositions=[-2,7,17,29,40,51,63,74,86,95]
+  for(let i=0;i<xPositions.length;i++)for(const bottom of [false,true]){
+   const item=ornament(i+(bottom?1:0),[76,62,86,68][(i+(bottom?2:0))%4],(bottom?175:0)+[-28,21,-9,34][i%4])
+   item.style.left=(xPositions[i]+(bottom?1:0))+'%';item.style.top=bottom?'94.5%':[-3.5,-2,-4.5,-2.8][i%4]+'%';decor.append(item)
+  }
+  const yPositions=[3,15,28,42,56,69,82,93]
+  for(let i=0;i<yPositions.length;i++)for(const right of [false,true]){
+   const item=ornament(i+(right?2:0),[67,55,77,61][i%4],(right?-88:91)+[-18,27,-31,12][i%4])
+   item.style.left=right?'95.5%':'-3.8%';item.style.top=(yPositions[i]+(right?2:0))+'%';decor.append(item)
+  }
+  for(const [i,x] of [3,12,22,35,45,57,68,80,91].entries())for(const bottom of [false,true]){
+   const item=ornament(i+2+(bottom?1:0),[55,72,49,64][i%4],(bottom?181:-4)+[37,-24,16,-35][i%4])
+   item.style.left=(x+(bottom?1.8:0))+'%';item.style.top=bottom?'96%':'-3.2%';decor.append(item)
+  }
+  for(const [i,y] of [8,21,34,48,62,75,88].entries())for(const right of [false,true]){
+   const item=ornament(i+1+(right?2:0),[51,69,57,74][i%4],(right?-91:86)+[29,-36,13][i%3])
+   item.style.left=right?'96.7%':'-3.7%';item.style.top=(y+(right?2:-1))+'%';decor.append(item)
+  }
+ }
+ if(season==='autumn'){
+  decor.replaceChildren()
+  const offsets=[-3,4,12,19,29,35,44,53,59,69,78,85,94]
+  for(let i=0;i<offsets.length;i++){
+   for(const bottom of [false,true]){
+    const variant=bottom?(i*7+2)%3:i%3
+    const spray=ornament(variant,[110,85,67,102,76][(i+(bottom?2:0))%5],(bottom?165:0)+[22,-31,48,-12,8][i%5])
+    spray.style.left=(offsets[i]+(bottom?2:0))+'%';spray.style.top=(bottom?94+[1,-1,2,0][i%4]:[-4,-3,-2.8,-5][i%4])+'%'
+    decor.append(spray)
+   }
+  }
+  for(let i=0;i<7;i++)for(const right of [false,true]){
+   const spray=ornament(i+(right?1:0),[75,64,48,82][i%4],(right?-82:87)+[12,-27,34][i%3])
+   spray.style.left=right?'96%':'-4%';spray.style.top=([9,21,36,47,61,76,86][i]+(right?4:0))+'%';decor.append(spray)
+  }
+  // Fill the open stretches with smaller, offset clusters, not a repeated strip.
+  for(const [i,y] of [4,17,28,32,43,55,66,71,82,91].entries())for(const right of [false,true]){
+   const spray=ornament((i+(right?2:0))%3,[62,54,72,58][i%4],(right?-95:78)+[24,-18,39,-31][i%4])
+   spray.style.left=right?'96.5%':'-3.6%';spray.style.top=(y+(right?2:-1))+'%';decor.append(spray)
+  }
+  for(const [i,x] of [7,16,25,38,47,57,66,75,88].entries())for(const bottom of [false,true]){
+   const spray=ornament((i+(bottom?1:0))%3,[73,59,82,65][i%4],(bottom?172:5)+[-27,36,-9,18][i%4])
+   spray.style.left=(x+(bottom?1.5:0))+'%';spray.style.top=bottom?'96%':'-3.8%';decor.append(spray)
+  }
+ }
+ sheet.append(decor)
  const reference=source.querySelector<HTMLElement>('.pdf-reference-header')
  const studentName=reference?.dataset.studentName||reference?.querySelector('h1')?.textContent||plan.title
  const advisorName=reference?.dataset.advisorName||reference?.querySelector('p')?.textContent||'—'
  const header=node('header','print-hero print-season-'+planSeason(plan.days.find(day=>day.date)?.date))
- const backdrop=document.createElement('img')
- backdrop.className='print-hero-backdrop';backdrop.src=`/brand/header-${planSeason(plan.days.find(day=>day.date)?.date)}.png`;backdrop.alt=''
- header.append(backdrop)
  const identity=node('div','print-hero-identity')
  const number=node('div','print-hero-number')
  if(plan.status==='published'&&plan.publication_number){number.textContent=faNumber(plan.publication_number);number.setAttribute('aria-label',`برنامه شماره ${plan.publication_number}`)}
@@ -140,7 +221,11 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
    cards.append(card)
   }
   row.append(cards);table.append(row)
-  if(dayIndex<plan.days.length-1)table.append(node('div','print-day-divider'))
+  if(dayIndex<plan.days.length-1){
+   const divider=node('div','print-day-divider')
+   if(dayIndex%2===0){const fallen=ornament(dayIndex+1,30,dayIndex*37-40);fallen.style.left=[18,62,37][dayIndex/2%3]+'%';divider.append(fallen)}
+   table.append(divider)
+  }
  }
  sheet.append(table)
  return sheet
@@ -163,7 +248,7 @@ export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=f
   if(appendTo)pdf.addPage([page.width,page.height],'landscape')
   const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight()
   const scale=Math.min((pw-2*page.margin)/canvas.width,(ph-2*page.margin)/canvas.height)
-  pdf.addImage(canvas.toDataURL('image/png'),'PNG',(pw-canvas.width*scale)/2,(ph-canvas.height*scale)/2,canvas.width*scale,canvas.height*scale,undefined,'FAST')
+  pdf.addImage(canvas.toDataURL('image/jpeg',.94),'JPEG',(pw-canvas.width*scale)/2,(ph-canvas.height*scale)/2,canvas.width*scale,canvas.height*scale,undefined,'SLOW')
   return pdf
  }finally{host.remove()}
 }

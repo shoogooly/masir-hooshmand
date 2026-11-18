@@ -90,3 +90,39 @@
 .planner-pdf-sheet .print-hero-brand,.planner-pdf-sheet .print-hero-brand strong,.planner-pdf-sheet .print-hero-brand small{color:#fff;-webkit-text-stroke:0;text-shadow:0 2px 4px #08112c}
 .planner-pdf-sheet .print-hero-identity,.planner-pdf-sheet .print-hero-number{color:#0a1544;-webkit-text-stroke:0;text-shadow:0 1px 2px #fff}
 .planner-pdf-sheet.print-theme-mono .print-hero-identity,.planner-pdf-sheet.print-theme-mono .print-hero-number{color:#111}
+
+/* Small seasonal ornaments keep the page light and the writing area clear. */
+.planner-pdf-sheet{position:relative;box-sizing:border-box;padding:20px 33px!important;gap:12px!important;--season-paper:#fff9ed;--season-ink:#98643c;--season-line:#e8d4b1}
+.planner-pdf-sheet.print-season-winter{--season-paper:#f0f8fd;--season-ink:#426e88;--season-line:#c9dfed}
+.planner-pdf-sheet.print-season-spring{--season-paper:#f6fbf2;--season-ink:#637c53;--season-line:#d7e4c9}
+.planner-pdf-sheet.print-season-summer{--season-paper:#fffcef;--season-ink:#98782e;--season-line:#eddfa9}
+.planner-pdf-sheet.print-theme-color{background:var(--season-paper)}
+.print-season-decor{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:3}
+.print-season-ornament{position:absolute;display:block;max-width:none!important;object-fit:contain;pointer-events:none}
+.planner-pdf-sheet{padding:34px 43px!important}
+.planner-pdf-sheet .print-day-divider{position:relative;overflow:visible;z-index:4}
+.print-day-divider .print-season-ornament{top:-13px}
+.planner-pdf-sheet.print-season-autumn{padding:51px 52px!important}
+.planner-pdf-sheet.print-season-autumn.print-theme-color{background:linear-gradient(125deg,#fff1bf 0%,#ffe1af 32%,#fff2cf 59%,#ffdbb5 100%);--season-paper:#fff1ce;--season-line:#dfb77d}
+.print-season-autumn .print-day-divider .print-season-ornament{top:-9px}
+.planner-pdf-sheet.print-season-winter,.planner-pdf-sheet.print-season-spring,.planner-pdf-sheet.print-season-summer{padding:47px 50px!important}
+.planner-pdf-sheet.print-season-winter.print-theme-color{background:linear-gradient(135deg,#e4f3fc 0%,#f5fbff 38%,#dceefa 70%,#edf8ff 100%);--season-paper:#edf8ff;--season-line:#b8d9eb}
+.planner-pdf-sheet.print-season-spring.print-theme-color{background:linear-gradient(135deg,#e9f8df 0%,#fff0f4 34%,#eef9e8 68%,#f2ecff 100%);--season-paper:#f2f9e9;--season-line:#bfdcaf}
+.planner-pdf-sheet.print-season-summer.print-theme-color{background:linear-gradient(135deg,#fff1a9 0%,#fff8d9 35%,#ffe4bd 69%,#fff3bf 100%);--season-paper:#fff6d3;--season-line:#e5c76d}
+.print-season-winter .print-day-divider .print-season-ornament,.print-season-spring .print-day-divider .print-season-ornament,.print-season-summer .print-day-divider .print-season-ornament{top:-10px}
+.planner-pdf-sheet .print-hero{flex:0 0 136px;min-height:136px;grid-template-columns:245px minmax(0,1fr) 165px;gap:10px;border:1px solid var(--season-line);border-radius:16px;background:#ffffffb8;box-shadow:none}
+.planner-pdf-sheet .print-hero-identity{gap:3px;padding:5px 6px}
+.planner-pdf-sheet .print-hero-number{width:54px;height:54px;box-shadow:none}
+.planner-pdf-sheet .print-hero-message{gap:4px;padding:5px 0}
+.planner-pdf-sheet .print-hero-quote{flex:0 0 52px;min-height:52px;max-height:52px;padding:2px 8px;background:transparent;box-shadow:none;backdrop-filter:none}
+.planner-pdf-sheet .print-hero-mission{padding:3px 8px;max-height:64px;background:var(--season-paper);box-shadow:none;backdrop-filter:none;border:1px solid var(--season-line)}
+.planner-pdf-sheet .print-hero-mission strong{max-height:58px}
+.planner-pdf-sheet .print-hero-brand{padding:3px;gap:1px}
+.planner-pdf-sheet .print-hero-logo-halo{width:64px;height:64px;background:none;box-shadow:none}
+.planner-pdf-sheet .print-hero-brand img{width:62px;height:62px;filter:none}
+.planner-pdf-sheet .print-hero-brand,.planner-pdf-sheet .print-hero-brand strong,.planner-pdf-sheet .print-hero-brand small{color:var(--season-ink);text-shadow:none}
+.planner-pdf-sheet .print-plan-days{gap:5px!important;position:relative}
+.planner-pdf-sheet .print-day-divider{height:2px;flex-basis:2px;margin:0 28px;background:var(--season-line);box-shadow:none}
+.planner-pdf-sheet.print-theme-mono .print-season-decor{filter:grayscale(1);opacity:.35}
+.planner-pdf-sheet.print-theme-mono{--season-paper:#fff;--season-line:#ddd;--season-ink:#333}
+.planner-pdf-sheet.print-theme-mono .print-hero-brand strong,.planner-pdf-sheet.print-theme-mono .print-hero-brand small{color:#222!important}
