@@ -30,11 +30,11 @@ class DraftInput(BaseModel):
         return value
 
 
-def editable(db, plan_id, user):
+def editable(db, plan_id, user, published=False):
     plan = db.scalar(select(WeeklyPlan).where(WeeklyPlan.id == plan_id).with_for_update())
     if not plan or (user.role == "advisor" and plan.advisor_id != user.id):
         raise HTTPException(404, "برنامه یافت نشد")
-    if plan.status != "draft":
+    if plan.status != "draft" and not (published and plan.status == "published"):
         raise HTTPException(409, "برنامه ارسال‌شده قابل بازنویسی نیست")
     if user.role == "advisor" and not assigned_student(db, user.id, plan.student_id):
         raise HTTPException(403, "دانش‌آموز به شما تخصیص ندارد")
@@ -89,11 +89,11 @@ def delete_draft(plan_id: str, user: User = Depends(roles("advisor", "super_admi
 
 @router.put("/plans/{plan_id}")
 def complete_draft(plan_id: str, payload: PlanCreate, user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
-    plan = editable(db, plan_id, user)
+    plan = editable(db, plan_id, user, published=True)
     if plan.student_id != payload.student_id:
         raise HTTPException(422, "دانش‌آموز برنامه قابل تغییر نیست")
     from app.book_service import validate_allocations
-    validate_allocations(db, payload.student_id, payload.activities)
+    validate_allocations(db, payload.student_id, payload.activities, lock=True, exclude_plan_id=plan.id)
     from app.api.academic_calendars import selected_topic_ids
     topic_ids = selected_topic_ids(db, payload.student_id, payload.activities)
     plan.title, plan.week_label = payload.title, payload.week_label
@@ -101,17 +101,29 @@ def complete_draft(plan_id: str, payload: PlanCreate, user: User = Depends(roles
     plan.day_start_time, plan.day_end_time = payload.day_start_time, payload.day_end_time
     plan.schedule_days_json = json.dumps(payload.days, ensure_ascii=False)
     plan.time_slots_json = json.dumps(payload.time_slots, ensure_ascii=False)
-    plan.activities.clear()
+    existing = {a.id: a for a in plan.activities}
+    retained = []
     for item, selected_ids in zip(payload.activities, topic_ids):
         color = item.get("color", "")
         if not isinstance(color, str) or (color and not re.fullmatch(r"[#@][0-9a-fA-F]{6}", color)):
             raise HTTPException(422, "رنگ بازه معتبر نیست")
         start, end = item["start_time"], item["end_time"]
         sh, sm = map(int, start.split(":")); eh, em = map(int, end.split(":"))
-        plan.activities.append(Activity(day=item["day"], subject=item.get("subject", "عمومی"), title=item.get("title", ""),
-            color=color, start_time=start, end_time=end, planned_minutes=eh*60+em-sh*60-sm,
-            book_topic_id=item.get("book_topic_id") or "", book_question_count=item.get("book_question_count", 0),
-            calendar_topic_ids_json=json.dumps(selected_ids)))
+        activity = existing.get(item.get("id")) or Activity()
+        activity.day=item["day"]; activity.subject=item.get("subject", "عمومی"); activity.title=item.get("title", "")
+        activity.color=color; activity.start_time=start; activity.end_time=end
+        activity.planned_minutes=eh*60+em-sh*60-sm
+        activity.book_topic_id=item.get("book_topic_id") or ""
+        activity.book_question_count=item.get("book_question_count", 0)
+        activity.calendar_topic_ids_json=json.dumps(selected_ids)
+        retained.append(activity)
+    plan.activities = retained
+    if plan.status == "published":
+        from app.study_reporting import report_bounds
+        plan.ends_at = report_bounds(plan)[1]
+        plan.student_viewed_at = None
+        from app.api.router import add_notification
+        add_notification(db, plan.student_id, "plan_updated", "برنامه شما ویرایش شد", "مشاور برنامه شما را ویرایش و دوباره ارسال کرد.", "/app/student/plan", user.id, plan.id)
     # If publication fails, reopening the draft must show the latest validated edits.
     plan.draft_state_json = "{}"
     audit(db, user.id, "plan.draft_completed", "weekly_plan", plan.id)

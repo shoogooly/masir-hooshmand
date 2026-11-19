@@ -80,3 +80,20 @@ test('topic picker shows only final branches with their full path and prior coun
  expect(screen.getByRole('checkbox',{checked:true})).toBeTruthy()
  expect(descriptionText()).toBe('فیزیک\nمرور\nحرکت و تست')
 })
+
+
+test('copy previous week keeps weekday assignments after changing the start date',async()=>{
+ const plan={id:'previous',student_id:'student',title:'week',week_label:'week',status:'published',days:[],activities:[{id:'old',day:'شنبه',title:'Saturday lesson',subject:'ریاضی',start_time:'08:00',end_time:'09:00'}]}
+ vi.mocked(api).mockImplementation(async(path:string)=>path==='/plans'?[plan]:null)
+ const {container}=setup()
+ await waitFor(()=>expect((screen.getByRole('button',{name:/کپی برنامه هفته قبل/}) as HTMLButtonElement).disabled).toBe(false))
+ fireEvent.click(screen.getByRole('button',{name:/کپی برنامه هفته قبل/}))
+ fireEvent.change(screen.getByRole('combobox',{name:'سال'}),{target:{value:'1405'}})
+ fireEvent.change(screen.getByRole('combobox',{name:'ماه'}),{target:{value:'7'}})
+ fireEvent.change(screen.getByRole('combobox',{name:'روز'}),{target:{value:'21'}})
+ const rows=container.querySelectorAll('.timeline-editor-day')
+ expect(rows[0].querySelector('header b')?.textContent).toBe('سه‌شنبه')
+ const row=Array.from(rows).find(row=>row.querySelector('header b')?.textContent==='شنبه')!
+ expect(within(row as HTMLElement).getByRole('button',{name:'ویرایش بازه Saturday lesson'})).toBeTruthy()
+ expect(within(rows[0] as HTMLElement).queryByRole('button',{name:'ویرایش بازه Saturday lesson'})).toBeNull()
+})

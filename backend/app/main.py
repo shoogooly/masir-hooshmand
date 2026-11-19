@@ -55,6 +55,9 @@ async def lifespan(_app: FastAPI):
     bale_stop = Event()
     bale_thread = Thread(target=bale_polling_worker, args=(bale_stop,), daemon=True, name="bale-polling")
     bale_thread.start()
+    from app.bale_daily_reports import worker as daily_report_worker
+    daily_thread = Thread(target=daily_report_worker, args=(bale_stop,), daemon=True, name="bale-daily-reports")
+    daily_thread.start()
     try:
         yield
     finally:
@@ -62,6 +65,7 @@ async def lifespan(_app: FastAPI):
         bale_stop.set()
         ai_thread.join(timeout=2)
         bale_thread.join(timeout=3)
+        daily_thread.join(timeout=3)
 
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)

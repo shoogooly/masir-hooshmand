@@ -6,7 +6,7 @@ from app.book_models import Book, BookTopic, StudentBook
 from app.models import Activity, WeeklyPlan, StudyReport, utcnow
 from app.study_reporting import report_bounds
 
-def catalog(db,student_id=None):
+def catalog(db,student_id=None,exclude_plan_id=None):
     visibility=(Book.created_for_student_id.is_(None) if student_id is None else
                 or_(Book.created_for_student_id.is_(None),Book.created_for_student_id==student_id))
     books=db.scalars(select(Book).where(visibility).order_by(Book.title,Book.publication_year.desc())).all()
@@ -15,7 +15,7 @@ def catalog(db,student_id=None):
     done=defaultdict(int);reserved=defaultdict(int);assigned_count=defaultdict(int)
     if student_id:
         pairs=db.execute(select(Activity,WeeklyPlan).join(WeeklyPlan,Activity.plan_id==WeeklyPlan.id).where(
-            WeeklyPlan.student_id==student_id,WeeklyPlan.status=="published",Activity.book_topic_id!="")).all()
+            WeeklyPlan.student_id==student_id,WeeklyPlan.status=="published",WeeklyPlan.id != exclude_plan_id if exclude_plan_id else WeeklyPlan.id.is_not(None),Activity.book_topic_id!="")).all()
         plan_ids={p.id for a,p in pairs}
         reports={(r.plan_id,r.scope):json.loads(r.data_json) for r in db.scalars(select(StudyReport).where(StudyReport.plan_id.in_(plan_ids))).all()} if plan_ids else {}
         for a,p in pairs:
@@ -45,14 +45,14 @@ def catalog(db,student_id=None):
             "owned":owned.get(book.id,False),"topics":rows})
     return result
 
-def inventory(db,student_id):
-    return [b for b in catalog(db,student_id) if b["owned"] and b["active"]]
+def inventory(db,student_id,exclude_plan_id=None):
+    return [b for b in catalog(db,student_id,exclude_plan_id) if b["owned"] and b["active"]]
 
-def validate_allocations(db,student_id,activities,lock=False):
+def validate_allocations(db,student_id,activities,lock=False,exclude_plan_id=None):
     if lock:
         # Serialize publication against another publication or ownership change.
         db.execute(update(StudentBook).where(StudentBook.student_id==student_id).values(updated_at=utcnow()))
-    available={t["id"]:t for b in inventory(db,student_id) for t in b["topics"]}
+    available={t["id"]:t for b in inventory(db,student_id,exclude_plan_id) for t in b["topics"]}
     requested=defaultdict(int)
     for item in activities:
         topic=item.get("book_topic_id") or ""

@@ -45,7 +45,7 @@ def test_draft_resume_volume_publish_and_admin_delete():
         assert advisor.post(f'/api/v1/plans/{pid}/publish').status_code==200
         assert student.get(f'/api/v1/plans/{pid}').json()['data']['plan_mode']=='volume'
         assert advisor.put(f'/api/v1/plan-drafts/{pid}',json=draft).status_code==409
-        assert advisor.put(f'/api/v1/plans/{pid}',json=payload).status_code==409
+        assert advisor.put(f'/api/v1/plans/{pid}',json=payload).status_code==200
         with SessionLocal() as db:
             db.add(StudyReport(plan_id=pid,scope='day:شنبه'));db.commit()
         assert advisor.delete(f'/api/v1/plans/{pid}?confirmed=true').status_code==403
