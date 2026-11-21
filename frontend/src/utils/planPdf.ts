@@ -183,6 +183,16 @@ function encodePrintImage(canvas:HTMLCanvasElement){
  })
 }
 
+async function loadPlanPdfFonts(fonts:FontFaceSet){
+ const loaded=await Promise.allSettled([
+  fonts.load('700 16px PDFTitr','برنامه هفتگی'),
+  fonts.load('400 16px PDFIranSans','نام دانش‌آموز و مشاور')
+ ])
+ if(loaded.some(result=>result.status==='rejected'||!result.value.some(face=>face.status==='loaded'))){
+  throw new Error('فونت‌های PDF بارگذاری نشدند. اتصال اینترنت را بررسی و دوباره تلاش کنید.')
+ }
+}
+
 export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false,appendTo?:PdfDocument){
  const [{default:html2canvas},{jsPDF}]=await Promise.all([import('html2canvas'),import('jspdf')])
  const sheet=createPrintSheet(element,plan,colored)
@@ -190,17 +200,14 @@ export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=f
  host.append(sheet)
  document.body.append(host)
  try{
-  // Measure with the actual export fonts. Other fonts on the dashboard do not block the PDF.
-  await Promise.allSettled([
-   document.fonts.load('16px PDFTitr','برنامه هفتگی'),
-   document.fonts.load('16px PDFIranSans','نام دانش‌آموز و مشاور')
-  ])
+  await loadPlanPdfFonts(document.fonts)
   fitPrintText(sheet)
   const width=sheet.offsetWidth,height=sheet.offsetHeight
   // Fixed bounds and the canvas renderer avoid capturing a scrolled or clipped viewport.
   const canvas=await html2canvas(sheet,{
    scale:2, width, height, scrollX:0, scrollY:0, windowWidth:Math.max(width,document.documentElement.clientWidth),
    backgroundColor:'#fff',useCORS:true,logging:false,imageTimeout:4000,
+   onclone:clonedDocument=>loadPlanPdfFonts(clonedDocument.fonts),
    ignoreElements:el=>el.parentElement===document.body&&el!==host&&el.tagName!=='STYLE'&&el.tagName!=='LINK'
   })
   let image:Uint8Array

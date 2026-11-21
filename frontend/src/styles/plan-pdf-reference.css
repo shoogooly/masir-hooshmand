@@ -127,12 +127,12 @@
 .planner-pdf-sheet.print-theme-mono{--season-paper:#fff;--season-line:#ddd;--season-ink:#333}
 .planner-pdf-sheet.print-theme-mono .print-hero-brand strong,.planner-pdf-sheet.print-theme-mono .print-hero-brand small{color:#222!important}
 
-/* Export typography uses local Windows fonts where available. */
-@font-face{font-family:PDFTitr;src:local("B Titr"),local("BTitr"),local("B Titr Bold");font-weight:400 900}
-@font-face{font-family:PDFIranSans;src:local("IRANSans"),local("IRANSans Regular"),local("IRANSansWeb"),local("IRANSans (FaNum)")}
+/* Load the same font files for every PDF export. */
+@font-face{font-family:PDFTitr;src:url("/fonts/plan-pdf/BTitrBd.ttf") format("truetype");font-weight:400 900;font-display:block}
+@font-face{font-family:PDFIranSans;src:url("/fonts/plan-pdf/IRANSans.ttf") format("truetype");font-display:block}
 .planner-pdf-sheet{
- --pdf-title-font:PDFTitr,"B Titr",BTitr,Tahoma,"Noto Sans Arabic",sans-serif;
- --pdf-body-font:PDFIranSans,IRANSans,IRANSansWeb,Tahoma,"Noto Sans Arabic",sans-serif
+ --pdf-title-font:PDFTitr,Tahoma,"Noto Sans Arabic",sans-serif;
+ --pdf-body-font:PDFIranSans,Tahoma,"Noto Sans Arabic",sans-serif
 }
 .planner-pdf-sheet.print-theme-color,.planner-pdf-sheet.print-theme-mono{font-family:var(--pdf-body-font);padding:35px 18px!important}
 .planner-pdf-sheet .print-hero{flex-basis:106px;min-height:106px;grid-template-columns:265px minmax(0,1fr) 145px}
