@@ -54,20 +54,27 @@ test('a manual range color can override and then restore its subject color',()=>
  expect((block.querySelector('.timeline-inline-description') as HTMLElement).style.background).not.toBe('rgb(255, 255, 184)')
 })
 
-test('topic picker shows only final branches with their full path and prior count',async()=>{
+test.each([
+ ['یازدهم',['دهم','یازدهم','دوازدهم']],
+ ['هشتم',['هفتم','هشتم','نهم']]
+])('topic picker groups final branches by grade for %s',async(studentGrade,grades)=>{
+ const grade=grades[2]
  vi.mocked(api).mockImplementation(async(path)=>path.endsWith('/planner-topics')?[
-  {id:'root',subject:'فیزیک',title:'فیزیک',path:'فیزیک',grade:'دوازدهم',major:'تجربی',calendar_title:'تقویم',used_count:0,depth:1,is_leaf:false},
-  {id:'chapter',subject:'فیزیک',title:'فصل ۱',path:'فیزیک ← فصل ۱',grade:'دوازدهم',major:'تجربی',calendar_title:'تقویم',used_count:0,depth:2,is_leaf:false},
-  {id:'leaf',subject:'فیزیک',title:'حرکت',path:'فیزیک ← فصل ۱ ← درس ۱ ← حرکت',grade:'دوازدهم',major:'تجربی',calendar_title:'تقویم',used_count:2,depth:4,is_leaf:true}
- ] as never:path==='/plans'?[] as never:null as never)
+  {id:'root',subject:'فیزیک',title:'فیزیک',path:'فیزیک',grade,major:'تجربی',calendar_title:'تقویم',used_count:0,depth:1,is_leaf:false},
+  {id:'chapter',subject:'فیزیک',title:'فصل ۱',path:'فیزیک ← فصل ۱',grade,major:'تجربی',calendar_title:'تقویم',used_count:0,depth:2,is_leaf:false},
+  {id:'leaf',subject:'فیزیک',title:'حرکت',path:'فیزیک ← فصل ۱ ← درس ۱ ← حرکت',grade,major:'تجربی',calendar_title:'تقویم',used_count:2,depth:4,is_leaf:true}
+ ] as never:path.endsWith('/report')?{profile:{grade:studentGrade}} as never:path==='/plans'?[] as never:null as never)
  setup()
  fireEvent.click(screen.getAllByRole('button',{name:/افزودن بازه برای/})[0])
  editDescription('فیزیک')
  const block=screen.getByRole('button',{name:/ویرایش بازه فیزیک/})
  fireEvent.click(within(block).getByRole('button',{name:'مباحث بازه'}))
- expect(await screen.findByText('دوازدهم · فصل ۱، درس ۱، حرکت')).toBeTruthy()
+ expect(await screen.findByText('فصل ۱، درس ۱، حرکت')).toBeTruthy()
+ const groups=within(screen.getByRole('dialog')).getAllByRole('group')
+ expect(groups.map(group=>group.getAttribute('aria-label'))).toEqual(grades)
+ expect(within(groups[2]).getByRole('checkbox')).toBeTruthy()
  expect(screen.getByText('۲ بار')).toBeTruthy()
- expect(screen.queryByText('دوازدهم · فصل ۱')).toBeNull()
+ expect(screen.queryByText('فصل ۱')).toBeNull()
  editDescription('فیزیک\nمرور\nنوشته قبلی')
  fireEvent.click(screen.getByRole('checkbox'))
  await waitFor(()=>expect(descriptionText()).toBe('فیزیک\nمرور\nحرکت'))
