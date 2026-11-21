@@ -24,7 +24,7 @@ export default function StudyReportPlan({plan,student=false,studentName='دان�
   finally{setExporting(false)}
  }
  return <section className={'study-plan'+(student?' student-study-plan':' advisor-study-plan')} ref={tableRef} dir="rtl">
-  <div className="pdf-reference-header"><h1>برنامه هفتگی {studentName}</h1><p>مشاور و برنامه‌ریز: {advisorName}</p></div>
+  <div className="pdf-reference-header" data-student-name={studentName} data-advisor-name={advisorName}/>
   <header className="study-plan-heading"><div><h2>{plan.title}</h2><p>{plan.week_label}</p></div>{!student&&showDownload&&<button className="btn btn-primary" disabled={!data||exporting} onClick={download}>{exporting?'در حال ساخت PDF…':'دانلود برنامه و گزارش‌ها (A4)'}</button>}</header>
   {student?<div className="student-plan-facts"><article><span>🌱 شروع مسیر</span><b>{plan.days[0]?.date||'تعیین نشده'}</b></article><article><span>🏁 پایان برنامه</span><b>{plan.days.at(-1)?.date||'تعیین نشده'}</b></article><article className="weekly-mission"><span>✨ مأموریت هفته</span><b>{plan.weekly_mission||'قدم‌های کوچک، پیشرفت‌های بزرگ؛ این هفته با هم جلو می‌رویم.'}</b></article></div>:<p className="study-mission"><b>مأموریت هفته: </b>{plan.weekly_mission||'ثبت نشده است.'}</p>}
   {isLoading&&<p>در حال دریافت گزارش‌ها…</p>}{error&&<p role="alert">دریافت گزارش‌ها ناموفق بود؛ صفحه را تازه کنید.</p>}

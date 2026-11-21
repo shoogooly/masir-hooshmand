@@ -1,5 +1,5 @@
 import type {jsPDF as PdfDocument} from 'jspdf'
-import {lightSubjectBlockStyle} from './subjectColors'
+import {isDarkSubjectColor,lightSubjectBlockStyle,readableTextColor} from './subjectColors'
 import {timelineWeight} from './softTimeline'
 import type { WeeklyPlan } from '../types'
 import '../styles/plan-pdf-reference.css'
@@ -80,95 +80,42 @@ export function planSeason(date?:string){
  if(month>=10&&month<=12)return 'winter'
  return 'autumn'
 }
+function shadeHex(color:string,amount:number){
+ const channels=color.slice(1).match(/.{2}/g)!
+ return '#'+channels.map(channel=>Math.round(parseInt(channel,16)*amount).toString(16).padStart(2,'0')).join('')
+}
+
 export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=false){
  const sheet=node('section','planner-pdf-sheet print-theme-'+(colored?'color':'mono'));sheet.dir='rtl'
  const season=planSeason(plan.days.find(day=>day.date)?.date)
  sheet.classList.add('print-season-'+season)
- const motifs={
-  autumn:['<path d="M16 29C1 23 2 9 6 3c16 0 25 13 10 26Z" fill="#d99a42"/><path d="M16 32 9 8m5 15-7-4m6-3 4-7" stroke="#98603b" fill="none"/>','<path d="m16 3 4 8 7-4-2 9 6 2-11 9-4 3-5-4L1 18l7-2-2-9 7 4Z" fill="#bf6940"/><path d="M16 33V12m0 11 8-6m-8 6-7-6" stroke="#8f5037" fill="none"/>'],
-  winter:['<g fill="none" stroke="#85b9d3" stroke-width="1.6"><path d="M16 2v28M4 9l24 14M4 23 28 9M12 5l4 4 4-4M12 27l4-4 4 4M4 14l6-2-1-6m14 20-1-6 6-2M4 18l6 2-1 6m14-20-1 6 6 2"/></g>'],
-  spring:['<g fill="#edb8c6"><ellipse cx="16" cy="10" rx="5" ry="8"/><ellipse cx="10" cy="17" rx="8" ry="5"/><ellipse cx="22" cy="17" rx="8" ry="5"/><ellipse cx="16" cy="23" rx="5" ry="8"/></g><circle cx="16" cy="17" r="4" fill="#dbb45b"/>'],
-  summer:['<g stroke="#e7b94e" stroke-width="2"><path d="M16 1v5m0 20v5M1 16h5m20 0h5M5 5l4 4m14 14 4 4M5 27l4-4M23 9l4-4"/></g><circle cx="16" cy="16" r="8" fill="#f2cd6b"/>']
- }
- const decor=node('div','print-season-decor');decor.setAttribute('aria-hidden','true')
- const maple='M48 85 30 74 8 69 19 58 5 43 25 44 19 23 37 33 48 6 58 32 78 20 73 43 94 38 83 58 94 67 65 76 53 86Z'
- const oak='M48 86C30 82 17 71 26 64 7 56 16 43 29 46 14 31 29 20 38 29 32 9 48 0 55 14 65 2 78 18 65 31 84 25 92 42 74 49 95 53 83 69 66 67 72 80 59 85 48 86Z'
- const leaf='M48 87C12 77 6 42 48 7 91 38 85 74 48 87Z'
- function ornament(index:number,size:number,angle:number){
-  const img=document.createElement('img');img.alt='';img.className='print-season-ornament'
-  const palette=[['#f8c754','#bd5a1e'],['#df7133','#8d292c'],['#cb4b39','#772d39'],['#edab35','#bd6224']][index%4]
-  const shape=[maple,oak,leaf][index%3]
-  const artwork=season==='autumn'?`<defs><linearGradient id="leaf" x2=".8" y2="1"><stop stop-color="${palette[0]}"/><stop offset="1" stop-color="${palette[1]}"/></linearGradient></defs><path d="${shape}" fill="url(#leaf)" stroke="${palette[1]}" stroke-width=".7"/><path d="M48 98 49 24M49 73 27 58m22 5 24-15M49 49 34 35m15 8 14-13" fill="none" stroke="#793c27" stroke-opacity=".6" stroke-width="1.4" stroke-linecap="round"/>`:motifs[season][index%motifs[season].length]
-  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 ${season==='autumn'?'100 100':'34 34'}">${artwork}</svg>`)
-  img.style.cssText=`width:${size}px;height:${size}px;transform:rotate(${angle}deg)`
-  if(season==='autumn'){
-   const variant=index%3
-   img.src='/brand/'+['autumn-natural-cluster.png','autumn-branch.png','autumn-maple.png'][variant]
-   img.style.width=size*(variant===2?1:1.65)+'px';img.style.height=size*(variant===0?.83:variant===1?1.1:.9)+'px'
-  }else{
-   const variant=index%3
-   const files=[`${season}-natural-v2-1.png`,`${season}-natural-v2-2.png`,`${season}-natural-v2-3.png`]
-   img.src='/brand/'+files[variant]
-   img.style.width=size*1.65+'px';img.style.height=size*.825+'px'
-   if(season==='winter')img.style.transform=`rotate(${Math.round(angle/90)*90+(index%3-1)*8}deg)`
+ const decor=node('div','print-season-decor')
+ decor.setAttribute('aria-hidden','true')
+ const autumn=season==='autumn'
+ const assets=autumn
+  ? ['autumn-natural-cluster.png','autumn-branch.png','autumn-maple.png']
+  : [1,2,3].map(index=>`${season}-natural-v2-${index}.png`)
+ for(const edge of ['top','bottom'] as const){
+  const strip=node('div',`print-season-strip print-season-strip-${edge}`)
+  for(let index=0;index<13;index++){
+   const variant=(index+(edge==='bottom'?1:0))%assets.length
+   const size=(autumn?[105,79,60,92,73]:[80,66,88,72,76])[index%5]
+   const img=document.createElement('img')
+   img.alt=''
+   img.className='print-season-ornament'
+   img.src='/brand/'+assets[variant]
+   img.style.left=(index*8-2)+'%'
+   img.style.width=size*(autumn&&variant===2?1:1.65)+'px'
+   img.style.height=size*(autumn?[.83,1.1,.9][variant]:.825)+'px'
+   img.style.transform=`rotate(${(edge==='bottom'?180:0)+[-18,24,-7,12][index%4]}deg)`
+   strip.append(img)
   }
-  return img
- }
- // Deliberate clusters at the corners; breathing room along the long edges.
- const positions=[[0,0,65,-35],[3,-1,52,35],[7,0,42,95],[0,6,47,-60],[94,-1,65,40],[90,0,43,-30],[97,5,48,120],[0,88,58,10],[3,94,64,-50],[8,96,44,60],[95,92,68,35],[91,96,48,-70],[97,85,46,120],[22,-1,36,40],[51,0,32,-20],[75,-1,40,65],[27,96,36,-45],[65,97,38,45],[0,35,38,-40],[97,53,42,70],[0,69,34,20]]
- for(const [i,[x,y,size,angle]] of positions.entries()){
-  const img=ornament(i,size,angle);img.style.left=x+'%';img.style.top=y+'%';decor.append(img)
- }
- if(season!=='autumn'){
-  decor.replaceChildren()
-  const xPositions=[-2,7,17,29,40,51,63,74,86,95]
-  for(let i=0;i<xPositions.length;i++)for(const bottom of [false,true]){
-   const item=ornament(i+(bottom?1:0),[76,62,86,68][(i+(bottom?2:0))%4],(bottom?175:0)+[-28,21,-9,34][i%4])
-   item.style.left=(xPositions[i]+(bottom?1:0))+'%';item.style.top=bottom?'94.5%':[-3.5,-2,-4.5,-2.8][i%4]+'%';decor.append(item)
-  }
-  const yPositions=[3,15,28,42,56,69,82,93]
-  for(let i=0;i<yPositions.length;i++)for(const right of [false,true]){
-   const item=ornament(i+(right?2:0),[67,55,77,61][i%4],(right?-88:91)+[-18,27,-31,12][i%4])
-   item.style.left=right?'95.5%':'-3.8%';item.style.top=(yPositions[i]+(right?2:0))+'%';decor.append(item)
-  }
-  for(const [i,x] of [3,12,22,35,45,57,68,80,91].entries())for(const bottom of [false,true]){
-   const item=ornament(i+2+(bottom?1:0),[55,72,49,64][i%4],(bottom?181:-4)+[37,-24,16,-35][i%4])
-   item.style.left=(x+(bottom?1.8:0))+'%';item.style.top=bottom?'96%':'-3.2%';decor.append(item)
-  }
-  for(const [i,y] of [8,21,34,48,62,75,88].entries())for(const right of [false,true]){
-   const item=ornament(i+1+(right?2:0),[51,69,57,74][i%4],(right?-91:86)+[29,-36,13][i%3])
-   item.style.left=right?'96.7%':'-3.7%';item.style.top=(y+(right?2:-1))+'%';decor.append(item)
-  }
- }
- if(season==='autumn'){
-  decor.replaceChildren()
-  const offsets=[-3,4,12,19,29,35,44,53,59,69,78,85,94]
-  for(let i=0;i<offsets.length;i++){
-   for(const bottom of [false,true]){
-    const variant=bottom?(i*7+2)%3:i%3
-    const spray=ornament(variant,[110,85,67,102,76][(i+(bottom?2:0))%5],(bottom?165:0)+[22,-31,48,-12,8][i%5])
-    spray.style.left=(offsets[i]+(bottom?2:0))+'%';spray.style.top=(bottom?94+[1,-1,2,0][i%4]:[-4,-3,-2.8,-5][i%4])+'%'
-    decor.append(spray)
-   }
-  }
-  for(let i=0;i<7;i++)for(const right of [false,true]){
-   const spray=ornament(i+(right?1:0),[75,64,48,82][i%4],(right?-82:87)+[12,-27,34][i%3])
-   spray.style.left=right?'96%':'-4%';spray.style.top=([9,21,36,47,61,76,86][i]+(right?4:0))+'%';decor.append(spray)
-  }
-  // Fill the open stretches with smaller, offset clusters, not a repeated strip.
-  for(const [i,y] of [4,17,28,32,43,55,66,71,82,91].entries())for(const right of [false,true]){
-   const spray=ornament((i+(right?2:0))%3,[62,54,72,58][i%4],(right?-95:78)+[24,-18,39,-31][i%4])
-   spray.style.left=right?'96.5%':'-3.6%';spray.style.top=(y+(right?2:-1))+'%';decor.append(spray)
-  }
-  for(const [i,x] of [7,16,25,38,47,57,66,75,88].entries())for(const bottom of [false,true]){
-   const spray=ornament((i+(bottom?1:0))%3,[73,59,82,65][i%4],(bottom?172:5)+[-27,36,-9,18][i%4])
-   spray.style.left=(x+(bottom?1.5:0))+'%';spray.style.top=bottom?'96%':'-3.8%';decor.append(spray)
-  }
+  decor.append(strip)
  }
  sheet.append(decor)
  const reference=source.querySelector<HTMLElement>('.pdf-reference-header')
- const studentName=reference?.dataset.studentName||reference?.querySelector('h1')?.textContent||plan.title
- const advisorName=reference?.dataset.advisorName||reference?.querySelector('p')?.textContent||'—'
+ const studentName=reference?.dataset.studentName?.trim()||plan.title
+ const advisorName=reference?.dataset.advisorName?.trim()||'—'
  const header=node('header','print-hero print-season-'+planSeason(plan.days.find(day=>day.date)?.date))
  const identity=node('div','print-hero-identity')
  const number=node('div','print-hero-number')
@@ -176,7 +123,13 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
  else {number.classList.add('print-hero-draft');number.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5zM15 3v5h5M8 13h7M8 17h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/><path d="m16 15 3-3 2 2-3 3-3 1z" fill="currentColor"/></svg><span>پیش‌نویس</span>';number.setAttribute('aria-label','پیش‌نویس')}
  identity.append(number)
  const names=node('div','print-hero-names')
- names.append(node('div','',`دانش‌آموز: ${studentName}`),node('div','',`مشاور: ${advisorName}`))
+ for(const [label,value] of [['دانش‌آموز',studentName],['مشاور',advisorName]]){
+  const row=node('div','print-hero-name')
+  const name=node('bdi','print-hero-name-value',value)
+  name.dir='rtl'
+  row.append(node('span','print-hero-name-label',label+': '),name)
+  names.append(row)
+ }
  identity.append(names)
  const message=node('div','print-hero-message')
  const quote=node('div','print-hero-quote',plan.motivational_quote?.trim()||'با برنامه، هر روز یک قدم جلوتر به رؤیاهایت نزدیک‌تر شو.')
@@ -199,7 +152,20 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
   for(const item of items){
    const card=node('article','print-plan-card'+(item.rest?' print-plan-rest':''))
    card.dataset.minutes=String(item.end-item.start)
-   if(colored&&!item.rest){const style=lightSubjectBlockStyle(item.title,item.subject,item.color);card.style.background=style.background;card.style.borderColor=style.borderColor;card.style.color=style.color;card.style.setProperty('--card-head',style.borderColor)}
+   if(colored&&!item.rest){
+    const style=lightSubjectBlockStyle(item.title,item.subject,item.color)
+    let body=style.background,head=style.borderColor
+    if(isDarkSubjectColor(item.color)){
+     // Retain the selected hue and ensure both bands can carry white print text.
+     if(readableTextColor(body)!=='#ffffff')body=shadeHex(body,.45)
+     head=shadeHex(body,.78)
+    }
+    card.style.background=body
+    card.style.borderColor=head
+    card.style.color=style.color
+    card.style.setProperty('--card-head',head)
+    card.style.setProperty('--card-body',body)
+   }
    const time=node('small','print-plan-time')
    const timeText=node('span','print-plan-time-text')
    if(item.rest){timeText.dir='rtl';timeText.textContent=restDuration(item.end-item.start)}
@@ -221,61 +187,142 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
    cards.append(card)
   }
   row.append(cards);table.append(row)
-  if(dayIndex<plan.days.length-1){
-   const divider=node('div','print-day-divider')
-   if(dayIndex%2===0){const fallen=ornament(dayIndex+1,30,dayIndex*37-40);fallen.style.left=[18,62,37][dayIndex/2%3]+'%';divider.append(fallen)}
-   table.append(divider)
-  }
+  if(dayIndex<plan.days.length-1)table.append(node('div','print-day-divider'))
  }
  sheet.append(table)
  return sheet
 }
+function encodePrintImage(canvas:HTMLCanvasElement){
+ return new Promise<Blob>((resolve,reject)=>{
+  canvas.toBlob(blob=>{
+   if(blob?.size)resolve(blob)
+   else reject(new Error('ساخت تصویر برنامه ناموفق بود؛ دوباره تلاش کنید.'))
+  },'image/jpeg',.92)
+ })
+}
+
+async function loadPlanPdfFonts(fonts:FontFaceSet){
+ const loaded=await Promise.allSettled([
+  fonts.load('700 16px PDFTitr','برنامه هفتگی'),
+  fonts.load('400 16px PDFIranSans','نام دانش‌آموز و مشاور')
+ ])
+ if(loaded.some(result=>result.status==='rejected'||!result.value.some(face=>face.status==='loaded'))){
+  throw new Error('فونت‌های PDF بارگذاری نشدند. اتصال اینترنت را بررسی و دوباره تلاش کنید.')
+ }
+}
+
+const shapedTextSelector='.print-plan-card-first-line,.print-plan-card-detail,.print-hero-quote,.print-hero-mission strong'
+
+function captureShapedText(sheet:HTMLElement){
+ const origin=sheet.getBoundingClientRect()
+ const view=sheet.ownerDocument.defaultView!
+ const range=sheet.ownerDocument.createRange()
+ return Array.from(sheet.querySelectorAll<HTMLElement>(shapedTextSelector),element=>{
+  const style=view.getComputedStyle(element)
+  const bounds=element.getBoundingClientRect()
+  const clip=element.closest('.print-plan-card-title,.print-hero-mission')?.getBoundingClientRect()??bounds
+  const text=element.firstChild as Text|null
+  const lines:{text:string;right:number;top:number;bottom:number;end:number}[]=[]
+  if(text){
+   for(const word of text.data.matchAll(/\S+/gu)){
+    const start=word.index
+    const end=start+word[0].length
+    range.setStart(text,start)
+    range.setEnd(text,end)
+    const rect=range.getBoundingClientRect()
+    const last=lines.at(-1)
+    if(last&&Math.abs(last.top-(rect.top-origin.top))<1){
+     last.text+=text.data.slice(last.end,end)
+     last.right=Math.max(last.right,rect.right-origin.left)
+     last.end=end
+    }else lines.push({text:word[0],right:rect.right-origin.left,top:rect.top-origin.top,bottom:rect.bottom-origin.top,end})
+   }
+  }
+  const left=Math.max(bounds.left,clip.left)-origin.left
+  const top=Math.max(bounds.top,clip.top)-origin.top
+  const right=Math.min(bounds.right,clip.right)-origin.left
+  const bottom=Math.min(bounds.bottom,clip.bottom)-origin.top
+  element.style.visibility='hidden'
+  return {font:`${style.fontWeight} ${style.fontSize} ${style.fontFamily}`,color:style.color,lines,left,top,right,bottom}
+ })
+}
+
+function drawShapedText(context:CanvasRenderingContext2D,scale:number,blocks:ReturnType<typeof captureShapedText>){
+ context.save()
+ context.setTransform(scale,0,0,scale,0,0)
+ context.direction='rtl'
+ context.textAlign='right'
+ context.textBaseline='alphabetic'
+ for(const block of blocks){
+  if(block.right<=block.left||block.bottom<=block.top)continue
+  context.save()
+  context.beginPath()
+  context.rect(block.left,block.top,block.right-block.left,block.bottom-block.top)
+  context.clip()
+  context.font=block.font
+  context.fillStyle=block.color
+  for(const line of block.lines){
+   const metrics=context.measureText(line.text)
+   const baseline=(line.top+line.bottom+metrics.fontBoundingBoxAscent-metrics.fontBoundingBoxDescent)/2
+   context.fillText(line.text,line.right,baseline)
+  }
+  context.restore()
+ }
+ context.restore()
+}
+
 export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false,appendTo?:PdfDocument){
  const [{default:html2canvas},{jsPDF}]=await Promise.all([import('html2canvas'),import('jspdf')])
- await document.fonts.ready
- const host=node('div','print-plan-host'),sheet=createPrintSheet(element,plan,colored)
- host.append(sheet);document.body.append(host)
+ const sheet=createPrintSheet(element,plan,colored)
+ const host=node('div','print-plan-host')
+ host.append(sheet)
+ document.body.append(host)
  try{
-  // Inserting the sheet can load fonts not used elsewhere on the page.
-  sheet.getBoundingClientRect()
-  await document.fonts.ready
-  await Promise.all(Array.from(sheet.querySelectorAll('img'),async img=>{
-   // Embed assets before SVG rendering; external image URLs are not available
-   // inside the isolated SVG image document used by foreignObject.
-   if(!img.src.startsWith('data:')){
-    const response=await fetch(img.currentSrc||img.src)
-    if(!response.ok)throw new Error('تصویر برنامه بارگذاری نشد؛ دوباره تلاش کنید.')
-    const blob=await response.blob()
-    img.src=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)})
-   }
-   await img.decode()
-  }))
-  for(const el of [sheet,...sheet.querySelectorAll<HTMLElement>('*')])el.style.setProperty('font-family','Tahoma, sans-serif','important')
-  // Keep nested text widths tied to the card when the browser serializes styles.
-  for(const span of sheet.querySelectorAll<HTMLElement>('.print-plan-card-first-line,.print-plan-card-detail')){span.style.width='100%';span.style.maxWidth='100%';span.style.textAlign='center'}
+  await loadPlanPdfFonts(document.fonts)
   fitPrintText(sheet)
-  const width=sheet.offsetWidth,height=sheet.scrollHeight
+  const width=sheet.offsetWidth,height=sheet.offsetHeight
+  // Fixed bounds and the canvas renderer avoid capturing a scrolled or clipped viewport.
+  let shapedText:ReturnType<typeof captureShapedText>=[]
+  const canvas=await html2canvas(sheet,{
+   scale:2, width, height, scrollX:0, scrollY:0, windowWidth:Math.max(width,document.documentElement.clientWidth),
+   backgroundColor:'#fff',useCORS:true,logging:false,imageTimeout:4000,
+   onclone:async(clonedDocument,clonedSheet)=>{
+    await loadPlanPdfFonts(clonedDocument.fonts)
+    // Canvas shapes a complete Persian line and resolves mixed-direction text together.
+    shapedText=captureShapedText(clonedSheet)
+   },
+   ignoreElements:el=>el.parentElement===document.body&&el!==host&&el.tagName!=='STYLE'&&el.tagName!=='LINK'
+  })
+  let image:Uint8Array
+  try{
+   const context=canvas.getContext('2d')
+   if(!context||canvas.width!==width*2||canvas.height!==height*2)throw new Error('صفحهٔ برنامه کامل ساخته نشد؛ دوباره تلاش کنید.')
+   drawShapedText(context,2,shapedText)
+   const preview=document.createElement('canvas')
+   preview.width=64
+   preview.height=44
+   const sample=preview.getContext('2d',{willReadFrequently:true})!
+   sample.drawImage(canvas,0,0,64,44)
+   for(const top of [0,24]){
+    const pixels=sample.getImageData(0,top,64,20).data
+    if(!pixels.some((value,index)=>index%4!==3&&value<190))throw new Error('صفحهٔ برنامه کامل ساخته نشد؛ دوباره تلاش کنید.')
+   }
+   if(!colored){
+    const pixels=context.getImageData(0,0,canvas.width,canvas.height)
+    for(let i=0;i<pixels.data.length;i+=4){
+     const gray=Math.round(.2126*pixels.data[i]+.7152*pixels.data[i+1]+.0722*pixels.data[i+2])
+     pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=gray
+    }
+    context.putImageData(pixels,0,0)
+   }
+   image=new Uint8Array(await (await encodePrintImage(canvas)).arrayBuffer())
+  }finally{canvas.width=canvas.height=0}
   const page=singlePageSize(width,height)
-  const canvas=await html2canvas(sheet,{scale:3,backgroundColor:'#fff',useCORS:true,logging:false,windowWidth:1500,foreignObjectRendering:true,onclone:(_doc,clonedSheet)=>{
-   // The export host is offscreen; normalize it before html2canvas measures
-   // the cloned bounds, otherwise foreignObject paints outside the canvas.
-   if(clonedSheet.parentElement)clonedSheet.parentElement.style.cssText='position:absolute;left:0;top:0;margin:0;padding:0'
-   // Native browser shaping preserves Persian joins and bidi runs across wrapped lines.
-   // SVG foreignObject cannot reuse remote @font-face resources; use the installed
-   // Persian-capable font consistently in both measurement and rendering.
-   for(const el of [clonedSheet,...clonedSheet.querySelectorAll<HTMLElement>('*')])el.style.setProperty('font-family','Tahoma, sans-serif','important')
-  }})
-  if(!colored){
-   const context=canvas.getContext('2d')!
-   const pixels=context.getImageData(0,0,canvas.width,canvas.height)
-   for(let i=0;i<pixels.data.length;i+=4){const gray=Math.round(.2126*pixels.data[i]+.7152*pixels.data[i+1]+.0722*pixels.data[i+2]);pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=gray}
-   context.putImageData(pixels,0,0)
-  }
   const pdf=appendTo||new jsPDF({orientation:'landscape',unit:'pt',format:[page.width,page.height],compress:true})
   if(appendTo)pdf.addPage([page.width,page.height],'landscape')
   const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight()
-  const scale=Math.min((pw-2*page.margin)/canvas.width,(ph-2*page.margin)/canvas.height)
-  pdf.addImage(canvas.toDataURL('image/jpeg',.94),'JPEG',(pw-canvas.width*scale)/2,(ph-canvas.height*scale)/2,canvas.width*scale,canvas.height*scale,undefined,'SLOW')
+  const scale=Math.min((pw-2*page.margin)/width,(ph-2*page.margin)/height)
+  pdf.addImage(image,'JPEG',(pw-width*scale)/2,(ph-height*scale)/2,width*scale,height*scale)
   return pdf
  }finally{host.remove()}
 }
@@ -309,7 +356,7 @@ export function fitPrintText(sheet:HTMLElement){
    day.style.fontSize=size+'px'
   }
  }
- for(const [selector,initial,minimum] of [['.print-hero-quote',22,12],['.print-hero-mission strong',23,11],['.print-hero-names',19,12]] as const){
+ for(const [selector,initial,minimum] of [['.print-hero-quote',15,10],['.print-hero-mission strong',14,10],['.print-hero-names',16,11]] as const){
   const value=sheet.querySelector<HTMLElement>(selector)
   if(!value)continue
   let size=initial
@@ -326,8 +373,8 @@ export async function exportPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=
 
 
 export async function exportArchivedPlans(plans:WeeklyPlan[],studentName:string,advisorName:string,colored=true){
- const source=document.createElement('div'),head=document.createElement('header'),title=document.createElement('h1'),advisor=document.createElement('p')
- head.className='pdf-reference-header';head.dataset.studentName=studentName;head.dataset.advisorName=advisorName;title.textContent='برنامه هفتگی '+studentName;advisor.textContent='مشاور و برنامه‌ریز: '+advisorName;head.append(title,advisor);source.append(head)
+ const source=document.createElement('div'),head=node('header','pdf-reference-header')
+ head.dataset.studentName=studentName;head.dataset.advisorName=advisorName;source.append(head)
  let pdf:PdfDocument|undefined
  for(const plan of plans)pdf=await buildPlanPdf(source,plan,colored,pdf)
  if(pdf){
