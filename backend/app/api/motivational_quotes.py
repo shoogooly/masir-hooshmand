@@ -11,6 +11,7 @@ from app.core.security import roles
 from app.db.session import get_db
 from app.integration_service import get, set_value
 from app.services import audit
+from app.plan_quote_defaults import DEFAULT_QUOTES
 
 router = APIRouter()
 SETTING_KEY = "plan_motivational_quotes_v1"
@@ -28,12 +29,14 @@ def read_quotes(db: Session) -> list[str]:
             return [str(item).strip()[:240] for item in value]
     except (ValueError, TypeError):
         pass
-    return [""] * 31
+    return list(DEFAULT_QUOTES)
 
 
 def quote_for_publication(db: Session, published_at: datetime) -> str:
-    day = jdatetime.date.fromgregorian(date=published_at.astimezone(ZoneInfo("Asia/Tehran")).date()).day
-    return read_quotes(db)[day - 1] or DEFAULT_QUOTE
+    date = jdatetime.date.fromgregorian(date=published_at.astimezone(ZoneInfo("Asia/Tehran")).date())
+    quotes = read_quotes(db)
+    index = date.day - 1
+    return quotes[index] or DEFAULT_QUOTE
 
 
 @router.get("/admin/motivational-quotes")
@@ -53,3 +56,12 @@ def save_quotes(payload: QuotesInput, user=Depends(roles("super_admin", "operati
           after={"filled_days": sum(bool(item) for item in quotes)})
     db.commit()
     return {"success": True, "data": quotes}
+
+
+def install_quote_collection(db):
+    marker = "plan_quotes_collection_20261121"
+    if get(db, marker, "") == "installed":
+        return
+    set_value(db, SETTING_KEY, json.dumps(DEFAULT_QUOTES, ensure_ascii=False))
+    set_value(db, marker, "installed")
+    db.commit()

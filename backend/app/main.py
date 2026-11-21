@@ -49,6 +49,8 @@ async def lifespan(_app: FastAPI):
         Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed_database(db)
+        from app.api.motivational_quotes import install_quote_collection
+        install_quote_collection(db)
     ai_stop = Event()
     ai_thread = Thread(target=ai_worker, args=(ai_stop,), daemon=True, name="weekly-ai")
     ai_thread.start()

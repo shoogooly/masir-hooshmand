@@ -239,11 +239,38 @@ export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=f
   // Inserting the sheet can load fonts not used elsewhere on the page.
   sheet.getBoundingClientRect()
   await document.fonts.ready
-  await Promise.all(Array.from(sheet.querySelectorAll('img'),img=>img.decode().catch(()=>{})))
+  await Promise.all(Array.from(sheet.querySelectorAll('img'),async img=>{
+   // Embed assets before SVG rendering; external image URLs are not available
+   // inside the isolated SVG image document used by foreignObject.
+   if(!img.src.startsWith('data:')){
+    const response=await fetch(img.currentSrc||img.src)
+    if(!response.ok)throw new Error('تصویر برنامه بارگذاری نشد؛ دوباره تلاش کنید.')
+    const blob=await response.blob()
+    img.src=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)})
+   }
+   await img.decode()
+  }))
+  for(const el of [sheet,...sheet.querySelectorAll<HTMLElement>('*')])el.style.setProperty('font-family','Tahoma, sans-serif','important')
+  // Keep nested text widths tied to the card when the browser serializes styles.
+  for(const span of sheet.querySelectorAll<HTMLElement>('.print-plan-card-first-line,.print-plan-card-detail')){span.style.width='100%';span.style.maxWidth='100%';span.style.textAlign='center'}
   fitPrintText(sheet)
   const width=sheet.offsetWidth,height=sheet.scrollHeight
   const page=singlePageSize(width,height)
-  const canvas=await html2canvas(sheet,{scale:3,backgroundColor:'#fff',useCORS:true,logging:false,windowWidth:1500})
+  const canvas=await html2canvas(sheet,{scale:3,backgroundColor:'#fff',useCORS:true,logging:false,windowWidth:1500,foreignObjectRendering:true,onclone:(_doc,clonedSheet)=>{
+   // The export host is offscreen; normalize it before html2canvas measures
+   // the cloned bounds, otherwise foreignObject paints outside the canvas.
+   if(clonedSheet.parentElement)clonedSheet.parentElement.style.cssText='position:absolute;left:0;top:0;margin:0;padding:0'
+   // Native browser shaping preserves Persian joins and bidi runs across wrapped lines.
+   // SVG foreignObject cannot reuse remote @font-face resources; use the installed
+   // Persian-capable font consistently in both measurement and rendering.
+   for(const el of [clonedSheet,...clonedSheet.querySelectorAll<HTMLElement>('*')])el.style.setProperty('font-family','Tahoma, sans-serif','important')
+  }})
+  if(!colored){
+   const context=canvas.getContext('2d')!
+   const pixels=context.getImageData(0,0,canvas.width,canvas.height)
+   for(let i=0;i<pixels.data.length;i+=4){const gray=Math.round(.2126*pixels.data[i]+.7152*pixels.data[i+1]+.0722*pixels.data[i+2]);pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=gray}
+   context.putImageData(pixels,0,0)
+  }
   const pdf=appendTo||new jsPDF({orientation:'landscape',unit:'pt',format:[page.width,page.height],compress:true})
   if(appendTo)pdf.addPage([page.width,page.height],'landscape')
   const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight()
@@ -270,6 +297,16 @@ export function fitPrintText(sheet:HTMLElement){
    size=Math.max(2,Math.min(size,size*available/measured))
    label.style.setProperty('font-size',`${size}px`,'important')
    while(size>2&&label.getBoundingClientRect().width>available){size=Math.max(2,size-.25);label.style.setProperty('font-size',`${size}px`,'important')}
+  }
+ }
+ for(const day of sheet.querySelectorAll<HTMLElement>('.print-plan-date b')){
+  const available=(day.parentElement?.clientWidth||0)-20
+  day.style.whiteSpace='nowrap'
+  day.style.width='max-content'
+  let size=parseFloat(getComputedStyle(day).fontSize)
+  while(size>14&&day.getBoundingClientRect().width>available){
+   size-=.5
+   day.style.fontSize=size+'px'
   }
  }
  for(const [selector,initial,minimum] of [['.print-hero-quote',22,12],['.print-hero-mission strong',23,11],['.print-hero-names',19,12]] as const){

@@ -34,3 +34,21 @@ def test_admin_quotes_are_snapshotted_on_publication_day(env, monkeypatch):
     admin.put(path, headers=admin_headers, json={"quotes": ["جمله جدید"] * 31})
     detail = student.get(f"/api/v1/plans/{plan_id}", headers=student_headers).json()["data"]
     assert detail["motivational_quote"] == quotes[day - 1]
+
+
+def test_requested_collection_has_31_days_and_installs_only_once(env):
+    from app.api.motivational_quotes import install_quote_collection, read_quotes, SETTING_KEY
+    from app.plan_quote_defaults import DEFAULT_QUOTES
+    from app.db.session import SessionLocal
+    from app.integration_service import set_value
+    assert len(DEFAULT_QUOTES) == 31
+    assert not any(text.startswith("از همین اول") for text in DEFAULT_QUOTES)
+    with SessionLocal() as db:
+        set_value(db, "plan_quotes_collection_20261121", "")
+        db.commit()
+        install_quote_collection(db)
+        assert read_quotes(db) == DEFAULT_QUOTES
+        changed = list(DEFAULT_QUOTES); changed[0] = "ویرایش مدیر"
+        set_value(db, SETTING_KEY, __import__('json').dumps(changed)); db.commit()
+        install_quote_collection(db)
+        assert read_quotes(db) == changed
