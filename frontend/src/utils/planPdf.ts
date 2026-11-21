@@ -1,5 +1,5 @@
 import type {jsPDF as PdfDocument} from 'jspdf'
-import {lightSubjectBlockStyle} from './subjectColors'
+import {isDarkSubjectColor,lightSubjectBlockStyle,readableTextColor} from './subjectColors'
 import {timelineWeight} from './softTimeline'
 import type { WeeklyPlan } from '../types'
 import '../styles/plan-pdf-reference.css'
@@ -80,6 +80,11 @@ export function planSeason(date?:string){
  if(month>=10&&month<=12)return 'winter'
  return 'autumn'
 }
+function shadeHex(color:string,amount:number){
+ const channels=color.slice(1).match(/.{2}/g)!
+ return '#'+channels.map(channel=>Math.round(parseInt(channel,16)*amount).toString(16).padStart(2,'0')).join('')
+}
+
 export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=false){
  const sheet=node('section','planner-pdf-sheet print-theme-'+(colored?'color':'mono'));sheet.dir='rtl'
  const season=planSeason(plan.days.find(day=>day.date)?.date)
@@ -147,7 +152,20 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
   for(const item of items){
    const card=node('article','print-plan-card'+(item.rest?' print-plan-rest':''))
    card.dataset.minutes=String(item.end-item.start)
-   if(colored&&!item.rest){const style=lightSubjectBlockStyle(item.title,item.subject,item.color);card.style.background=style.background;card.style.borderColor=style.borderColor;card.style.color=style.color;card.style.setProperty('--card-head',style.borderColor)}
+   if(colored&&!item.rest){
+    const style=lightSubjectBlockStyle(item.title,item.subject,item.color)
+    let body=style.background,head=style.borderColor
+    if(isDarkSubjectColor(item.color)){
+     // Retain the selected hue and ensure both bands can carry white print text.
+     if(readableTextColor(body)!=='#ffffff')body=shadeHex(body,.45)
+     head=shadeHex(body,.78)
+    }
+    card.style.background=body
+    card.style.borderColor=head
+    card.style.color=style.color
+    card.style.setProperty('--card-head',head)
+    card.style.setProperty('--card-body',body)
+   }
    const time=node('small','print-plan-time')
    const timeText=node('span','print-plan-time-text')
    if(item.rest){timeText.dir='rtl';timeText.textContent=restDuration(item.end-item.start)}
@@ -193,6 +211,66 @@ async function loadPlanPdfFonts(fonts:FontFaceSet){
  }
 }
 
+const shapedTextSelector='.print-plan-card-first-line,.print-plan-card-detail,.print-hero-quote,.print-hero-mission strong'
+
+function captureShapedText(sheet:HTMLElement){
+ const origin=sheet.getBoundingClientRect()
+ const view=sheet.ownerDocument.defaultView!
+ const range=sheet.ownerDocument.createRange()
+ return Array.from(sheet.querySelectorAll<HTMLElement>(shapedTextSelector),element=>{
+  const style=view.getComputedStyle(element)
+  const bounds=element.getBoundingClientRect()
+  const clip=element.closest('.print-plan-card-title,.print-hero-mission')?.getBoundingClientRect()??bounds
+  const text=element.firstChild as Text|null
+  const lines:{text:string;right:number;top:number;bottom:number;end:number}[]=[]
+  if(text){
+   for(const word of text.data.matchAll(/\S+/gu)){
+    const start=word.index
+    const end=start+word[0].length
+    range.setStart(text,start)
+    range.setEnd(text,end)
+    const rect=range.getBoundingClientRect()
+    const last=lines.at(-1)
+    if(last&&Math.abs(last.top-(rect.top-origin.top))<1){
+     last.text+=text.data.slice(last.end,end)
+     last.right=Math.max(last.right,rect.right-origin.left)
+     last.end=end
+    }else lines.push({text:word[0],right:rect.right-origin.left,top:rect.top-origin.top,bottom:rect.bottom-origin.top,end})
+   }
+  }
+  const left=Math.max(bounds.left,clip.left)-origin.left
+  const top=Math.max(bounds.top,clip.top)-origin.top
+  const right=Math.min(bounds.right,clip.right)-origin.left
+  const bottom=Math.min(bounds.bottom,clip.bottom)-origin.top
+  element.style.visibility='hidden'
+  return {font:`${style.fontWeight} ${style.fontSize} ${style.fontFamily}`,color:style.color,lines,left,top,right,bottom}
+ })
+}
+
+function drawShapedText(context:CanvasRenderingContext2D,scale:number,blocks:ReturnType<typeof captureShapedText>){
+ context.save()
+ context.setTransform(scale,0,0,scale,0,0)
+ context.direction='rtl'
+ context.textAlign='right'
+ context.textBaseline='alphabetic'
+ for(const block of blocks){
+  if(block.right<=block.left||block.bottom<=block.top)continue
+  context.save()
+  context.beginPath()
+  context.rect(block.left,block.top,block.right-block.left,block.bottom-block.top)
+  context.clip()
+  context.font=block.font
+  context.fillStyle=block.color
+  for(const line of block.lines){
+   const metrics=context.measureText(line.text)
+   const baseline=(line.top+line.bottom+metrics.fontBoundingBoxAscent-metrics.fontBoundingBoxDescent)/2
+   context.fillText(line.text,line.right,baseline)
+  }
+  context.restore()
+ }
+ context.restore()
+}
+
 export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false,appendTo?:PdfDocument){
  const [{default:html2canvas},{jsPDF}]=await Promise.all([import('html2canvas'),import('jspdf')])
  const sheet=createPrintSheet(element,plan,colored)
@@ -204,16 +282,22 @@ export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=f
   fitPrintText(sheet)
   const width=sheet.offsetWidth,height=sheet.offsetHeight
   // Fixed bounds and the canvas renderer avoid capturing a scrolled or clipped viewport.
+  let shapedText:ReturnType<typeof captureShapedText>=[]
   const canvas=await html2canvas(sheet,{
    scale:2, width, height, scrollX:0, scrollY:0, windowWidth:Math.max(width,document.documentElement.clientWidth),
    backgroundColor:'#fff',useCORS:true,logging:false,imageTimeout:4000,
-   onclone:clonedDocument=>loadPlanPdfFonts(clonedDocument.fonts),
+   onclone:async(clonedDocument,clonedSheet)=>{
+    await loadPlanPdfFonts(clonedDocument.fonts)
+    // Canvas shapes a complete Persian line and resolves mixed-direction text together.
+    shapedText=captureShapedText(clonedSheet)
+   },
    ignoreElements:el=>el.parentElement===document.body&&el!==host&&el.tagName!=='STYLE'&&el.tagName!=='LINK'
   })
   let image:Uint8Array
   try{
    const context=canvas.getContext('2d')
    if(!context||canvas.width!==width*2||canvas.height!==height*2)throw new Error('صفحهٔ برنامه کامل ساخته نشد؛ دوباره تلاش کنید.')
+   drawShapedText(context,2,shapedText)
    const preview=document.createElement('canvas')
    preview.width=64
    preview.height=44
