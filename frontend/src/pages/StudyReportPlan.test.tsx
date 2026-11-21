@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from 'vitest'
 import { api } from '../api'
 import StudyReportPlan from './StudyReportPlan'
+import { createPrintSheet } from '../utils/planPdf'
 import type { WeeklyPlan } from '../types'
 import type { StudyReports } from './studyReportTypes'
 vi.mock('../api',()=>({api:vi.fn()}))
@@ -91,4 +92,13 @@ test('advisor sees complete activity and daily details without editing controls'
  expect(document.querySelector('.study-summary.compact')).toBeNull()
  expect(screen.queryByRole('textbox')).toBeNull()
  expect(screen.queryByRole('button',{name:'ثبت گزارش'})).toBeNull()
+})
+
+test('student plan PDF uses the advisor name without a second label',()=>{
+ vi.mocked(api).mockResolvedValue(initial())
+ qc=new QueryClient({defaultOptions:{queries:{retry:false}}})
+ const tableRef={current:null as HTMLDivElement|null}
+ render(<QueryClientProvider client={qc}><StudyReportPlan plan={plan} student studentName="پریسا حسینی" advisorName="محمد امین شجاعی" tableRef={tableRef}/></QueryClientProvider>)
+ const sheet=createPrintSheet(tableRef.current!,plan,true)
+ expect(sheet.querySelector('.print-hero-names')?.textContent).toBe('دانش‌آموز: پریسا حسینیمشاور: محمد امین شجاعی')
 })

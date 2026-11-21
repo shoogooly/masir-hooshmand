@@ -84,3 +84,25 @@ test('published header shows stable number, quote, mission and correctly ordered
  expect(sheet.querySelectorAll('.print-day-divider')).toHaveLength(1)
  expect([...sheet.querySelectorAll('.print-plan-range-time span')].slice(0,3).map(x=>x.textContent)).toEqual(['۰۸:۰۰',' تا ','۰۹:۰۰'])
 })
+
+test.each(['01','04','07','10'])('season %s keeps ornaments on the top and bottom and preserves the full advisor name',month=>{
+ const source=document.createElement('div')
+ const header=document.createElement('header')
+ header.className='pdf-reference-header'
+ header.dataset.studentName='پریسا حسینی'
+ header.dataset.advisorName='محمد امین شجاعی نیا مهربان'
+ header.textContent='مشاور و برنامه‌ریز: محمد امین شجاعی نیا مهربان'
+ source.append(header)
+ const plan:WeeklyPlan={id:'sample',student_id:'student',title:'برنامه',week_label:'هفته',version:1,status:'draft',time_slots:[],days:[{label:'شنبه',date:`1405/${month}/01`},{label:'یکشنبه',date:''}],activities:[]}
+ const sheet=createPrintSheet(source,plan,true)
+ const names=sheet.querySelectorAll('.print-hero-name')
+ expect(names[1].textContent).toBe('مشاور: محمد امین شجاعی نیا مهربان')
+ expect(names[1].querySelector('bdi')?.getAttribute('dir')).toBe('rtl')
+ const strips=sheet.querySelectorAll('.print-season-strip')
+ expect(strips).toHaveLength(2)
+ expect(strips[0].classList.contains('print-season-strip-top')).toBe(true)
+ expect(strips[1].classList.contains('print-season-strip-bottom')).toBe(true)
+ const ornaments=[...sheet.querySelectorAll('.print-season-ornament')]
+ expect(ornaments.length).toBeGreaterThan(0)
+ expect(ornaments.every(item=>Boolean(item.closest('.print-season-strip')))).toBe(true)
+})

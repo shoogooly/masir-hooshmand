@@ -126,3 +126,41 @@
 .planner-pdf-sheet.print-theme-mono .print-season-decor{filter:grayscale(1);opacity:.35}
 .planner-pdf-sheet.print-theme-mono{--season-paper:#fff;--season-line:#ddd;--season-ink:#333}
 .planner-pdf-sheet.print-theme-mono .print-hero-brand strong,.planner-pdf-sheet.print-theme-mono .print-hero-brand small{color:#222!important}
+
+/* Export typography uses local Windows fonts where available. */
+@font-face{font-family:PDFTitr;src:local("B Titr"),local("BTitr"),local("B Titr Bold");font-weight:400 900}
+@font-face{font-family:PDFIranSans;src:local("IRANSans"),local("IRANSans Regular"),local("IRANSansWeb"),local("IRANSans (FaNum)")}
+.planner-pdf-sheet{
+ --pdf-title-font:PDFTitr,"B Titr",BTitr,Tahoma,"Noto Sans Arabic",sans-serif;
+ --pdf-body-font:PDFIranSans,IRANSans,IRANSansWeb,Tahoma,"Noto Sans Arabic",sans-serif
+}
+.planner-pdf-sheet.print-theme-color,.planner-pdf-sheet.print-theme-mono{font-family:var(--pdf-body-font);padding:35px 18px!important}
+.planner-pdf-sheet .print-hero{flex-basis:106px;min-height:106px;grid-template-columns:265px minmax(0,1fr) 145px}
+.planner-pdf-sheet .print-hero-identity{justify-content:center;padding:4px 6px;text-shadow:none}
+.planner-pdf-sheet .print-hero-number{width:36px;height:36px;font:900 26px/1 var(--pdf-title-font)}
+.planner-pdf-sheet .print-hero-number.print-hero-draft{font:700 9px/1.1 var(--pdf-title-font)}
+.planner-pdf-sheet .print-hero-number svg{width:18px;height:18px}
+.planner-pdf-sheet .print-hero-names{width:100%;max-height:54px;font:400 16px/1.32 var(--pdf-body-font);white-space:normal}
+.planner-pdf-sheet .print-hero-name{direction:rtl;overflow-wrap:anywhere}
+.planner-pdf-sheet .print-hero-name-label{font:700 1em/1.32 var(--pdf-title-font)}
+.planner-pdf-sheet .print-hero-name-value{unicode-bidi:isolate}
+.planner-pdf-sheet .print-hero-message{gap:3px;padding:5px 0}
+.planner-pdf-sheet .print-hero-quote{display:block;flex:0 1 auto;min-height:0;max-height:36px;padding:0 6px;font:400 15px/1.3 var(--pdf-body-font);overflow-wrap:anywhere}
+.planner-pdf-sheet .print-hero-mission{min-height:0;max-height:45px;gap:6px;padding:3px 6px;border-radius:9px}
+.planner-pdf-sheet .print-hero-mission-label{font:700 15px/1.2 var(--pdf-title-font)}
+.planner-pdf-sheet .print-hero-mission strong{max-height:38px;font:400 14px/1.3 var(--pdf-body-font);overflow-wrap:anywhere}
+.planner-pdf-sheet .print-hero-brand strong{font:900 25px/1.1 var(--pdf-title-font)}
+.planner-pdf-sheet .print-hero-brand small{font:400 11px/1.2 var(--pdf-body-font)}
+.planner-pdf-sheet .print-hero-logo-halo,.planner-pdf-sheet .print-hero-brand img{width:46px;height:46px}
+.planner-pdf-sheet .print-plan-date b{font:900 23px/1.2 var(--pdf-title-font)}
+.planner-pdf-sheet .print-plan-date span{font:700 15px/1.1 var(--pdf-title-font)}
+.planner-pdf-sheet .print-plan-card .print-plan-time{font-family:var(--pdf-title-font)!important}
+.planner-pdf-sheet .print-plan-card .print-plan-card-title{font:400 18px/1.2 var(--pdf-body-font)}
+.planner-pdf-sheet .print-plan-card-first-line{font-family:var(--pdf-title-font)}
+.planner-pdf-sheet .print-plan-card-detail{font-weight:400}
+.print-season-strip{position:absolute;left:0;right:0;height:32px;overflow:hidden}
+.print-season-strip-top{top:0}
+.print-season-strip-bottom{bottom:0}
+.print-season-strip-top .print-season-ornament{bottom:-3px}
+.print-season-strip-bottom .print-season-ornament{top:-3px}
+.planner-pdf-sheet .print-plan-card-first-line,.planner-pdf-sheet .print-plan-card-detail{width:100%;max-width:100%;text-align:center}
