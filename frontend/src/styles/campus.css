@@ -1,0 +1,80 @@
+@media screen {
+  .workspace[data-campus] {
+    --campus-accent:#6744c1;
+    --campus-deep:#332459;
+    --campus-wash:#f1ebff;
+    --campus-glow:#a282f7;
+    --campus-line:#e1ddea;
+    background:linear-gradient(135deg,#faf9fc,#f2f1f8);
+  }
+  .workspace[data-campus=advisor] {
+    --campus-accent:#16665e;
+    --campus-deep:#163e40;
+    --campus-wash:#e4f3ef;
+    --campus-glow:#6dc4ae;
+    --campus-line:#d9e6e2;
+    background:linear-gradient(135deg,#f8fbfa,#eff5f4);
+  }
+  .workspace[data-campus] .app-sidebar {
+    background:radial-gradient(ellipse at 100% 0%,var(--campus-deep),transparent 65%),#141928;
+    box-shadow:-6px 0 26px #1a17300d;
+  }
+  .workspace[data-campus] .app-sidebar>.brand {padding-block:8px 18px;border-bottom:1px solid #ffffff25}
+  .workspace[data-campus] .app-sidebar nav button {border:0;border-radius:10px;color:#dce0ef;font-weight:550;line-height:1.65}
+  .workspace[data-campus] .app-sidebar nav button.selected {background:#ffffff19;box-shadow:inset -3px 0 var(--campus-glow);color:white}
+  .workspace[data-campus] .app-sidebar nav button.selected svg {color:var(--campus-glow)}
+  .workspace[data-campus] .app-header {background:#ffffffed;border-color:var(--campus-line)}
+  .workspace[data-campus] .app-search {background:var(--campus-wash);border-radius:24px}
+  .workspace[data-campus] .dashboard-welcome {
+    position:relative;isolation:isolate;overflow:hidden;padding:clamp(20px,3vw,38px);
+    border-radius:22px;background:linear-gradient(105deg,var(--campus-accent),var(--campus-deep) 72%);
+    color:white;gap:14px;min-height:118px;margin-bottom:18px;
+  }
+  .workspace[data-campus] .dashboard-welcome::before {
+    content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+    background:repeating-radial-gradient(ellipse at 17% 145%,transparent 0 19px,#ffffff18 20px 21px,transparent 22px 35px);
+    mask-image:linear-gradient(to right,black,transparent 73%);
+  }
+  .workspace[data-campus] .dashboard-welcome h1 {color:white;font-size:clamp(21px,2.2vw,32px);line-height:1.55;margin:0}
+  .workspace[data-campus] .dashboard-welcome p {color:#f0edf9;margin-top:5px}
+  .workspace[data-campus] .dashboard-welcome .date-chip {background:#fff;color:var(--campus-deep);border:0;border-radius:20px;padding:7px 14px}
+  .workspace[data-campus] :is(.advisor-home-actions,.student-home-actions) {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .workspace[data-campus] :is(.advisor-home-actions,.student-home-actions) .btn {
+    justify-content:flex-start;position:relative;padding:12px 16px;min-height:56px;
+    background:white;color:var(--campus-deep);border:1px solid var(--campus-line);border-radius:14px;
+    box-shadow:0 3px 9px #21173606;font-size:14px;
+  }
+  .workspace[data-campus] :is(.advisor-home-actions,.student-home-actions) .btn svg {width:32px;height:32px;padding:7px;border-radius:10px;background:var(--campus-wash);color:var(--campus-accent)}
+  .workspace[data-campus] .metric {border:1px solid var(--campus-line);border-radius:16px;box-shadow:none;gap:10px}
+  .workspace[data-campus] .metric small {color:#544e61;font-size:13px}
+  .workspace[data-campus] .metric b {color:#211c32;font-size:clamp(17px,1.7vw,24px)}
+  .workspace[data-campus] .metric-trend {display:none}
+  .workspace[data-campus] .panel {border-color:var(--campus-line);border-radius:16px;box-shadow:0 5px 18px #1d233407}
+  .workspace[data-campus] :is(.panel-title,.student-summary-heading) h2 {border-inline-start:3px solid var(--campus-accent);padding-inline-start:10px;color:var(--campus-deep)}
+  .workspace[data-campus] .section-head h1 {color:var(--campus-deep)}
+  .workspace[data-campus] :is(.advisor-followup,.student-plan-summary) thead th {background:var(--campus-wash);color:var(--campus-deep)}
+  .workspace[data-campus] .student-advisor-strip {border-inline-start:4px solid var(--campus-accent)}
+  .workspace[data-campus] .student-advisor-strip a {border-radius:10px;background:var(--campus-wash);padding:8px}
+  .workspace[data-campus] .universal-chat .chat-shell>header {background:var(--campus-wash)}
+  .workspace[data-campus] :is(button,a,input,select,textarea):focus-visible {outline:3px solid var(--campus-glow);outline-offset:2px}
+  .workspace[data-campus] :is(.btn,.app-sidebar nav button,.small-primary,.icon-btn){transition:transform .16s ease,box-shadow .16s ease,background-color .16s ease}
+  @media (hover:hover) {
+    .workspace[data-campus] .app-sidebar nav button:hover {background:#ffffff20;color:white}
+    .workspace[data-campus] :is(.btn,.small-primary,.icon-btn):not(:disabled):hover {transform:translateY(-2px);box-shadow:0 5px 14px #3423501c}
+    .workspace[data-campus] :is(.advisor-home-actions,.student-home-actions) a:hover {background:var(--campus-wash);border-color:var(--campus-glow)}
+  }
+  .workspace[data-campus] :is(.btn,.small-primary,.icon-btn):not(:disabled):active {transform:scale(.98)}
+  @media (prefers-reduced-motion:no-preference) {
+    .workspace[data-campus] :is(.dashboard-welcome,.metric-grid,.content-page>.section-head) {animation:campus-enter .32s ease-out both}
+    @keyframes campus-enter {from{opacity:0;translate:0 5px}to{opacity:1;translate:0 0}}
+  }
+  @media (prefers-reduced-motion:reduce) {
+    .workspace[data-campus] :is(.btn,.app-sidebar nav button,.small-primary,.icon-btn){transition:none;transform:none!important}
+  }
+  @media(max-width:760px) {
+    .workspace[data-campus] :is(.advisor-home-actions,.student-home-actions){grid-template-columns:1fr;gap:7px}
+    .workspace[data-campus] :is(.advisor-home-actions,.student-home-actions) .btn{min-height:44px;padding:6px 12px}
+    .workspace[data-campus] .dashboard-welcome {flex-wrap:wrap;min-height:auto}
+    .workspace[data-campus] .metric{min-width:0;flex-wrap:wrap;padding:12px}
+  }
+}

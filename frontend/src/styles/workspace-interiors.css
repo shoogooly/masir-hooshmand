@@ -1,0 +1,96 @@
+@font-face {
+  font-family: MahyaadSans;
+  src: url("/fonts/plan-pdf/IRANSans.ttf") format("truetype");
+  font-display: swap;
+}
+
+@media screen {
+  .workspace[data-campus=admin] {
+    --campus-accent:#315799;
+    --campus-deep:#20395d;
+    --campus-wash:#edf3fc;
+    --campus-line:#dbe4ef;
+    --campus-glow:#91bafb;
+    background:linear-gradient(155deg,#fafbfd,#edf2f9);
+  }
+  .workspace[data-campus] .content-page > :is(.section-head,.page-head,.books-intro,.motivation-intro,.bale-hero,.ai-intro) {
+    background:linear-gradient(105deg,#fff,var(--campus-wash));
+    border:1px solid var(--campus-line);
+    border-inline-start:5px solid var(--campus-accent);
+    border-radius:18px;
+    padding:clamp(14px,2vw,26px);
+    margin-block-end:18px;
+    color:var(--campus-deep);
+  }
+  .workspace[data-campus] .content-page > :is(.section-head,.page-head,.books-intro,.motivation-intro,.bale-hero,.ai-intro) :is(h1,p,small) {color:var(--campus-deep)}
+  .workspace[data-campus] :is(.section-head,.page-head) h1 {font-size:clamp(21px,2.1vw,30px);line-height:1.6;margin-block:0}
+  .workspace[data-campus] .content-page .btn-primary {background:var(--campus-accent);border-color:var(--campus-accent);color:white}
+  .workspace[data-campus] .content-page :is(.btn-soft,.btn-outline):not(.danger,.advisor-draft-delete) {background:var(--campus-wash);color:var(--campus-deep);border-color:var(--campus-line)}
+  .workspace[data-campus] .content-page :is(.btn,.small-primary):disabled {opacity:.55;cursor:not-allowed}
+  .workspace[data-campus] :is(.panel,.admin-detail,.book-card,.calendar-cards,.content-page form) :where(input:not([type]),input:is([type=text],[type=search],[type=email],[type=tel],[type=password],[type=number]),textarea,select) {
+    border-color:var(--campus-line);border-radius:10px;color:#242d3d;
+  }
+  .workspace[data-campus] :is(.admin-toolbar,.group-select-actions,.calendar-filters) {background:var(--campus-wash);padding:10px 14px;border-radius:12px;gap:9px;flex-wrap:wrap}
+  .workspace[data-campus] :is(.admin-table,.access-matrix-table,.report-table,.book-card,.evaluation-card,.ai-chat-panel,.admin-detail,.user-detail-modal) {background-color:white;border:1px solid var(--campus-line);border-radius:15px}
+  .workspace[data-campus] :is(.admin-table-head,.access-matrix-head,.profile-change-head,.report-table thead) {background:var(--campus-wash);color:var(--campus-deep);font-weight:700}
+  .workspace[data-campus] :is(.admin-table-row,.access-matrix-row) {border-color:var(--campus-line)}
+  .workspace[data-campus] :is(.admin-actions button,.module-grid article,.student-control-grid>form,.student-control-grid>div,.ops-grid article,.calendar-cards article,.management-plan-list article) {border:1px solid var(--campus-line);border-radius:14px;background:linear-gradient(155deg,#fff 65%,var(--campus-wash))}
+  .workspace[data-campus] .file-tabs button.active {border-color:var(--campus-accent);background:var(--campus-wash);color:var(--campus-deep)}
+  .workspace[data-campus] .group-student-grid label {border-radius:13px;padding:12px;border:1px solid var(--campus-line);background:white}
+  .workspace[data-campus] .group-student-grid label.selected {background:var(--campus-wash);border-color:var(--campus-accent);box-shadow:inset -3px 0 var(--campus-accent)}
+  .workspace[data-campus] .group-student-grid input {accent-color:var(--campus-accent)}
+  .workspace[data-campus] :is(.exam-history-row>span,.exam-history-row em,.book-counts,.plan-picker-icon) {color:var(--campus-deep);background:var(--campus-wash)}
+  .workspace[data-campus] :is(.exam-create-form,.content-editor,.subscription-editor,.settings-form,.referral-form,.integration-card) {border-block-start:3px solid var(--campus-accent)}
+  .workspace[data-campus] .content-editor textarea {line-height:2;padding:14px;background:#fafbfc}
+  .workspace[data-campus] .managed-articles article {border-inline-start:4px solid var(--campus-glow)}
+  .workspace[data-campus] .managed-articles article>p {max-width:76ch;line-height:2;color:#424958}
+  .workspace[data-campus] .empty-state {border:1px dashed var(--campus-line);background:#fbfcfd}
+  @media (hover:hover) {
+    .workspace[data-campus] :is(.admin-table-row,.group-student-grid label,.exam-history-row,.admin-actions button,.book-toggle):hover {background-color:var(--campus-wash)}
+  }
+
+  .workspace[data-campus] .universal-chat {
+    font-family:MahyaadSans,Tahoma,sans-serif;
+    grid-template-columns:minmax(220px,30%) minmax(0,1fr);
+    min-height:0;height:clamp(410px,70dvh,800px);overflow:hidden;
+    background:white;border:1px solid var(--campus-line);border-radius:20px;
+    box-shadow:0 10px 32px #172e4b0d;
+  }
+  .workspace[data-campus] .universal-chat :is(button,input) {font-family:inherit}
+  .workspace[data-campus] .universal-chat>aside {display:block;overflow:auto;min-height:0;min-width:0;border:0;border-inline-end:1px solid var(--campus-line);border-radius:0;padding:8px}
+  .workspace[data-campus] .universal-chat .chat-contact-search {display:flex;align-items:center;gap:8px;position:sticky;top:0;z-index:1;margin:0 0 8px;padding:8px 12px;background:#f4f6f8;border-radius:14px;color:#596779}
+  .workspace[data-campus] .chat-contact-search input {background:transparent;border:0;min-width:0;width:100%;font-size:14px}
+  .workspace[data-campus] .universal-chat aside>button {width:100%;gap:10px;padding:11px 8px;border:0;border-radius:12px;background:white}
+  .workspace[data-campus] .universal-chat aside>button:is(:hover,.active) {background:var(--campus-wash)}
+  .workspace[data-campus] .universal-chat aside>button.active {box-shadow:inset -3px 0 var(--campus-accent)}
+  .workspace[data-campus] .universal-chat :is(.avatar,.chat-avatar) {display:grid;place-items:center;width:42px;height:42px;border-radius:50%;flex:none;background:var(--campus-deep);color:white;font-weight:700;font-size:18px}
+  .workspace[data-campus] .universal-chat .chat-contact-details {min-width:0;flex:1;gap:2px}
+  .workspace[data-campus] .universal-chat .chat-contact-name {font-size:16px;font-weight:700;line-height:1.65}
+  .workspace[data-campus] .universal-chat aside small {font-size:12px;color:#526070;max-width:100%}
+  .workspace[data-campus] .universal-chat>main {min-width:0;min-height:0}
+  .workspace[data-campus] .universal-chat .chat-shell {height:100%;min-height:0;border:0;border-radius:0;grid-template-rows:auto minmax(0,1fr) auto}
+  .workspace[data-campus] .universal-chat .chat-shell>header {background:white;border-bottom:1px solid var(--campus-line);padding:10px 14px}
+  .workspace[data-campus] .chat-shell>header b {color:var(--campus-deep);font-size:17px}
+  .workspace[data-campus] .chat-shell>header small {font-size:12px;color:#586474}
+  .workspace[data-campus] .universal-chat .message-list {background:#faf8ed url("/brand/messenger-paper.png") repeat center top / 480px auto;padding:clamp(12px,2vw,24px);gap:12px}
+  .workspace[data-campus] .universal-chat .message-list article {max-width:min(83%,62ch);padding:8px 14px;border-radius:15px 15px 3px 15px;background:white;box-shadow:0 2px 5px #193b4612}
+  .workspace[data-campus] .universal-chat .message-list article.mine {background:var(--campus-wash);border:1px solid var(--campus-line);border-radius:15px 15px 15px 3px}
+  .workspace[data-campus] .universal-chat .message-list article p {background:none;border:0;padding:0;color:#172438;font-size:16px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere}
+  .workspace[data-campus] .universal-chat .message-list article small {font-size:12px;color:#505c6a;line-height:1.6;font-variant-numeric:tabular-nums}
+  .workspace[data-campus] .universal-chat .message-compose {padding:9px 12px;align-items:center}
+  .workspace[data-campus] .universal-chat .message-compose input {height:44px;min-width:0;border-radius:24px;background:#f5f7f9;font-size:16px}
+  .workspace[data-campus] .universal-chat .message-compose button {width:44px;height:44px;border-radius:50%;background:var(--campus-accent);display:grid;place-items:center}
+  .workspace[data-campus] .chat-placeholder {height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--campus-deep);background:#faf8ed url("/brand/messenger-paper.png") repeat center top / 480px auto}
+  .workspace[data-campus] .chat-placeholder svg {width:52px;height:52px;padding:13px;border-radius:18px;background:white;color:var(--campus-accent)}
+  .workspace[data-campus] .chat-back {display:none}
+  @media(max-width:760px) {
+    .workspace[data-campus] .universal-chat {display:grid;grid-template-columns:minmax(0,1fr);height:clamp(340px,68dvh,700px)}
+    .workspace[data-campus] .universal-chat[data-thread-open=true]>aside,
+    .workspace[data-campus] .universal-chat[data-thread-open=false]>main {display:none}
+    .workspace[data-campus] .chat-back {display:grid;place-items:center;border:0;border-radius:50%;background:var(--campus-wash);color:var(--campus-deep);width:40px;height:40px;flex:none}
+  }
+  @media (prefers-reduced-motion:no-preference) {
+    .workspace[data-campus] .universal-chat .message-compose button {transition:transform .15s ease}
+    .workspace[data-campus] .universal-chat .message-compose button:active {transform:scale(.94)}
+  }
+}

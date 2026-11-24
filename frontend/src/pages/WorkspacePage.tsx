@@ -37,6 +37,8 @@ import LoadingOverlay from '../components/LoadingOverlay'
 import { advisorMessengerThread } from '../utils/chatRoutes'
 import '../styles/advisor-dashboard.css'
 import '../styles/student-dashboard.css'
+import '../styles/campus.css'
+import '../styles/workspace-interiors.css'
 
 type StudentData={user:User;profile:{grade:string;major:string;goal:string};progress:number;study_minutes:number;today_activity_count?:number;progress_history?:{date:string;total:number;completed:number;actual_minutes:number}[];activities:Activity[];exams:{id:string;title:string;duration_minutes:number}[];insights:Insight[]}
 type AdvisorProgressPoint={week_start:string;total:number;completed:number}
@@ -93,7 +95,7 @@ export default function WorkspacePage({user}:{user:User}){
     const path=location.pathname
     content=path==='/app/admin/motivational-quotes'&&adminManager?<AdminMotivationalQuotesPage/>:path.includes('/academic-calendars')&&adminManager?<AcademicCalendarPage mode="management" user={user}/>:path==='/app/admin/integrations'&&user.role==='super_admin'?<AdminIntegrationsPage/>:path==='/app/admin/bale'&&user.role==='super_admin'?<AdminBalePage/>:path==='/app/admin/photo-reviews'&&adminManager?<AdminProfilePhotoReviewsPage/>:path==='/app/admin/notifications'&&user.role==='super_admin'?<AdminBroadcastPage/>:path==='/app/admin/articles'&&user.role==='super_admin'?<ArticlesManagementPage admin/>:path==='/app/admin/books'&&user.role==='super_admin'?<BooksPage mode="admin"/>:path==='/app/admin/ai'&&user.role==='super_admin'?<AdminAIPage/>:path.includes('/staff')&&user.role==='super_admin'?<AdminStaffControlPage/>:path.includes('/programs')&&user.role==='super_admin'?<ProgramsAccessPage user={user}/>:path.includes('/chats')&&user.role==='super_admin'?<ConversationMonitorPage/>:path.includes('/messages')&&user.role==='super_admin'?<UniversalChatPage user={user}/>:path.includes('/terms')&&user.role==='super_admin'?<AdminTermsPage/>:path.includes('/users')&&adminManager?<AdminUserDirectoryPage/>:path.includes('/students')&&adminManager?<AdminStudentControlPage/>:path.includes('/advisors')&&adminManager?<AdminAdvisorsPage canReview={user.role==='super_admin'}/>:path.includes('/questions')?<AdminCatalogPage kind="questions"/>:path.includes('/exams')?<AdminCatalogPage kind="exams"/>:path.includes('/ledger')?<AdminFinancialLedgerPage/>:path.includes('/finance')?<AdminSubscriptionsPage/>:path.includes('/settings')?<AdminAccessPage/>:<AdminDashboard user={user}/>
   }
-  return <div className="workspace"><aside className={`app-sidebar ${mobile?'open':''}`}><button className="sidebar-close" onClick={()=>setMobile(false)}><X/></button><Brand light/><nav>
+  return <div className="workspace" data-campus={['student','advisor'].includes(user.role)?user.role:'admin'}><aside className={`app-sidebar ${mobile?'open':''}`}><button className="sidebar-close" onClick={()=>setMobile(false)}><X/></button><Brand light/><nav>
     <button className={active(`${base}/overview`)?'selected':''} onClick={()=>go(`${base}/overview`)}><Home/>{['advisor','student'].includes(user.role)?'صفحه اصلی':'نمای کلی'}</button>
 {user.role==='student'&&<button className={active(`${studentBase}/chat`)?'selected':''} onClick={()=>go(`${studentBase}/chat`)}><MessageSquare/>پیامرسان مهیاد{!!alerts?.unread_messages&&<i className="nav-alert-dot"/>}</button>}
     {['student','super_admin'].includes(user.role)&&<button className={active(base+'/books')?'selected':''} onClick={()=>go(base+'/books')}><BookOpen/>کتاب‌ها</button>}
