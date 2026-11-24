@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.session import Base
-from app.models import TimeMixin, uid
+from app.models import TimeMixin, uid, utcnow
 
 class AdvisorEvaluation(Base, TimeMixin):
     __tablename__ = "advisor_evaluations"
@@ -65,3 +65,9 @@ class AIAnalysis(Base, TimeMixin):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AIAnalysisRead(Base):
+    __tablename__ = "ai_analysis_reads"
+    analysis_id: Mapped[str] = mapped_column(ForeignKey("ai_analyses.id", ondelete="CASCADE"), primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

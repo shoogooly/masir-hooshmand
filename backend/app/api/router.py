@@ -1,14 +1,15 @@
 import re
 from app.chat_access import chat_locked
-from app.study_reporting import ensure_report_editable, report_bounds
+from app.study_reporting import IRAN, aware, ensure_report_editable, report_bounds, report_day_key, schedule_date
 from app.models import StudyReport
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from math import ceil
 import json
 import base64
 from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
-from sqlalchemy import case, func, or_, select, union_all
+from sqlalchemy import case, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session, defer
 from app.core.config import settings
 from app.core.security import active_subscription, subscription_state, create_token, current_account, current_user, hash_password, hash_token, new_csrf, new_refresh_token, roles, verify_password, verify_totp
@@ -504,21 +505,106 @@ def logout(response: Response, refresh_token: str | None = Cookie(default=None),
 @router.get("/students/dashboard")
 def student_dashboard(user: User = Depends(roles("student")), db: Session = Depends(get_db)):
     profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
-    plan = db.scalar(select(WeeklyPlan).where(WeeklyPlan.student_id == user.id).order_by(WeeklyPlan.created_at.desc()))
+    plan = db.scalar(select(WeeklyPlan).where(WeeklyPlan.student_id == user.id, WeeklyPlan.status == 'published').order_by(WeeklyPlan.published_at.desc(), WeeklyPlan.created_at.desc()))
     activities = db.scalars(select(Activity).where(Activity.plan_id == plan.id).order_by(Activity.created_at) if plan else select(Activity).where(False)).all()
     exams = db.scalars(select(Exam).where(Exam.status == "published").limit(5)).all()
     insights = db.scalars(select(Insight).where(Insight.student_id == user.id).order_by(Insight.created_at.desc())).all()
     completed = sum(1 for item in activities if item.status == "completed")
     progress = round(completed / len(activities) * 100) if activities else 0
+    today = utcnow().astimezone(IRAN).date()
+    week_start = today - timedelta(days=(today.weekday()+2)%7)
+    history = {}
+    plans = db.scalars(select(WeeklyPlan).where(WeeklyPlan.student_id == user.id, WeeklyPlan.status == 'published').order_by(WeeklyPlan.published_at.desc())).all()
+    dated = {}
+    for published in plans:
+        for offset in range(56):
+            date = today - timedelta(days=offset)
+            if date not in dated and (key := report_day_key(published, date)):
+                dated[date] = (published.id, key)
+    plan_ids = [p.id for p in plans]
+    all_items = db.scalars(select(Activity).where(Activity.plan_id.in_(plan_ids))).all() if plan_ids else []
+    for date, (plan_id, key) in sorted(dated.items()):
+        items = [a for a in all_items if a.plan_id == plan_id and a.day == key]
+        history[date] = {'date':date.isoformat(), 'total':len(items), 'completed':sum(a.status=='completed' for a in items), 'actual_minutes':sum(a.actual_minutes for a in items)}
+    week = [point for date, point in history.items() if date >= week_start]
+    weekly_total = sum(point['total'] for point in week)
+    progress = round(sum(point['completed'] for point in week)/weekly_total*100) if weekly_total else 0
     return ok({
         "user": user_dict(user),
         "profile": {"grade": profile.grade, "major": profile.major, "goal": profile.goal} if profile else {},
         "progress": progress,
-        "study_minutes": sum(item.actual_minutes for item in activities),
+        "study_minutes": sum(point['actual_minutes'] for point in week),
+        "today_activity_count": history.get(today, {}).get('total', 0),
+        "progress_history": list(history.values()),
         "activities": [activity_dict(x) for x in activities],
         "exams": [{"id": x.id, "title": x.title, "duration_minutes": x.duration_minutes} for x in exams],
         "insights": [{"id": x.id, "kind": x.kind, "title": x.title, "evidence": x.evidence, "recommendation": x.recommendation, "confidence": x.confidence, "status": x.status} for x in insights if x.status == "approved"],
     })
+
+
+def advisor_plan_progress(db: Session, student_ids: list[str], advisor_id: str | None):
+    if not student_ids:
+        return {}, [], set()
+    now = utcnow()
+    today = now.astimezone(IRAN).date()
+    yesterday = today - timedelta(days=1)
+    yesterday_start = datetime.combine(yesterday, time.min, IRAN).astimezone(timezone.utc)
+    first_week = today - timedelta(days=(today.weekday() + 2) % 7 + 49)
+    published = [WeeklyPlan.student_id.in_(student_ids), WeeklyPlan.status == "published"]
+    if advisor_id:
+        published.append(WeeklyPlan.advisor_id == advisor_id)
+
+    plan_date = func.coalesce(WeeklyPlan.published_at, WeeklyPlan.created_at)
+    latest = select(
+        WeeklyPlan.id,
+        func.row_number().over(
+            partition_by=WeeklyPlan.student_id, order_by=(plan_date.desc(), WeeklyPlan.id.desc()),
+        ).label("rank"),
+    ).where(*published).subquery()
+    plans = select(WeeklyPlan, latest.c.rank).join(latest, latest.c.id == WeeklyPlan.id).where(
+        or_(latest.c.rank == 1, WeeklyPlan.ends_at > yesterday_start, WeeklyPlan.ends_at.is_(None)),
+    ).order_by(latest.c.rank)
+    days_left = {}
+    yesterday_days = {}
+    for plan, rank in db.execute(plans):
+        if rank == 1:
+            end = aware(plan.ends_at) if plan.ends_at else report_bounds(plan)[1]
+            days_left[plan.student_id] = max(0, ceil((end - now).total_seconds() / 86400))
+        if plan.student_id not in yesterday_days and (key := report_day_key(plan, yesterday)):
+            yesterday_days[plan.student_id] = (plan.id, key)
+
+    reported_students = set()
+    if yesterday_days:
+        plan_ids = [plan_id for plan_id, _ in yesterday_days.values()]
+        summary_days = select(StudyReport.plan_id, func.substr(StudyReport.scope, 5)).where(
+            StudyReport.plan_id.in_(plan_ids), StudyReport.scope.like("day:%"),
+        )
+        activity_days = select(Activity.plan_id, Activity.day).outerjoin(StudyReport, (
+            (StudyReport.plan_id == Activity.plan_id) & (StudyReport.scope == literal("activity:") + Activity.id)
+        )).where(Activity.plan_id.in_(plan_ids), or_(
+            StudyReport.scope.is_not(None), Activity.status != "pending", Activity.note != "",
+            Activity.actual_minutes != 0, Activity.test_count != 0,
+        ))
+        reported_days = set(db.execute(union_all(summary_days, activity_days)).tuples())
+        reported_students = {student_id for student_id, day in yesterday_days.items() if day in reported_days}
+
+    weeks = {}
+    for published_at, total, done in db.execute(
+        select(plan_date, func.count(Activity.id), func.sum(case((Activity.status == "completed", 1), else_=0)))
+        .join(Activity, Activity.plan_id == WeeklyPlan.id)
+        .where(*published, plan_date >= datetime.combine(first_week, time.min, IRAN).astimezone(timezone.utc),
+               plan_date <= now)
+        .group_by(WeeklyPlan.id, plan_date)
+    ):
+        day = aware(published_at).astimezone(IRAN).date()
+        week = day - timedelta(days=(day.weekday() + 2) % 7)
+        counts = weeks.setdefault(week, {"total": 0, "completed": 0})
+        counts["total"] += total
+        counts["completed"] += done or 0
+    return days_left, [
+        {"week_start": datetime.combine(week, time.min, IRAN).isoformat(), **counts}
+        for week, counts in sorted(weeks.items())
+    ], reported_students
 
 
 @router.get("/advisors/dashboard")
@@ -561,16 +647,22 @@ def advisor_dashboard(user: User = Depends(roles("advisor", "super_admin")), db:
         last_messages = {student_id: (body, created_at) for student_id, body, created_at in db.execute(
             select(message_ranks.c.student_id, message_ranks.c.body, message_ranks.c.created_at)
             .where(message_ranks.c.rank == 1))}
+    days_left, progress_history, reported_students = advisor_plan_progress(
+        db, student_ids, user.id if user.role == "advisor" else None,
+    )
     student_rows = []
     for x in students:
         total, completed = progress_by_student.get(x.id, (0, 0))
         progress = round(completed / total * 100) if total else 0
         last_message = last_messages.get(x.id)
         student_rows.append(user_dict(x) | {"risk": "بالا" if progress < 50 else "عادی", "progress": progress,
+            "plan_days_remaining": days_left.get(x.id),
+            "yesterday_report_submitted": x.id in reported_students,
             "last_activity": last_activities.get(x.id),
             "last_message": last_message[0] if last_message else None,
             "last_message_at": last_message[1] if last_message else None})
     return ok({"user": user_dict(user), "students": student_rows, "pending_insights": pending or 0,
+        "progress_history": progress_history,
         "alerts": sum(x["risk"] == "بالا" for x in student_rows), "weekly_plans": len(student_ids)})
 
 
@@ -887,7 +979,10 @@ def update_profile(payload: ProfileUpdate, user: User = Depends(current_user), d
 def my_advisor(user: User = Depends(roles("student")), db: Session = Depends(get_db)):
     assignment = db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.student_id == user.id, AdvisorAssignment.active.is_(True)))
     advisor = db.get(User, assignment.advisor_id) if assignment else None
-    return ok(user_dict(advisor) if advisor else None)
+    if not advisor:
+        return ok(None)
+    profile = db.scalar(select(AdvisorProfile).options(defer(AdvisorProfile.documents_json)).where(AdvisorProfile.user_id == advisor.id))
+    return ok(user_dict(advisor) | ({'education_degree':profile.education_degree, 'education_field':profile.education_field, 'experience_years':profile.experience_years, 'bio':profile.bio} if profile else {}))
 
 
 @router.get("/students/report")

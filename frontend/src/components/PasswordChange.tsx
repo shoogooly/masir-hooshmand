@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 
-export default function PasswordChange() {
+export default function PasswordChange({student=false}:{student?:boolean}) {
   const [open, setOpen] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const navigate = useNavigate(), qc = useQueryClient()
@@ -21,7 +21,7 @@ export default function PasswordChange() {
   return <section className="panel" style={{ padding: 24, marginTop: 24 }}>
     <h3>امنیت حساب</h3>
     {done ? <div role="status"><p>رمز تغییر کرد و نشست‌های قبلی بسته شدند. با رمز جدید وارد شوید.</p><button className="btn btn-primary" onClick={() => { qc.clear(); navigate('/login', { replace: true }) }}>ورود با رمز جدید</button></div> :
-      <><button className="btn btn-outline" onClick={() => setOpen(!open)} aria-expanded={open}>تغییر رمز ورود</button>
+      <><button className={`btn ${student?'btn-primary':'btn-outline'}`} onClick={() => setOpen(!open)} aria-expanded={open}>تغییر رمز ورود</button>
       {open && <form className="settings-form" onSubmit={submit}>
         <label>رمز فعلی<input name="old_password" type="password" autoComplete="current-password" required maxLength={128}/></label>
         <label>رمز جدید<input name="password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required/></label>

@@ -7,3 +7,37 @@
 .external-result-form{margin:20px 0}.external-result-form fieldset{border:0;padding:0;min-width:0;display:grid;gap:18px}.result-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.external-result-form label{display:grid;gap:8px;font-size:13px}.external-result-form input,.external-result-form textarea,.external-result-form select{width:100%;min-width:0;box-sizing:border-box;border:1px solid #dcd2eb;border-radius:9px;padding:10px;font:inherit;background:#fff}.result-date>div{display:flex;gap:5px;margin-top:8px}.result-date>b{font-size:13px}.result-subject-row{display:grid;grid-template-columns:2fr repeat(3,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}.result-subject-row.detailed{grid-template-columns:1.4fr 2fr repeat(5,minmax(90px,1fr)) auto}.result-history-card{margin:16px 0}.result-history-card>header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.result-metrics{display:flex;gap:25px;flex-wrap:wrap;background:#f7f4fc;padding:15px;border-radius:10px;margin:18px 0}.result-table-scroll{overflow:auto}.result-table-scroll table{border-collapse:collapse;width:100%;text-align:right}.result-table-scroll td,.result-table-scroll th{padding:12px;border-bottom:1px solid #ece6f4}.result-notes{white-space:pre-wrap;line-height:1.9}.result-history-card>small{display:block;color:#84748f;margin-top:20px}
 @media(max-width:850px){.timeline-planner .timeline-editor-day{grid-template-columns:minmax(0,1fr)}.timeline-planner .timeline-editor-day>header{flex-wrap:wrap}.day-school-schedule{display:flex;flex-wrap:wrap;gap:8px}.result-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.result-subject-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.result-fields{grid-template-columns:1fr}.external-results .section-head{flex-wrap:wrap}.planner-actions{flex-wrap:wrap}.group-select-actions .btn{font-size:12px}.result-actions .btn{padding:8px 12px}}
+.advisor-student-file-heading {
+  display: grid;
+  grid-template-columns: minmax(11rem, .65fr) minmax(0, 1.35fr);
+  align-items: center;
+  gap: 1.25rem;
+  margin-block-end: 1rem;
+}
+.advisor-student-file-heading .section-head { margin: 0; }
+.advisor-student-profile-table {
+  width: 100%;
+  max-width: 680px;
+  border: 1px solid #e2d9ed;
+  border-spacing: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  text-align: start;
+  font-size: .875rem;
+  line-height: 1.6;
+}
+.advisor-student-profile-table th,
+.advisor-student-profile-table td { padding: .38rem .65rem; vertical-align: top; text-align: start; }
+.advisor-student-profile-table th { background: #efe7fb; color: #553579; font-weight: 650; text-align: left; }
+.advisor-student-profile-table td { background: #fff; overflow-wrap: anywhere; color: #282034; font-weight: 650; }
+.advisor-student-profile-table tr + tr > * { border-block-start: 1px solid #eee8f3; }
+.advisor-student-profile-table bdi { display: inline-block; white-space: nowrap; }
+.advisor-profile-empty { color: #62586f; font-weight: 400; }
+@media (max-width: 900px) {
+  .advisor-student-file-heading { grid-template-columns: minmax(0, 1fr); gap: .8rem; }
+}
+@media (max-width: 480px) {
+  .advisor-student-profile-table th,
+  .advisor-student-profile-table td { padding-inline: .33rem; font-size: .8rem; }
+}

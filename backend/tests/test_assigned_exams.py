@@ -42,10 +42,11 @@ def test_advisor_student_pdf_exam_workflow():
         assert login.status_code == 200
         summary = student.get("/api/v1/notifications/summary")
         assert summary.status_code == 200
-        assert summary.json()["data"]["unseen_exams"] >= 1
+        pending = summary.json()["data"]["unseen_exams"]
+        assert pending >= 2
         seen = student.post("/api/v1/notifications/exams/read", headers={"X-CSRF-Token": csrf})
         assert seen.status_code == 200
-        assert student.get("/api/v1/notifications/summary").json()["data"]["unseen_exams"] == 0
+        assert student.get("/api/v1/notifications/summary").json()["data"]["unseen_exams"] == pending
         question = student.get(f"/api/v1/assigned-exams/{exam_id}/question-file")
         assert question.status_code == 200
         assert question.json()["data"]["downloaded_at"] is not None
@@ -56,6 +57,7 @@ def test_advisor_student_pdf_exam_workflow():
         )
         assert answer.status_code == 200
         assert answer.json()["data"]["answer_uploaded_at"] is not None
+        assert student.get("/api/v1/notifications/summary").json()["data"]["unseen_exams"] == pending - 1
 
     with TestClient(app) as advisor:
         login = advisor.post("/api/v1/auth/verify-otp", json={

@@ -3,13 +3,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from 'vitest'
 import UniversalChatPage from './UniversalChatPage'
+import { MemoryRouter } from 'react-router-dom'
 import { api } from '../api'
 import type { User } from '../types'
 vi.mock('../api',()=>({api:vi.fn()}))
 const student:User={id:'student',full_name:'دانش آموز آزمایشی',phone:'09120000001',role:'student',status:'active'}
 const admin={id:'admin',full_name:'مدیر سایت',phone:'09120000003',role:'super_admin',status:'active',locked:true,chat_request_allowed:true,chat_requested_today:false}
 let client:QueryClient
-function setup(){client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});render(<QueryClientProvider client={client}><UniversalChatPage user={student}/></QueryClientProvider>)}
+function setup(){client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});render(<QueryClientProvider client={client}><MemoryRouter><UniversalChatPage user={student}/></MemoryRouter></QueryClientProvider>)}
 afterEach(()=>{cleanup();client?.clear();vi.resetAllMocks()})
 test('locked student can request once, without unlocking the composer',async()=>{
  let requested=false

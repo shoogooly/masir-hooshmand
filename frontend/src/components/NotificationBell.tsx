@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { formatIranDateTime } from '../utils/jalali'
 
-export type NotificationSummary={unread_messages:number;unread_by_sender:Record<string,number>;unread_notifications:number;unseen_plans:number;unseen_exams:number;expired_student_ids:string[]}
+export type NotificationSummary={unread_messages:number;unread_by_sender:Record<string,number>;unread_notifications:number;unseen_plans:number;unseen_exams:number;expired_student_ids:string[];pending_advisor_requests?:number;unread_ai_analyses?:number}
 type NotificationItem={id:string;kind:string;title:string;body:string;link:string;read_at?:string;created_at:string}
 
 export function useNotificationSummary(){

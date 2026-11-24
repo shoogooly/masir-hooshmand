@@ -54,6 +54,33 @@ def test_week_boundary_is_saturday_midnight_in_iran():
     assert ai.week_bounds(after)[0]=="2026-09-19"
     assert ai.week_bounds(before)[2]==after
 
+
+def test_advisor_ai_unread_badge_tracks_each_opened_analysis(env):
+    student, advisor, _, student_headers, advisor_headers, _, student_id, advisor_id = env
+    with SessionLocal() as db:
+        rows = [AIAnalysis(student_id=student_id, advisor_id=advisor_id, week="2026-11-21", status=status)
+                for status in ("completed", "completed", "pending")]
+        db.add_all(rows)
+        db.flush()
+        first, second, pending = [row.id for row in rows]
+        db.commit()
+
+    def unread_count():
+        return advisor.get("/api/v1/notifications/summary").json()["data"]["unread_ai_analyses"]
+
+    path = f"/api/v1/ai/students/{student_id}/analyses"
+    assert unread_count() == 2
+    assert {row["id"] for row in advisor.get(path).json()["data"] if row["unread"]} == {first, second}
+    assert unread_count() == 2
+    assert student.put(f"{path}/{first}/read", headers=student_headers).status_code == 403
+    assert advisor.put(f"{path}/{pending}/read", headers=advisor_headers).status_code == 404
+    for _ in range(2):
+        assert advisor.put(f"{path}/{first}/read", headers=advisor_headers).status_code == 200
+    assert unread_count() == 1
+    assert advisor.get("/api/v1/ai/students").json()["data"][0]["unread_analyses"] == 1
+    assert advisor.put(f"{path}/{second}/read", headers=advisor_headers).status_code == 200
+    assert unread_count() == 0
+
 def test_quota_idempotency_failure_refund_and_week_reset(env,monkeypatch):
     s,a,m,sh,ah,mh,sid,aid=env
     assert s.get("/api/v1/ai/chat").json()["data"]["usage"]["remaining"]==5

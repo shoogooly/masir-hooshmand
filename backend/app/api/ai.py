@@ -4,11 +4,12 @@ import json
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select, update, or_
+from sqlalchemy import func, select, update, or_
+from sqlalchemy.exc import IntegrityError
 from app.core.security import roles, current_user
 from app.db.session import get_db
 from app.models import User, AdvisorAssignment, utcnow, uid
-from app.ai_models import AIStudentAccess, AITurn, AIAnalysis
+from app.ai_models import AIStudentAccess, AITurn, AIAnalysis, AIAnalysisRead
 from app import ai_service as ai
 from app.ai_jobs import run_analysis, analysis_dict
 from app.services import audit
@@ -83,12 +84,15 @@ def students(user=Depends(roles("advisor","super_admin")),db=Depends(get_db)):
         query=query.where(User.id.in_(select(AdvisorAssignment.student_id).where(
             AdvisorAssignment.advisor_id==user.id,AdvisorAssignment.active.is_(True),AdvisorAssignment.approval_status=="approved")))
     users=db.scalars(query.order_by(User.full_name)).all()
+    unread = dict(db.execute(ai.unread_analyses(user.id).with_only_columns(
+        AIAnalysis.student_id, func.count(AIAnalysis.id),
+    ).group_by(AIAnalysis.student_id)).all()) if user.role == "advisor" else {}
     result=[]
     for student in users:
         latest=select(AIAnalysis).where(AIAnalysis.student_id==student.id)
         if user.role=="advisor":latest=latest.where(AIAnalysis.advisor_id==user.id)
         row=db.scalar(latest.order_by(AIAnalysis.created_at.desc()).limit(1))
-        result.append({"id":student.id,"full_name":student.full_name,"status":student.status,
+        result.append({"id":student.id,"full_name":student.full_name,"status":student.status,"unread_analyses":unread.get(student.id,0),
             "usage":ai.usage(db,student.id),"latest":analysis_dict(row) if row else None})
     db.commit();return ok(result)
 @router.put("/students/{student_id}/limit")
@@ -174,9 +178,32 @@ def send_chat(payload:ChatInput,user=Depends(roles("student")),db=Depends(get_db
 @router.get("/students/{student_id}/analyses")
 def analyses(student_id:str,user=Depends(roles("advisor","super_admin")),db=Depends(get_db)):
     ai.require_student(db,student_id,user)
-    query=select(AIAnalysis).where(AIAnalysis.student_id==student_id)
+    query=select(AIAnalysis,AIAnalysisRead.read_at).outerjoin(AIAnalysisRead).where(AIAnalysis.student_id==student_id)
     if user.role=="advisor":query=query.where(AIAnalysis.advisor_id==user.id)
-    return ok([analysis_dict(row) for row in db.scalars(query.order_by(AIAnalysis.created_at.desc())).all()])
+    return ok([analysis_dict(row) | {"unread":user.role=="advisor" and row.status=="completed" and read_at is None}
+               for row,read_at in db.execute(query.order_by(AIAnalysis.created_at.desc()))])
+
+
+@router.put("/students/{student_id}/analyses/{analysis_id}/read")
+def mark_analysis_read(student_id: str, analysis_id: str, user=Depends(roles("advisor")), db=Depends(get_db)):
+    ai.require_student(db, student_id, user)
+    analysis = db.scalar(select(AIAnalysis.id).where(
+        AIAnalysis.id == analysis_id, AIAnalysis.student_id == student_id,
+        AIAnalysis.advisor_id == user.id, AIAnalysis.status == "completed",
+    ))
+    if analysis is None:
+        raise HTTPException(404, "تحلیل آماده‌ای با این شناسه پیدا نشد")
+    if db.get(AIAnalysisRead, analysis_id) is None:
+        try:
+            with db.begin_nested():
+                db.add(AIAnalysisRead(analysis_id=analysis_id))
+        except IntegrityError:
+            if db.get(AIAnalysisRead, analysis_id) is None:
+                raise
+        db.commit()
+    return ok({"read": True})
+
+
 @router.post("/students/{student_id}/analyze")
 def generate_analysis(student_id:str,user=Depends(roles("advisor")),db=Depends(get_db)):
     ai.require_student(db,student_id,user)

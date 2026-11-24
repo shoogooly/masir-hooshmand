@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field, StrictBool, ValidationError
 from sqlalchemy import select, func, or_, case
 from sqlalchemy.exc import IntegrityError
-from app.ai_models import AIConfiguration, AIStudentAccess, AITurn, AdvisorEvaluation
+from app.ai_models import AIAnalysis, AIAnalysisRead, AIConfiguration, AIStudentAccess, AITurn, AdvisorEvaluation
 from app.core.config import settings
 from app.models import (User, StudentProfile, AdvisorAssignment, WeeklyPlan, Activity, StudyReport,
                         Message, AssignedExam, AssignedExamSheet, ExamSession, ExternalExamResult,
@@ -64,6 +64,17 @@ def decrypt_token(raw):
 def require_ready(config):
     if config.provider not in PROVIDERS or not config.enabled or not config.token_encrypted:
         raise HTTPException(503, "هوش مصنوعی هنوز توسط مدیر فعال نشده است")
+
+def unread_analyses(advisor_id):
+    assigned = select(AdvisorAssignment.student_id).where(
+        AdvisorAssignment.advisor_id == advisor_id, AdvisorAssignment.active.is_(True),
+        AdvisorAssignment.approval_status == "approved",
+    )
+    return select(AIAnalysis).where(
+        AIAnalysis.advisor_id == advisor_id, AIAnalysis.student_id.in_(assigned),
+        AIAnalysis.status == "completed", AIAnalysis.id.not_in(select(AIAnalysisRead.analysis_id)),
+    )
+
 
 def require_student(db, student_id, user):
     student = db.get(User, student_id)

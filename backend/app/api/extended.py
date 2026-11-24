@@ -1,13 +1,16 @@
+import json
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, defer
 
+from app.ai_models import AIAnalysis
+from app.ai_service import unread_analyses
 from app.core.security import current_account, current_user, roles
 from app.api.onboarding_flow import ensure_editable
 from app.db.session import get_db
-from app.models import AdvisorAssignment, AdvisorProfile, Message, Notification, Order, SiteSetting, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
+from app.models import AdvisorAssignment, AdvisorProfile, AssignedExam, AssignedExamSheet, Exam, ExamSession, Message, Notification, Order, SiteSetting, Subscription, SubscriptionPlan, User, WeeklyPlan, utcnow
 from app.schemas import AdvisorReferralCreate, FreeSubscriptionCreate, SubscriptionPlanUpdate, TermsAccept, TermsUpdate
 from app.services import audit
 
@@ -68,6 +71,18 @@ def notification_summary(user: User = Depends(current_user), db: Session = Depen
     latest_student_plan = db.scalar(select(WeeklyPlan).where(WeeklyPlan.student_id == user.id, WeeklyPlan.status == "published").order_by(WeeklyPlan.published_at.desc())) if user.role == "student" else None
     unseen_exams = db.scalar(select(func.count(Notification.id)).where(
         Notification.user_id == user.id, Notification.kind == "exam_assigned", Notification.read_at.is_(None))) or 0
+    if user.role == "student":
+        unanswered_assigned = db.scalar(select(func.count(AssignedExam.id)).outerjoin(
+            AssignedExamSheet, AssignedExamSheet.exam_id == AssignedExam.id).where(
+            AssignedExam.student_id == user.id,
+            AssignedExam.answer_uploaded_at.is_(None),
+            AssignedExamSheet.submitted_at.is_(None))) or 0
+        completed_exam_ids = set(db.scalars(select(ExamSession.exam_id).where(
+            ExamSession.student_id == user.id, ExamSession.status == "submitted")).all())
+        available_exams = db.scalars(select(Exam).where(Exam.status == "published")).all()
+        unanswered_online = sum(1 for exam in available_exams if exam.id not in completed_exam_ids
+            and (not (audience := json.loads(exam.audience_json or "[]")) or user.id in audience))
+        unseen_exams = unanswered_assigned + unanswered_online
     unseen = 1 if latest_student_plan and latest_student_plan.student_viewed_at is None else 0
     expired_ids: list[str] = []
     if user.role in {"advisor", "super_admin"}:
@@ -92,7 +107,11 @@ def notification_summary(user: User = Depends(current_user), db: Session = Depen
             end = end if end.tzinfo else end.replace(tzinfo=timezone.utc)
             if end <= now:
                 expired_ids.append(student_id)
-    return ok({"unread_messages": sum(by_sender.values()), "unread_by_sender": by_sender, "unread_notifications": unread_notes, "unseen_plans": unseen or 0, "unseen_exams": unseen_exams, "expired_student_ids": expired_ids})
+    pending_requests = db.scalar(select(func.count(AdvisorAssignment.id)).where(
+        AdvisorAssignment.advisor_id == user.id, AdvisorAssignment.approval_status == "pending",
+    )) if user.role == "advisor" else 0
+    unread_ai = db.scalar(unread_analyses(user.id).with_only_columns(func.count(AIAnalysis.id))) if user.role == "advisor" else 0
+    return ok({"unread_messages": sum(by_sender.values()), "unread_by_sender": by_sender, "unread_notifications": unread_notes, "unseen_plans": unseen or 0, "unseen_exams": unseen_exams, "expired_student_ids": expired_ids, "pending_advisor_requests": pending_requests or 0, "unread_ai_analyses": unread_ai or 0})
 
 
 @router.get("/notifications")

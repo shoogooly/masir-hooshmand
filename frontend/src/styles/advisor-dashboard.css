@@ -1,0 +1,108 @@
+.advisor-welcome h1 {
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  margin: 0;
+}
+.advisor-welcome .date-chip {
+  display: inline-flex;
+  white-space: nowrap;
+  font-size: .9rem;
+}
+.advisor-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+  margin-bottom: 1.25rem;
+}
+.advisor-home-actions .btn,
+.advisor-home-return .btn {
+  gap: .5rem;
+  min-height: 42px;
+  font-size: .9rem;
+}
+.advisor-home-actions .btn { flex: 0 1 11rem; justify-content: center; }
+.advisor-home-actions .advisor-alert-dot { box-shadow: 0 0 0 1px #fff; }
+.advisor-home-actions svg,
+.advisor-home-return svg { width: 18px; height: 18px; }
+.advisor-home-return { padding: 1rem max(1rem, 3%) 0; }
+.advisor-home-return + .content-page { padding-block-start: .75rem; }
+.advisor-followup .panel-title { gap: 12px; flex-wrap: wrap; }
+.advisor-followup .panel-title h2,
+.advisor-progress-chart h2 { font-size: 1.13rem; }
+.advisor-followup .panel-title a {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  color: #5935ac;
+  font-size: .9rem;
+}
+.advisor-followup .panel-title a svg { width: 16px; }
+.advisor-table-scroll { overflow-x: auto; }
+.advisor-followup table {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: collapse;
+  text-align: start;
+  font-size: .96rem;
+}
+.advisor-followup th, .advisor-followup td { padding: .7rem .65rem; text-align: start; }
+.advisor-followup thead { color: #5c506f; background: #f5f1fa; }
+.advisor-followup tbody tr + tr { border-top: 1px solid #e9e4ee; }
+.advisor-followup tbody a:hover, .advisor-followup .panel-title a:hover { text-decoration: underline; }
+.advisor-student-name,
+.advisor-student-progress,
+.advisor-chat-link { display: inline-flex; align-items: center; gap: .5rem; }
+.advisor-student-name { color: #5536a1; }
+.advisor-student-name .avatar { flex: 0 0 2rem; width: 2rem; height: 2rem; }
+.advisor-student-progress progress { width: clamp(35px, 5vw, 75px); height: 7px; accent-color: #7049ce; }
+.advisor-plan-expired { color: #a82a39; font-weight: 700; }
+.advisor-chat-link {
+  position: relative;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 42px;
+  border-radius: 9px;
+  color: #5b39b2;
+  background: #f3edff;
+}
+.advisor-chat-link svg { width: 19px; height: 19px; }
+.advisor-report-status { display: inline-flex; vertical-align: middle; }
+.advisor-report-status svg { width: 21px; height: 21px; stroke-width: 2.5; }
+.advisor-report-status.is-submitted { color: #167044; }
+.advisor-report-status.is-missing { color: #b32339; }
+.advisor-alert-dot { display: inline-block; flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: #d1243d; }
+.advisor-chat-link .advisor-alert-dot { position: absolute; inset-block-start: 7px; inset-inline-end: 7px; }
+.advisor-progress-chart { margin-block-start: 1rem; }
+.advisor-progress-chart h2 { margin-block-start: 0; }
+.advisor-progress-chart figure { margin: 0; }
+.advisor-chart-bars {
+  display: flex;
+  justify-content: start;
+  gap: .45rem;
+  padding: 1.7rem 0 0;
+  margin: 0;
+  list-style: none;
+  overflow: auto;
+}
+.advisor-chart-bars li { flex: 1 0 66px; max-width: 140px; display: grid; text-align: center; gap: .5rem; }
+.advisor-chart-track {
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  height: 135px;
+  background: repeating-linear-gradient(to top,#ede7f3 0 1px,transparent 1px 25%);
+}
+.advisor-chart-bar {
+  position: relative;
+  width: 50%;
+  max-width: 42px;
+  min-height: 2px;
+  border-radius: 5px 5px 0 0;
+  background: #7952cc;
+}
+.advisor-chart-bar b { position: absolute; bottom: calc(100% + 4px); inset-inline: 0; color: #4d2f90; white-space: nowrap; }
+.advisor-chart-bars time { font-size: .85rem; color: #554a64; white-space: nowrap; }
+.advisor-progress-chart figcaption { margin-top: 1rem; font-size: .9rem; line-height: 1.9; color: #5c506b; }
+@media (max-width: 520px) {
+  .advisor-welcome { flex-wrap: wrap; gap: .5rem; }
+  .advisor-home-actions .btn { flex: 1 1 10rem; }
+}

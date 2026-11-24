@@ -2,6 +2,7 @@ import ExternalResultsPage from './ExternalResultsPage'
 import AcademicCalendarPage from './AcademicCalendarPage'
 import '../styles/advisor-enhancements.css'
 import BooksPage, {type LibraryBook} from './BooksPage'
+import { advisorMessengerThread } from '../utils/chatRoutes'
 import {softTimelinePositions} from '../utils/softTimeline'
 import {detectSubjectColor,detectSubjects,isDarkSubjectColor,lightSubjectBlockStyle,subjectBlockStyle,withSubjectColorMode} from '../utils/subjectColors'
 import AdvisorEvaluationPage from './AdvisorEvaluationPage'
@@ -15,7 +16,7 @@ import AIPlanDesigner from './AIPlanDesigner'
 import PasswordChange from '../components/PasswordChange'
 import { exportPlanPdf } from '../utils/planPdf'
 import '../styles/planner-readable.css'
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowRight, ArrowUp, BookOpen, BrainCircuit, Camera, CheckCircle2, Clock3, Copy, ClipboardPaste, Download, MessageSquare, Plus, Save, Search, Send, Trash2, TrendingUp, UserRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -30,7 +31,7 @@ import {formatIranDateTime} from '../utils/jalali'
 const days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه']
 const readableProfileText=(value?:string)=>{if(!value)return '';try{const parsed=JSON.parse(value);return Array.isArray(parsed)?parsed.join('، '):value}catch{return value}}
 const fmt=(date?:string)=>date?formatIranDateTime(date):''
-function PageHead({title,subtitle,back}:{title:string;subtitle:string;back?:()=>void}){return <div className="section-head">{back&&<button className="icon-btn" onClick={back}><ArrowRight/></button>}<div><h1>{title}</h1><p>{subtitle}</p></div></div>}
+function PageHead({title,subtitle,back,backLabel='بازگشت'}:{title:string;subtitle:string;back?:()=>void;backLabel?:string}){return <div className="section-head">{back&&<button type="button" className="icon-btn" aria-label={backLabel} onClick={back}><ArrowRight aria-hidden="true"/></button>}<div><h1>{title}</h1><p>{subtitle}</p></div></div>}
 function State({text='در حال دریافت اطلاعات...'}:{text?:string}){return <div className="page-state">{text}</div>}
 function ErrorBox({error}:{error:unknown}){return <div className="error-box">{error instanceof Error?error.message:'خطایی رخ داد'}</div>}
 
@@ -67,12 +68,13 @@ export function SettingsPage({user:_user}:{user?:User}={}){
   return <div className="content-page"><PageHead title="تنظیمات" subtitle={data.role==='advisor'?'اطلاعات حرفه‌ای و ظرفیت پذیرش سال تحصیلی':'اطلاعات حساب، سوابق و برنامه مدرسه'}/><form className="settings-form panel expanded" onSubmit={submit}><div className="settings-photo full"><div className={'profile-photo-preview '+(data.profile_photo_pending&&!newPhoto?'pending':'')}>{displayedPhoto?<img src={photoUrl(displayedPhoto)} alt="عکس پرسنلی"/>:<UserRound/>}</div><div><b>عکس پرسنلی</b><p>عکس جدید پس از تأیید مدیر جایگزین عکس فعلی می‌شود.</p>{data.profile_photo_pending&&!newPhoto&&<small>این عکس در انتظار بررسی مدیر است و پس از تأیید در پروفایل نمایش داده می‌شود.</small>}<label className="btn btn-outline"><Camera/> {newPhoto||data.profile_photo_pending?'انتخاب عکس دیگر':'تغییر عکس'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;setPhotoError('');try{setNewPhoto(await prepareProfilePhoto(file))}catch(error){setPhotoError(error instanceof Error?error.message:'عکس معتبر نیست')}e.target.value=''}}/></label>{photoError&&<em>{photoError}</em>}</div></div><label>نام و نام خانوادگی<input name="full_name" defaultValue={data.full_name} required/></label><label>شماره ورود<input value={data.phone} disabled/></label>
     {data.role==='student'&&<><label>کد ملی<input name="national_code" inputMode="numeric" maxLength={10} defaultValue={data.national_code}/></label><label>تاریخ تولد<input name="birth_date" placeholder="۱۴۰۰/۰۱/۰۱" defaultValue={data.birth_date}/></label><label>نام والد<input name="parent_name" defaultValue={data.parent_name}/></label><label>شماره موبایل والد<input name="parent_phone" inputMode="tel" maxLength={11} defaultValue={data.parent_phone}/></label><label className="full">نشانی<textarea name="address" defaultValue={data.address}/></label><label>پایه<select name="grade" defaultValue={data.grade}>{['هفتم','هشتم','نهم','دهم','یازدهم','دوازدهم','پشت کنکوری'].map(value=><option key={value}>{value}</option>)}</select></label><label>رشته<input name="major" defaultValue={data.major}/></label><label>مدرسه<input name="school" defaultValue={data.school}/></label><label className="full">هدف تحصیلی<textarea name="goal" defaultValue={data.goal}/></label><label className="full">نقاط قوت<textarea name="strengths" defaultValue={readableProfileText(data.strengths)}/></label><label className="full">نقاط قابل بهبود<textarea name="weaknesses" defaultValue={readableProfileText(data.weaknesses)}/></label><div className="settings-averages full">{[['average_grade7','معدل هفتم'],['average_grade8','معدل هشتم'],['average_grade9','معدل نهم'],['average_grade10','معدل دهم'],['average_grade11','معدل یازدهم'],['average_grade12','معدل دوازدهم']].map(([name,label])=><label key={name}>{label}<input name={name} type="number" min="0" max="20" step=".01" defaultValue={String(data[name as keyof Profile]??'')}/></label>)}</div><div className="school-settings full"><h3>برنامه مدرسه و کلاس‌های فوق‌العاده</h3>{days.map(day=>{const periods=schedule[day]||['','','',''];return <section key={day}><b>{day}</b>{periods.map((value,index)=><input key={index} value={value} placeholder={`زنگ ${index+1}`} onChange={e=>setSchedule({...schedule,[day]:periods.map((item,i)=>i===index?e.target.value:item)})}/>)}<textarea value={extras[day]||''} placeholder="کلاس فوق‌العاده یا توضیحات" onChange={e=>setExtras({...extras,[day]:e.target.value})}/></section>})}</div></>}
     {data.role==='advisor'&&<><label>کد ملی<input name="national_code" inputMode="numeric" maxLength={10} defaultValue={data.national_code}/></label><label>تاریخ تولد<input name="birth_date" placeholder="۱۴۰۰/۰۱/۰۱" defaultValue={data.birth_date}/></label><label className="full">نشانی<textarea name="address" defaultValue={data.address}/></label><div className="work-levels full"><span>مقطع کاری</span><label><input type="checkbox" checked={advisorLevels.includes('lower_secondary')} onChange={e=>setAdvisorLevels(e.target.checked?[...advisorLevels,'lower_secondary']:advisorLevels.filter(level=>level!=='lower_secondary'))}/> متوسطه اول <small>پایه‌های هفتم، هشتم و نهم</small></label><label><input type="checkbox" checked={advisorLevels.includes('upper_secondary')} onChange={e=>setAdvisorLevels(e.target.checked?[...advisorLevels,'upper_secondary']:advisorLevels.filter(level=>level!=='upper_secondary'))}/> متوسطه دوم <small>پایه‌های دهم، یازدهم و دوازدهم</small></label>{advisorLevels.length===0&&<small>حداقل یک مقطع را انتخاب کنید.</small>}</div><label>مدرک تحصیلی<input name="education_degree" defaultValue={data.education_degree}/></label><label>رشته تحصیلی<input name="education_field" defaultValue={data.education_field}/></label><label>سابقه کاری (سال)<input name="experience_years" type="number" min="0" defaultValue={data.experience_years}/></label><label>ظرفیت سال تحصیلی<input name="support_capacity" type="number" min={data.assigned_students||1} max="500" defaultValue={data.support_capacity}/><small>{data.assigned_students||0} دانش‌آموز فعال؛ {data.remaining_capacity||0} ظرفیت باقی‌مانده</small></label><label>سال تحصیلی<input name="academic_year" defaultValue={data.academic_year}/></label><label className="full">معرفی مشاور، سوابق و توضیحات پروفایل<textarea name="bio" defaultValue={data.bio}/></label>{data.profile_changes_pending&&<div className="success-note full">تغییرات قبلی شما در انتظار تأیید مدیر است. ثبت دوباره، همان درخواست را به‌روزرسانی می‌کند.</div>}</>}
-    <button className="btn btn-primary" disabled={save.isPending||(data.role==='advisor'&&advisorLevels.length===0)}><Save/> ذخیره تغییرات</button>{save.isSuccess&&<span className="success-note">{data.role==='advisor'?'تغییرات برای تأیید مدیر ارسال شد.':'تغییرات ذخیره شد.'}</span>}{save.error&&<ErrorBox error={save.error}/>}</form><PasswordChange/></div>
+    <button className="btn btn-primary" disabled={save.isPending||(data.role==='advisor'&&advisorLevels.length===0)}><Save/> ذخیره تغییرات</button>{save.isSuccess&&<span className="success-note">{data.role==='advisor'?'تغییرات برای تأیید مدیر ارسال شد.':'تغییرات ذخیره شد.'}</span>}{save.error&&<ErrorBox error={save.error}/>}</form><PasswordChange student={data.role==='student'}/></div>
 }
 
 export function ChatPanel({counterpart,currentUser}:{counterpart:User;currentUser:User}){
   const qc=useQueryClient();const {data=[],isLoading,error}=useQuery({queryKey:['messages',counterpart.id],queryFn:()=>api<Message[]>(`/messages?counterpart_id=${counterpart.id}`),refetchInterval:5000})
-  useEffect(()=>{if(data.length)api(`/messages/${counterpart.id}/read`,{method:'POST'}).then(()=>{qc.invalidateQueries({queryKey:['messages',counterpart.id]});qc.invalidateQueries({queryKey:['notification-summary']});qc.invalidateQueries({queryKey:['notifications']})}).catch(()=>{})},[data.length,counterpart.id,qc])
+  const newestUnread=data.filter(message=>message.sender_id===counterpart.id&&!message.read_at).at(-1)?.id
+  useEffect(()=>{if(newestUnread)api(`/messages/${counterpart.id}/read`,{method:'POST'}).then(()=>{qc.invalidateQueries({queryKey:['messages',counterpart.id]});qc.invalidateQueries({queryKey:['notification-summary']});qc.invalidateQueries({queryKey:['notifications']})}).catch(()=>{})},[newestUnread,counterpart.id,qc])
   const send=useMutation({mutationFn:(body:string)=>api('/messages',{method:'POST',body:JSON.stringify({recipient_id:counterpart.id,body})}),onSuccess:()=>qc.invalidateQueries({queryKey:['messages',counterpart.id]})})
   if(isLoading)return <State/>;if(error)return <ErrorBox error={error}/>
   return <div className="chat-shell"><header><span className="avatar">{counterpart.full_name[0]}</span><div><b>{counterpart.full_name}</b><small>{counterpart.role==='advisor'?'مشاور شما':'دانش‌آموز'}</small></div><i>به‌روزرسانی خودکار</i></header><div className="message-list">{!data.length&&<State text="هنوز پیامی ردوبدل نشده است."/>}{data.map(m=><article key={m.id} className={m.sender_id===currentUser.id?'mine':''}><p>{m.body}</p><small>{fmt(m.created_at)} {m.sender_id===currentUser.id&&(m.read_at?'· خوانده شد':'· ارسال شد')}</small></article>)}</div><form onSubmit={e=>{e.preventDefault();const input=e.currentTarget.elements.namedItem('message') as HTMLInputElement;if(input.value.trim()){send.mutate(input.value.trim());input.value=''}}}><input name="message" maxLength={3000} autoComplete="off" placeholder="پیام خود را بنویسید..."/><button disabled={send.isPending}><Send/></button></form></div>
@@ -97,14 +99,48 @@ export function AdvisorStudentsPage(){const nav=useNavigate();const [search,setS
 type DraftActivity={day:string;subject:string;title:string;start_time:string;end_time:string}
 function LegacyPlanBuilder({studentId}:{studentId:string}){const qc=useQueryClient();const [title,setTitle]=useState('برنامه هفتگی');const [week,setWeek]=useState('هفته جاری');const [items,setItems]=useState<DraftActivity[]>([{day:'شنبه',subject:'',title:'',start_time:'08:00',end_time:'09:00'}]);const {data}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')});const create=useMutation({mutationFn:async()=>{const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,activities:items})});await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan},onSuccess:()=>qc.invalidateQueries({queryKey:['plans','advisor']})});const update=(i:number,key:keyof DraftActivity,value:string)=>setItems(all=>all.map((x,n)=>n===i?{...x,[key]:value}:x));return <div className="planner"><div className="planner-meta"><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="عنوان برنامه"/><input value={week} onChange={e=>setWeek(e.target.value)} placeholder="بازه هفته"/></div>{items.map((item,i)=><div className="planner-row" key={i}><select value={item.day} onChange={e=>update(i,'day',e.target.value)}>{days.map(d=><option key={d}>{d}</option>)}</select><input type="time" step="900" value={item.start_time} onChange={e=>update(i,'start_time',e.target.value)}/><input type="time" step="900" value={item.end_time} onChange={e=>update(i,'end_time',e.target.value)}/><input value={item.subject} onChange={e=>update(i,'subject',e.target.value)} placeholder="درس"/><input value={item.title} onChange={e=>update(i,'title',e.target.value)} placeholder="عنوان فعالیت"/><button onClick={()=>setItems(a=>a.filter((_,n)=>n!==i))}><Trash2/></button></div>)}<div className="planner-actions"><button className="small-secondary" onClick={()=>setItems(a=>[...a,{day:'شنبه',subject:'',title:'',start_time:'08:00',end_time:'09:00'}])}><Plus/> افزودن بازه</button><button className="btn btn-primary" disabled={create.isPending||items.some(x=>!x.subject||!x.title)} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار</button></div>{create.error&&<ErrorBox error={create.error}/>}<h2>نسخه‌های قبلی</h2>{data?.filter(p=>p.student_id===studentId).map(p=><div className="version-row" key={p.id}><b>{p.title}</b><span>{p.week_label} · نسخه {p.version}</span><em>{p.status==='published'?'منتشرشده':'پیش‌نویس'}</em></div>)}</div>}
 
+type AdvisorStudentProfile=Omit<Profile,keyof User>
+const previousGradeAverage:Record<string,keyof Pick<AdvisorStudentProfile,
+ 'average_grade7'|'average_grade8'|'average_grade9'|'average_grade10'|'average_grade11'|'average_grade12'>>={
+ هشتم:'average_grade7',
+ نهم:'average_grade8',
+ دهم:'average_grade9',
+ یازدهم:'average_grade10',
+ دوازدهم:'average_grade11',
+ 'پشت کنکوری':'average_grade12',
+}
+
+function AdvisorStudentProfileSummary({student,profile}:{student:User;profile?:AdvisorStudentProfile}){
+ const averageField=previousGradeAverage[profile?.grade??'']
+ const average=averageField?profile?.[averageField]:undefined
+ const fields:{label:string;value?:string;phone?:boolean}[][]=[
+  [{label:'رشته',value:profile?.major},{label:'پایه',value:profile?.grade}],
+  [{label:'مدرسه',value:profile?.school},{label:'معدل سال قبل',value:average?.toLocaleString('fa-IR',{maximumFractionDigits:2})}],
+  [{label:'موبایل دانش‌آموز',value:student.phone,phone:true},{label:'موبایل ولی',value:profile?.parent_phone,phone:true}],
+  [{label:'نام ولی',value:profile?.parent_name},{label:'هدف تحصیلی',value:profile?.goal}],
+ ]
+ return <table className="advisor-student-profile-table" aria-label="مشخصات دانش‌آموز">
+  <tbody>{fields.map(row=><tr key={row[0].label}>{row.map(({label,value,phone})=>
+   <Fragment key={label}>
+    <th scope="row">{label}:</th>
+    <td>{value?.trim()?(phone?<bdi dir="ltr">{value}</bdi>:value):<span className="advisor-profile-empty">ثبت نشده</span>}</td>
+   </Fragment>
+  )}</tr>)}</tbody>
+ </table>
+}
+
 export function StudentFilePage({user,studentId,tab}:{user:User;studentId:string;tab:string}){
  const nav=useNavigate()
- const {data,isLoading,error}=useQuery({queryKey:['student-file',studentId],queryFn:()=>api<ReportData&{student:User}>(`/advisors/students/${studentId}/report`)})
+ const {data,isLoading,error}=useQuery({queryKey:['student-file',studentId],queryFn:()=>api<ReportData&{student:User;profile?:AdvisorStudentProfile}>(`/advisors/students/${studentId}/report`)})
  if(isLoading)return <State/>
  if(error||!data)return <ErrorBox error={error}/>
  const tabs=[['report','گزارش عملکرد'],['plan','برنامه ساز'],['school-schedule','برنامه مدرسه'],['study-reports','گزارش کار'],['exams','آزمون‌ها'],['external-results','کارنامه آزمون‌های آزمایشی'],['academic-calendar','تقویم آموزشی'],['chat','گفت‌وگو'],['evaluation','ارزیابی مشاور از دانش‌آموز'],['books','کتاب‌ها']]
- return <div className="content-page"><PageHead back={()=>nav('/app/advisor/students')} title={data.student.full_name} subtitle="پرونده اختصاصی دانش‌آموز"/>
-  <div className="file-tabs">{tabs.map(([key,label])=><button key={key} className={tab===key?'active':''} onClick={()=>nav(`/app/advisor/students/${studentId}/${key}`)}>{label}</button>)}</div>
+ return <div className="content-page">
+  <header className="advisor-student-file-heading">
+   <PageHead back={()=>nav('/app/advisor/overview')} backLabel="بازگشت به صفحه اصلی" title={data.student.full_name} subtitle="پرونده اختصاصی دانش‌آموز"/>
+   <AdvisorStudentProfileSummary student={data.student} profile={data.profile}/>
+  </header>
+  <div className="file-tabs">{tabs.map(([key,label])=><button key={key} className={tab===key?'active':''} onClick={()=>nav(key==='chat'?advisorMessengerThread(studentId):`/app/advisor/students/${studentId}/${key}`)}>{label}</button>)}</div>
   {tab==='academic-calendar'?<AcademicCalendarPage mode="advisor" user={user} studentId={studentId}/>:tab==='external-results'?<ExternalResultsPage studentId={studentId}/>:tab==='school-schedule'?<SchoolSchedulePage studentId={studentId}/>:tab==='report'?<><AdvisorStudentPerformance key={studentId} studentId={studentId} studentName={data.student.full_name}/><details className="advisor-performance-totals"><summary>نمایش آمار کلی و نمودارهای پیشرفت</summary><ProgressPage studentId={studentId}/></details></>:tab==='plan'?<AdvisorPlanWorkspace key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name}/>:tab==='study-reports'?<AdvisorPlanArchive key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name} reports/>:tab==='books'?<BooksPage mode="advisor" studentId={studentId}/>:tab==='evaluation'?<AdvisorEvaluationPage key={studentId} studentId={studentId}/>:tab==='exams'?<AdvisorAssignedExamsPage studentId={studentId}/>:<ChatPanel counterpart={data.student} currentUser={user}/>}
  </div>
 }
