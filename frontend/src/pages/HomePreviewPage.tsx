@@ -7,6 +7,7 @@ import Brand from '../components/Brand'
 import { api } from '../api'
 import type { SubscriptionPlanOption } from '../types'
 import '../styles/home-astra.css'
+import '../styles/home-modern.css'
 
 const services = [
   { icon: CalendarDays, label: 'برنامه‌ریزی شخصی', title: 'برنامه‌ای که به زندگی تو می‌خورد', text: 'برنامه هفتگی و ساعتی با توجه به هدف، مدرسه و کلاس‌هایت. فعالیت‌ها، زمان مطالعه و تعداد تست را ثبت کن تا برنامه بعدی دقیق‌تر شود.', color: 'violet' },
