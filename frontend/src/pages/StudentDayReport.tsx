@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import { dayLines, type DayValues, type ReportRecord, type StudyReports } from './studyReportTypes'
 
-export default function StudentDayReport({day,planId,record,canEdit}:{day:string;planId:string;record?:ReportRecord<DayValues>;canEdit:boolean}){
+export default function StudentDayReport({day,dayKey=day,planId,record,canEdit}:{day:string;dayKey?:string;planId:string;record?:ReportRecord<DayValues>;canEdit:boolean}){
  const qc=useQueryClient()
  const [values,setValues]=useState<DayValues>(record?.values||{}),[version,setVersion]=useState(record?.version||0)
  const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false)
@@ -13,8 +13,8 @@ export default function StudentDayReport({day,planId,record,canEdit}:{day:string
  async function submit(e:FormEvent){
   e.preventDefault();if(!canEdit||busy)return;setBusy(true);setError('')
   try{
-   const result=await api<StudyReports>(`/plans/${planId}/study-reports/days/${encodeURIComponent(day)}`,{method:'PUT',body:JSON.stringify({...values,version})})
-   qc.setQueryData(['study-reports',planId],result);setValues(result.days[day]?.values||{});setVersion(result.days[day]?.version||0);setDirty(false);setSaved(true)
+   const result=await api<StudyReports>(`/plans/${planId}/study-reports/days/${encodeURIComponent(dayKey)}`,{method:'PUT',body:JSON.stringify({...values,version})})
+   qc.setQueryData(['study-reports',planId],result);setValues(result.days[dayKey]?.values||{});setVersion(result.days[dayKey]?.version||0);setDirty(false);setSaved(true)
    void qc.invalidateQueries({queryKey:['report']})
   }catch(e){setError(e instanceof Error?e.message:'ذخیره نشد؛ دوباره تلاش کن.')}
   finally{setBusy(false)}

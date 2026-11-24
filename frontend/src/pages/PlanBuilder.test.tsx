@@ -8,6 +8,18 @@ vi.mock('../api',()=>({api:vi.fn(async(path:string)=>path==='/plans'?[]:null)}))
 let client:QueryClient
 afterEach(()=>{cleanup();client?.clear()})
 function setup(){client=new QueryClient({defaultOptions:{queries:{retry:false}}});return render(<QueryClientProvider client={client}><PlanBuilder studentId="student"/></QueryClientProvider>)}
+test('plan length defaults to seven and supports the full one to fourteen day range',()=>{
+ const {container}=setup()
+ const count=screen.getByRole<HTMLSelectElement>('combobox',{name:'تعداد روزهای برنامه'})
+ const days=()=>Array.from(container.querySelectorAll('.timeline-editor-day header > span'),day=>day.textContent)
+ expect(count.options).toHaveLength(14)
+ expect(count.value).toBe('7')
+ expect(days()).toHaveLength(7)
+ fireEvent.change(count,{target:{value:'14'}})
+ expect(new Set(days()).size).toBe(14)
+ fireEvent.change(count,{target:{value:'1'}})
+ expect(days()).toHaveLength(1)
+})
 function descriptionInputs(){return screen.getAllByRole('textbox',{name:/^توضیحات بازه/}) as HTMLInputElement[]}
 function descriptionText(){return descriptionInputs().map(input=>input.value).join('\n')}
 function editDescription(value:string){const parts=value.split('\n');while(descriptionInputs().length>parts.length){const last=descriptionInputs().at(-1)!;fireEvent.change(last,{target:{value:''}});last.setSelectionRange(0,0);fireEvent.keyDown(last,{key:'Backspace'})}parts.forEach((part,index)=>{if(!descriptionInputs()[index])fireEvent.keyDown(descriptionInputs()[index-1],{key:'Enter'});fireEvent.change(descriptionInputs()[index],{target:{value:part}})});return descriptionInputs()}

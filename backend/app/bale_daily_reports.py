@@ -42,8 +42,9 @@ def deliver_due(db, now=None):
         if selected:
             plan, day = selected
             data = snapshot(plan, db)
-            has_report = bool(data["days"].get(day["label"])) or any(
-                a.day == day["label"] and (data["activities"].get(a.id, {}).get("version", 0) > 0 or a.status != "pending" or a.note or a.actual_minutes or a.test_count)
+            day_key = day.get("key", day["label"])
+            has_report = bool(data["days"].get(day_key)) or any(
+                a.day == day_key and (data["activities"].get(a.id, {}).get("version", 0) > 0 or a.status != "pending" or a.note or a.actual_minutes or a.test_count)
                 for a in plan.activities)
         text = f"👤 {student.full_name} · گزارش روز {date}\n"
         text += _daily_report_text(db, *selected) if has_report else "⚠️ گزارش کار امروز این دانش‌آموز خالی است."

@@ -14,7 +14,8 @@ export function createStudyReportSheet(plan:WeeklyPlan,reports:StudyReports,stud
  for(const day of plan.days){
   const row=el('section','study-pdf-day'),content=el('div','study-pdf-content')
   content.append(el('h2','',day.label+' · '+day.date))
-  const activities=plan.activities.filter(a=>a.day===day.label).sort((a,b)=>a.start_time.localeCompare(b.start_time))
+  const dayKey=day.key??day.label
+  const activities=plan.activities.filter(a=>a.day===dayKey).sort((a,b)=>a.start_time.localeCompare(b.start_time))
   const cards=el('div','study-pdf-cards')
   cards.style.gridTemplateColumns=`repeat(${Math.max(1,Math.min(4,activities.length))},minmax(0,1fr))`
   for(const activity of activities){
@@ -25,7 +26,7 @@ export function createStudyReportSheet(plan:WeeklyPlan,reports:StudyReports,stud
    cards.append(card)
   }
   if(!activities.length)cards.append(el('p','','فعالیتی ثبت نشده است.'))
-  content.append(cards,el('p','study-pdf-daily','گزارش روز: '+(dayLines(reports.days[day.label]?.values).join(' | ')||'ثبت نشده است.')))
+  content.append(cards,el('p','study-pdf-daily','گزارش روز: '+(dayLines(reports.days[dayKey]?.values).join(' | ')||'ثبت نشده است.')))
   row.append(content);days.append(row)
  }
  sheet.append(days,el('footer','study-pdf-footer','مأموریت هفته: '+(plan.weekly_mission||'ثبت نشده است.')+' · مهیاد'))

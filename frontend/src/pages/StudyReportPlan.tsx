@@ -31,14 +31,15 @@ export default function StudyReportPlan({plan,student=false,studentName='دان�
   {data&&student&&<p className="study-edit-note">{canEdit?'هر روز، هر وقت خواستی! گزارش روزهای برنامه‌ات را بدون محدودیت زمانی ثبت یا ویرایش کن. تیک یا ضربدر را انتخاب کن و «ثبت گزارش» را بزن. همه فیلدها اختیاری‌اند.':'گزارش این برنامه فعلاً فقط قابل مشاهده است.'}</p>}
   {exportError&&<p role="alert">{exportError}</p>}
   {plan.days.map(day=>{
-   const items=plan.activities.filter(x=>x.day===day.label).sort((a,b)=>a.start_time.localeCompare(b.start_time))
-   return <section className="study-day" key={day.label}><h3>{day.label} <small>{day.date}</small></h3>
+   const dayKey=day.key??day.label
+   const items=plan.activities.filter(x=>x.day===dayKey).sort((a,b)=>a.start_time.localeCompare(b.start_time))
+   return <section className="study-day" key={dayKey}><h3>{day.label} <small>{day.date}</small></h3>
     <div className="study-activities">{items.map(item=>student?<StudentActivityReport key={item.id} item={item} planId={plan.id} volume={plan.plan_mode==='volume'} record={data?.activities[item.id]} canEdit={canEdit}/>:<article className={'study-activity report-'+(data?.activities[item.id]?.values.status||'pending')} key={item.id} aria-label={item.title}>
      <div className="study-activity-heading"><b>{item.title}</b><span>{plan.plan_mode==='volume'?item.planned_minutes.toLocaleString('fa-IR')+' دقیقه':item.start_time+' تا '+item.end_time}</span>{item.subject&&<small>{item.subject}</small>}</div>
      <div className="study-activity-report"><ReportSummary lines={activityLines(data?.activities[item.id]?.values)}/></div>
     </article>)}</div>
     {!items.length&&<p className="study-muted">برای این روز فعالیتی ثبت نشده است.</p>}
-    {student?<StudentDayReport day={day.label} planId={plan.id} record={data?.days[day.label]} canEdit={canEdit}/>:<section className="study-day-report"><header><h4>جمع‌بندی روز {day.label}</h4></header><ReportSummary lines={dayLines(data?.days[day.label]?.values)}/></section>}
+    {student?<StudentDayReport day={day.label} dayKey={dayKey} planId={plan.id} record={data?.days[dayKey]} canEdit={canEdit}/>:<section className="study-day-report"><header><h4>جمع‌بندی روز {day.label}</h4></header><ReportSummary lines={dayLines(data?.days[dayKey]?.values)}/></section>}
    </section>
   })}
  </section>

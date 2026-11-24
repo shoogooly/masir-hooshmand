@@ -319,13 +319,19 @@ class PlanCreate(BaseModel):
     @model_validator(mode="after")
     def validate_table(self):
         day_labels = [str(day.get("label", "")).strip() for day in self.days]
-        if any(not label for label in day_labels) or len(day_labels) != len(set(day_labels)):
+        day_keys = []
+        for index, (day, label) in enumerate(zip(self.days, day_labels)):
+            key = day.get("key", label)
+            if not label or ("key" in day and key != f"day-{index}"):
+                raise ValueError("شناسه یا عنوان روز برنامه معتبر نیست")
+            day_keys.append(key)
+        if len(day_keys) != len(set(day_keys)):
             raise ValueError("نام روزهای جدول باید کامل و یکتا باشد")
         range_start, range_end = time_minutes(self.day_start_time), time_minutes(self.day_end_time)
         if range_start >= range_end:
             raise ValueError("بازه کلی روز معتبر نیست")
         for item in self.activities:
-            if str(item.get("day", "")).strip() not in day_labels:
+            if str(item.get("day", "")).strip() not in day_keys:
                 raise ValueError("روز فعالیت در جدول وجود ندارد")
             start, end = time_minutes(item.get("start_time", "")), time_minutes(item.get("end_time", ""))
             if start < range_start or end > range_end:

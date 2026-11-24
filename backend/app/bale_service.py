@@ -286,7 +286,7 @@ def _show_report_list(db,chat_id,link,user):
 def _show_days(db,chat_id,plan,prefix):
     try:days=json.loads(plan.schedule_days_json or "[]")
     except (TypeError,ValueError):days=[]
-    rows=[[{"text":f"{day.get('label','روز')} · {day.get('date','') or 'بدون تاریخ'}","callback_data":f"{prefix}:{plan.id}:{index}"}] for index,day in enumerate(days[:7])]
+    rows=[[{"text":f"{day.get('label','روز')} · {day.get('date','') or 'بدون تاریخ'}","callback_data":f"{prefix}:{plan.id}:{index}"}] for index,day in enumerate(days)]
     return inline(db,chat_id,"روز موردنظر را انتخاب کنید:",rows) if rows else send(db,chat_id,"روزی در این برنامه ثبت نشده است.")
 
 def _day_at(plan,index):
@@ -298,7 +298,8 @@ def _daily_report_text(db,plan,day):
     from app.study_reporting import legacy_report
     data=snapshot(plan,db);label=day.get("label","روز");date=day.get("date","")
     lines=[f"📅 گزارش {label} · {date}"]
-    activities=sorted((item for item in plan.activities if item.day==label),key=lambda item:item.start_time)
+    day_key=day.get("key",label)
+    activities=sorted((item for item in plan.activities if item.day==day_key),key=lambda item:item.start_time)
     if not activities:lines.append("\nفعالیتی برای این روز ثبت نشده است.")
     for item in activities:
         values=data["activities"].get(item.id,{}).get("values",legacy_report(item))
@@ -307,7 +308,7 @@ def _daily_report_text(db,plan,day):
         if values.get("question_count") is not None:lines.append(f"  سؤال: {values['question_count']} · درست: {values.get('correct',0)} · غلط: {values.get('wrong',0)} · حل‌نشده: {values.get('unanswered',0)}")
         if values.get("not_done_reason"):lines.append("  دلیل: "+values["not_done_reason"])
         if values.get("quality"):lines.append("  توضیحات: "+values["quality"])
-    day_values=data["days"].get(label,{}).get("values",{})
+    day_values=data["days"].get(day_key,{}).get("values",{})
     lines.append("\n✨ جمع‌بندی روز")
     summaries=[("تمرکز","focus"," از ۵"),("انرژی","energy"," از ۵"),("خواب","sleep_hours"," ساعت"),("استرس","stress"," از ۵")]
     details=[f"{title}: {day_values[key]}{suffix}" for title,key,suffix in summaries if day_values.get(key) is not None]
@@ -377,7 +378,7 @@ def handle_callback(db,query):
         _answer(db,query_id)
         if prefix=="viewday":return send(db,chat_id,_daily_report_text(db,plan,day))
         rows=[]
-        for activity in sorted((x for x in plan.activities if x.day==day["label"]),key=lambda x:x.start_time):
+        for activity in sorted((x for x in plan.activities if x.day==day.get("key",day["label"])),key=lambda x:x.start_time):
             rows.append([{"text":f"{activity.start_time} · {activity.title}","callback_data":"activity:"+activity.id}])
         rows.append([{"text":"✨ گزارش جمع‌بندی روز","callback_data":f"daysummary:{plan.id}:{index}"}])
         return inline(db,chat_id,f"فعالیت‌های {day['label']} · {day.get('date','')}",rows)
@@ -398,7 +399,7 @@ def handle_callback(db,query):
     if data.startswith("daysummary:") and link.access_role=="student":
         _,plan_id,index=data.split(":",2);plan=_authorized_plan(db,link,user,plan_id);day=_day_at(plan,int(index)) if plan else None
         if not day:return _answer(db,query_id,"روز در دسترس نیست")
-        link.state="day_focus";_set_context(link,plan_id=plan.id,day=day["label"],values={});_answer(db,query_id)
+        link.state="day_focus";_set_context(link,plan_id=plan.id,day=day.get("key",day["label"]),values={});_answer(db,query_id)
         return send(db,chat_id,"میزان تمرکز امروز را از ۱ تا ۵ وارد کنید:")
     _answer(db,query_id,"گزینه معتبر نیست")
 

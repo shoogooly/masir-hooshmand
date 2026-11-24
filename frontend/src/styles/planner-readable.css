@@ -175,7 +175,9 @@
 .timeline-planner .planner-calendar-row .persian-date-selector>label{flex:1;min-width:0}
 .timeline-planner .planner-calendar-row .persian-date-selector select,.timeline-planner .planner-calendar-row .persian-date-selector select:first-child{min-width:0;width:100%}
 .timeline-planner .planner-calendar-row .persian-date-selector select{min-height:32px;padding:3px;font-size:13px}
-.timeline-planner .daily-range-fields{display:flex;gap:10px;flex-wrap:nowrap;justify-content:flex-start}
+.timeline-planner .daily-range-fields{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start}
+.timeline-planner .plan-day-count{display:grid;flex:1 0 110px;gap:2px;font-size:11px}
+.timeline-planner .plan-day-count select{width:100%;min-height:30px;padding:3px;font-size:13px}
 .timeline-planner .daily-range-fields .time-field{gap:2px;font-size:11px}
 .timeline-planner .daily-range-fields .split-clock{width:104px;gap:2px}
 .timeline-planner .daily-range-fields .split-clock input{width:47px;height:30px;padding:3px;font-size:14px}

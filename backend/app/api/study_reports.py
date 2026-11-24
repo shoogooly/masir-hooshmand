@@ -117,7 +117,7 @@ def save_activity(plan_id: str, activity_id: str, payload: ActivityReportInput,
 def save_day(plan_id: str, day: str, payload: DayReportInput,
              user: User = Depends(roles('student')), db: Session = Depends(get_db)):
     plan=access(plan_id,user,db)
-    labels={x['label'] for x in json.loads(plan.schedule_days_json or '[]')} or {'شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'}
+    labels={x.get('key', x['label']) for x in json.loads(plan.schedule_days_json or '[]')} or {'شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'}
     if day not in labels:
         raise HTTPException(404,'روز در این برنامه یافت نشد')
     return persist(plan,'day:'+day,payload,db,user)

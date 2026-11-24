@@ -81,7 +81,8 @@ test('published header shows stable number, quote, mission and correctly ordered
  expect(sheet.querySelector('.print-hero-number')?.textContent).toBe('۲')
  expect(sheet.querySelector('.print-hero-quote')?.textContent).toBe('با برنامه پیش برو')
  expect(sheet.querySelector('.print-hero-mission strong')?.textContent).toBe('مرور مباحث')
- expect(sheet.querySelectorAll('.print-day-divider')).toHaveLength(1)
+ expect(sheet.querySelectorAll('.print-day-divider:not(.print-plan-spacer)')).toHaveLength(1)
+ expect(sheet.querySelectorAll('.print-plan-day.print-plan-spacer')).toHaveLength(5)
  expect([...sheet.querySelectorAll('.print-plan-range-time span')].slice(0,3).map(x=>x.textContent)).toEqual(['۰۸:۰۰',' تا ','۰۹:۰۰'])
 })
 

@@ -85,9 +85,11 @@ function shadeHex(color:string,amount:number){
  return '#'+channels.map(channel=>Math.round(parseInt(channel,16)*amount).toString(16).padStart(2,'0')).join('')
 }
 
-export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=false){
+const DAYS_PER_PAGE=7
+
+export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=false,pageDays=plan.days.slice(0,DAYS_PER_PAGE)){
  const sheet=node('section','planner-pdf-sheet print-theme-'+(colored?'color':'mono'));sheet.dir='rtl'
- const season=planSeason(plan.days.find(day=>day.date)?.date)
+ const season=planSeason(pageDays.find(day=>day.date)?.date)
  sheet.classList.add('print-season-'+season)
  const decor=node('div','print-season-decor')
  decor.setAttribute('aria-hidden','true')
@@ -116,7 +118,7 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
  const reference=source.querySelector<HTMLElement>('.pdf-reference-header')
  const studentName=reference?.dataset.studentName?.trim()||plan.title
  const advisorName=reference?.dataset.advisorName?.trim()||'—'
- const header=node('header','print-hero print-season-'+planSeason(plan.days.find(day=>day.date)?.date))
+ const header=node('header','print-hero print-season-'+season)
  const identity=node('div','print-hero-identity')
  const number=node('div','print-hero-number')
  if(plan.status==='published'&&plan.publication_number){number.textContent=faNumber(plan.publication_number);number.setAttribute('aria-label',`برنامه شماره ${plan.publication_number}`)}
@@ -143,11 +145,11 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
  brand.append(logoHalo,node('strong','','مهیاد'),node('small','','مسیر هوشمند یادگیری'))
  header.append(identity,message,brand);sheet.append(header)
  const table=node('main','print-plan-days')
- for(const [dayIndex,day] of plan.days.entries()){
+ for(const [dayIndex,day] of pageDays.entries()){
   const row=node('section','print-plan-day');row.dataset.day=String(dayIndex)
   const label=node('header','print-plan-date')
   label.append(node('b','',day.label),node('span','',shortJalaliDate(day.date)));row.append(label)
-  const items=timelineSegments(plan,day.label),cards=node('div','print-plan-cards')
+  const items=timelineSegments(plan,day.key??day.label),cards=node('div','print-plan-cards')
   cards.style.gridTemplateColumns=items.map(item=>`minmax(0,${plan.plan_mode==='volume'?item.end-item.start:timelineWeight(item.end-item.start)}fr)`).join(' ')
   for(const item of items){
    const card=node('article','print-plan-card'+(item.rest?' print-plan-rest':''))
@@ -187,7 +189,14 @@ export function createPrintSheet(source:HTMLElement,plan:WeeklyPlan,colored=fals
    cards.append(card)
   }
   row.append(cards);table.append(row)
-  if(dayIndex<plan.days.length-1)table.append(node('div','print-day-divider'))
+  if(dayIndex<pageDays.length-1)table.append(node('div','print-day-divider'))
+ }
+ // Preserve the row and divider heights of a complete page.
+ for(let index=pageDays.length;index<DAYS_PER_PAGE;index++){
+  if(index>0)table.append(node('div','print-day-divider print-plan-spacer'))
+  const spacer=node('section','print-plan-day print-plan-spacer')
+  spacer.setAttribute('aria-hidden','true')
+  table.append(spacer)
  }
  sheet.append(table)
  return sheet
@@ -272,8 +281,15 @@ function drawShapedText(context:CanvasRenderingContext2D,scale:number,blocks:Ret
 }
 
 export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=false,appendTo?:PdfDocument){
+ let pdf=await appendPlanPdfPage(element,plan,colored,plan.days.slice(0,DAYS_PER_PAGE),appendTo)
+ for(let offset=DAYS_PER_PAGE;offset<plan.days.length;offset+=DAYS_PER_PAGE){
+  pdf=await appendPlanPdfPage(element,plan,colored,plan.days.slice(offset,offset+DAYS_PER_PAGE),pdf)
+ }
+ return pdf
+}
+async function appendPlanPdfPage(element:HTMLElement,plan:WeeklyPlan,colored:boolean,pageDays:WeeklyPlan['days'],appendTo?:PdfDocument){
  const [{default:html2canvas},{jsPDF}]=await Promise.all([import('html2canvas'),import('jspdf')])
- const sheet=createPrintSheet(element,plan,colored)
+ const sheet=createPrintSheet(element,plan,colored,pageDays)
  const host=node('div','print-plan-host')
  host.append(sheet)
  document.body.append(host)
@@ -281,6 +297,13 @@ export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=f
   await loadPlanPdfFonts(document.fonts)
   fitPrintText(sheet)
   const width=sheet.offsetWidth,height=sheet.offsetHeight
+  const sheetTop=sheet.getBoundingClientRect().top
+  const header=sheet.querySelector<HTMLElement>('.print-hero')!
+  const lastDay=Array.from(sheet.querySelectorAll<HTMLElement>('.print-plan-day[data-day]')).at(-1)
+  const requiredRegions=(lastDay?[header,lastDay]:[header]).map(region=>{
+   const {top,bottom}=region.getBoundingClientRect()
+   return {top:Math.max(0,Math.floor((top-sheetTop)*2)),bottom:Math.min(height*2,Math.ceil((bottom-sheetTop)*2))}
+  })
   // Fixed bounds and the canvas renderer avoid capturing a scrolled or clipped viewport.
   let shapedText:ReturnType<typeof captureShapedText>=[]
   const canvas=await html2canvas(sheet,{
@@ -299,12 +322,13 @@ export async function buildPlanPdf(element:HTMLElement,plan:WeeklyPlan,colored=f
    if(!context||canvas.width!==width*2||canvas.height!==height*2)throw new Error('صفحهٔ برنامه کامل ساخته نشد؛ دوباره تلاش کنید.')
    drawShapedText(context,2,shapedText)
    const preview=document.createElement('canvas')
-   preview.width=64
-   preview.height=44
+   preview.width=160
+   preview.height=16
    const sample=preview.getContext('2d',{willReadFrequently:true})!
-   sample.drawImage(canvas,0,0,64,44)
-   for(const top of [0,24]){
-    const pixels=sample.getImageData(0,top,64,20).data
+   // A partial page deliberately has empty space below its last scheduled day.
+   for(const {top,bottom} of requiredRegions){
+    sample.drawImage(canvas,0,top,canvas.width,bottom-top,0,0,preview.width,preview.height)
+    const pixels=sample.getImageData(0,0,preview.width,preview.height).data
     if(!pixels.some((value,index)=>index%4!==3&&value<190))throw new Error('صفحهٔ برنامه کامل ساخته نشد؛ دوباره تلاش کنید.')
    }
    if(!colored){

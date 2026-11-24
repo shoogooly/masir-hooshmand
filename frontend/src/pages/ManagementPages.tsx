@@ -34,7 +34,7 @@ function StudentRegistrationReviews({students}:{students:(User&{profile:Profile}
 
 function printPlan(plan:WeeklyPlan,studentName='دانش‌آموز'){
   const popup=window.open('','_blank','width=1100,height=800');if(!popup)return
-  const rows=plan.activities.map(item=>`<tr><td>${item.day}</td><td>${plan.plan_mode==='volume'?item.planned_minutes+' دقیقه':item.start_time+' تا '+item.end_time}</td><td>${item.title}</td></tr>`).join('')
+  const rows=plan.activities.map(item=>`<tr><td>${item.day_label??item.day}</td><td>${plan.plan_mode==='volume'?item.planned_minutes+' دقیقه':item.start_time+' تا '+item.end_time}</td><td>${item.title}</td></tr>`).join('')
   popup.document.write(`<html dir="rtl"><head><title>${plan.title}</title><style>body{font-family:Tahoma;padding:30px}h1{text-align:center}table{width:100%;border-collapse:collapse}td,th{border:1px solid #333;padding:12px;text-align:center}@media print{button{display:none}}</style></head><body><h1>برنامه ${studentName}</h1><h2>${plan.week_label}</h2><p><b>ماموریت هفته:</b> ${plan.weekly_mission||'—'}</p><table><thead><tr><th>روز</th><th>ساعت</th><th>برنامه</th></tr></thead><tbody>${rows}</tbody></table><button onclick="window.print()">چاپ</button><script>window.onload=()=>window.print()</script></body></html>`);popup.document.close()
 }
 

@@ -159,7 +159,11 @@ def advisor_student_profile_dict(profile: StudentProfile | None):
 
 
 def activity_dict(item: Activity):
-    return {"id": item.id, "day": item.day, "subject": item.subject, "title": item.title, "color": item.color,"book_topic_id":item.book_topic_id,"book_question_count":item.book_question_count,
+    day_label = item.day
+    if item.day.startswith("day-"):
+        days = json_value(item.plan.schedule_days_json, []) if item.plan else []
+        day_label = next((day["label"] for day in days if day.get("key") == item.day), item.day)
+    return {"id": item.id, "day": item.day, "day_label": day_label, "subject": item.subject, "title": item.title, "color": item.color,"book_topic_id":item.book_topic_id,"book_question_count":item.book_question_count,
             "calendar_topic_ids": json_value(item.calendar_topic_ids_json, []),
             "start_time": item.start_time, "end_time": item.end_time, "planned_minutes": item.planned_minutes,
             "actual_minutes": item.actual_minutes, "test_count": item.test_count, "status": item.status, "note": item.note}

@@ -241,3 +241,4 @@
 }
 .planner-pdf-sheet .print-plan-rest-icon{background:#ffffff99}
 .planner-pdf-sheet.print-theme-mono .print-plan-card .print-plan-time{background:var(--print-time-paper)!important}
+.planner-pdf-sheet .print-plan-spacer{visibility:hidden}
