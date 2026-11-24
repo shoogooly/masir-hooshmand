@@ -5,6 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from app.account_deletion import deadline as deletion_deadline
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -260,11 +261,10 @@ def admin_user_detail(user_id: str, admin: User = Depends(roles("super_admin", "
     plans = {item.id:item for item in db.scalars(select(SubscriptionPlan).where(SubscriptionPlan.id.in_({x.plan_id for x in subscriptions + orders}))).all()} if subscriptions or orders else {}
     assignment = db.scalar(select(AdvisorAssignment).where(AdvisorAssignment.student_id == target.id).order_by(AdvisorAssignment.updated_at.desc())) if target.role == "student" else None
     advisor = db.get(User, assignment.advisor_id) if assignment else None
-    deadline = target.restore_until
-    deadline = deadline if not deadline or deadline.tzinfo else deadline.replace(tzinfo=timezone.utc)
+    deadline = deletion_deadline(target)
     deletion = {"phone": target.deleted_phone if target.status == "deleted" and target.deleted_phone else target.phone,
-        "deleted_at": target.deleted_at, "restore_until": target.restore_until,
-        "can_restore": bool(target.status == "deleted" and deadline and deadline >= utcnow())}
+        "deleted_at": target.deleted_at, "restore_until": deadline,
+        "can_restore": bool(target.status == "deleted" and deadline and deadline > utcnow())}
     return ok(basic(target) | deletion | {"created_at": target.created_at, "profile": profile, "advisor": basic(advisor) if advisor else None,
         "assignment": {"approval_status": assignment.approval_status, "active": assignment.active} if assignment else None,
         "payments": [{"id":x.id,"plan_name":plans[x.plan_id].name if x.plan_id in plans else "اشتراک","amount":x.amount,"status":x.status,"created_at":x.created_at} for x in orders],

@@ -1,4 +1,5 @@
 import re
+from app.account_deletion import WINDOW, deadline as deletion_deadline, expired
 from app.chat_access import chat_locked
 from app.study_reporting import IRAN, aware, ensure_report_editable, report_bounds, report_day_key, schedule_date
 from app.models import StudyReport
@@ -48,13 +49,16 @@ def user_dict(user: User):
 
 
 def admin_user_dict(user: User):
-    deadline = user.restore_until
-    aware_deadline = deadline if not deadline or deadline.tzinfo else deadline.replace(tzinfo=timezone.utc)
+    aware_deadline = deletion_deadline(user)
     return user_dict(user) | {
         "phone": user.deleted_phone if user.status == "deleted" and user.deleted_phone else user.phone,
         "deleted_at": user.deleted_at,
-        "restore_until": user.restore_until,
-        "can_restore": bool(user.status == "deleted" and aware_deadline and aware_deadline >= utcnow()),
+        "restore_until": aware_deadline,
+        "can_restore": bool(user.status == "deleted" and aware_deadline and aware_deadline > utcnow()),
+        "is_protected": bool(
+            user.phone == settings.bootstrap_admin_phone
+            or user.deleted_phone == settings.bootstrap_admin_phone
+        ),
     }
 
 def add_notification(db: Session, user_id: str, kind: str, title: str, body: str = "", link: str = "", actor_id: str | None = None, related_id: str | None = None):
@@ -443,7 +447,7 @@ def verify_otp(payload: OTPVerify, response: Response, db: Session = Depends(get
         messages = {"pending_payment": "پرداخت ثبت‌نام هنوز تکمیل نشده است", "pending_approval": "مدارک مشاور هنوز توسط مدیریت تأیید نشده است", "pending_assignment": "ثبت‌نام تکمیل شده و در انتظار تخصیص مشاور است", "suspended": "حساب کاربری غیرفعال است"}
         raise HTTPException(403, messages.get(user.status, "حساب کاربری هنوز فعال نشده است"))
     if user.is_admin_mfa_enabled:
-        mfa_valid = payload.mfa_code == "654321" if settings.env == "development" else bool(user.totp_secret and payload.mfa_code and verify_totp(user.totp_secret, payload.mfa_code))
+        mfa_valid = bool(user.totp_secret and payload.mfa_code and verify_totp(user.totp_secret, payload.mfa_code))
         if not mfa_valid:
             raise HTTPException(401, "کد احراز هویت دومرحله‌ای مدیر معتبر نیست")
     csrf = new_csrf()
@@ -610,8 +614,8 @@ def advisor_plan_progress(db: Session, student_ids: list[str], advisor_id: str |
 @router.get("/advisors/dashboard")
 def advisor_dashboard(user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
     assignments = db.scalars(select(AdvisorAssignment).where(AdvisorAssignment.advisor_id == user.id, AdvisorAssignment.active.is_(True))).all() if user.role == "advisor" else db.scalars(select(AdvisorAssignment)).all()
-    student_ids = [a.student_id for a in assignments]
-    students = db.scalars(select(User).where(User.id.in_(student_ids))).all() if student_ids else []
+    students = db.scalars(select(User).where(User.id.in_([a.student_id for a in assignments]), User.status != "deleted")).all()
+    student_ids = [student.id for student in students]
     from app.ai_models import AIAnalysis
     pending = db.scalar(select(func.count(func.distinct(AIAnalysis.student_id))).where(
         AIAnalysis.student_id.in_(student_ids), AIAnalysis.advisor_id == user.id, AIAnalysis.status == "completed")) if student_ids else 0
@@ -1435,7 +1439,7 @@ def admin_dashboard(user: User = Depends(roles("support", "finance", "operations
 
 @router.get("/admin/users")
 def admin_users(user: User = Depends(roles("operations_admin", "super_admin")), db: Session = Depends(get_db)):
-    items = db.scalars(select(User).order_by(User.created_at.desc()).limit(500)).all()
+    items = db.scalars(select(User).where(or_(User.status != "deleted", ~expired(utcnow()))).order_by(User.created_at.desc()).limit(500)).all()
     return ok([admin_user_dict(item) | {"created_at": item.created_at} for item in items])
 
 
@@ -1445,7 +1449,7 @@ def admin_update_user_status(user_id: str, payload: UserStatusUpdate,
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(404, "کاربر یافت نشد")
-    if target.phone == "09399506609" and payload.status != "active":
+    if target.phone == settings.bootstrap_admin_phone and payload.status != "active":
         raise HTTPException(403, "حساب مدیر اصلی قابل غیرفعال‌سازی نیست")
     if target.id == user.id and target.role == "super_admin" and payload.status != "active":
         raise HTTPException(409, "نمی‌توانید حساب مدیریتی فعلی خود را غیرفعال کنید")
@@ -1467,10 +1471,10 @@ def admin_update_user_status(user_id: str, payload: UserStatusUpdate,
 
 @router.delete("/admin/users/{user_id}")
 def admin_delete_user(user_id: str, user: User = Depends(roles("super_admin")), db: Session = Depends(get_db)):
-    target = db.get(User, user_id)
+    target = db.scalar(select(User).where(User.id == user_id).with_for_update())
     if not target or target.role not in {"student", "advisor", "expert", "super_admin"}:
         raise HTTPException(404, "حساب قابل حذف یافت نشد")
-    if target.phone == "09399506609" or target.deleted_phone == "09399506609":
+    if target.phone == settings.bootstrap_admin_phone or target.deleted_phone == settings.bootstrap_admin_phone:
         raise HTTPException(403, "حساب مدیر اصلی قابل حذف نیست")
     if target.id == user.id:
         raise HTTPException(409, "برای امنیت سامانه نمی‌توانید حساب مدیریتی فعلی خود را حذف کنید")
@@ -1482,7 +1486,7 @@ def admin_delete_user(user_id: str, user: User = Depends(roles("super_admin")), 
     target.status_before_deletion = target.status
     target.status = "deleted"
     target.deleted_at = now
-    target.restore_until = now + timedelta(days=3)
+    target.restore_until = now + WINDOW
     for token in db.scalars(select(RefreshToken).where(
         RefreshToken.user_id == target.id, RefreshToken.revoked_at.is_(None))).all():
         token.revoked_at = now
@@ -1494,13 +1498,12 @@ def admin_delete_user(user_id: str, user: User = Depends(roles("super_admin")), 
 
 @router.post("/admin/users/{user_id}/restore")
 def admin_restore_user(user_id: str, user: User = Depends(roles("super_admin")), db: Session = Depends(get_db)):
-    target = db.get(User, user_id)
+    target = db.scalar(select(User).where(User.id == user_id).with_for_update())
     if not target or target.role not in {"student", "advisor", "expert", "super_admin"} or target.status != "deleted":
         raise HTTPException(404, "حساب حذف‌شده یافت نشد")
-    deadline = target.restore_until
-    deadline = deadline if not deadline or deadline.tzinfo else deadline.replace(tzinfo=timezone.utc)
-    if not deadline or deadline < utcnow():
-        raise HTTPException(410, "مهلت سه‌روزه بازگردانی این حساب تمام شده است")
+    deadline = deletion_deadline(target)
+    if not deadline or deadline <= utcnow():
+        raise HTTPException(410, "مهلت ۲۴ ساعته بازگردانی این حساب تمام شده است")
     if not target.deleted_phone:
         raise HTTPException(409, "شماره اصلی حساب برای بازگردانی موجود نیست")
     duplicate = db.scalar(select(User.id).where(User.phone == target.deleted_phone, User.id != target.id))
@@ -1856,7 +1859,7 @@ def advisor_assignment_requests(user: User = Depends(roles("advisor")), db: Sess
     for assignment in assignments:
         student = db.get(User, assignment.student_id)
         profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == assignment.student_id))
-        if student:
+        if student and student.status != "deleted":
             rows.append({"id": assignment.id, "student": user_dict(student), "profile": advisor_student_profile_dict(profile),
                 "created_at": assignment.created_at})
     return ok(rows)

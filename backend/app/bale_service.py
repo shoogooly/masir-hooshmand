@@ -262,7 +262,7 @@ def _show_students(db,chat_id,user):
     rows=[]
     for assignment in assignments:
         student=db.get(User,assignment.student_id)
-        if student:rows.append([{"text":"🎓 "+student.full_name,"callback_data":"student:"+student.id}])
+        if student and student.status!="deleted":rows.append([{"text":"🎓 "+student.full_name,"callback_data":"student:"+student.id}])
     return inline(db,chat_id,"دانش‌آموز موردنظر را انتخاب کنید:",rows) if rows else send(db,chat_id,"دانش‌آموز فعالی به شما تخصیص داده نشده است.")
 
 def _target_student(db,link,user):

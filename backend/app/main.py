@@ -13,6 +13,7 @@ from app.api.advisor_evaluation import router as advisor_evaluation_router
 from app.api.content import router as content_router
 from app.api.bale import router as bale_router
 from app.api.integrations import router as integrations_router
+from app.account_deletion import purge_worker
 from app.ai_jobs import worker as ai_worker
 from app.bale_service import polling_worker as bale_polling_worker
 from threading import Event, Thread
@@ -54,6 +55,8 @@ async def lifespan(_app: FastAPI):
     ai_stop = Event()
     ai_thread = Thread(target=ai_worker, args=(ai_stop,), daemon=True, name="weekly-ai")
     ai_thread.start()
+    cleanup = Thread(target=purge_worker, args=(ai_stop,), daemon=True, name="account-cleanup")
+    cleanup.start()
     bale_stop = Event()
     bale_thread = Thread(target=bale_polling_worker, args=(bale_stop,), daemon=True, name="bale-polling")
     bale_thread.start()
@@ -65,6 +68,7 @@ async def lifespan(_app: FastAPI):
     finally:
         ai_stop.set()
         bale_stop.set()
+        cleanup.join(timeout=3)
         ai_thread.join(timeout=2)
         bale_thread.join(timeout=3)
         daily_thread.join(timeout=3)

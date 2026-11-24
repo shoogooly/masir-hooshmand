@@ -79,7 +79,7 @@ def test_connection(user=Depends(roles("super_admin")),db=Depends(get_db)):
 
 @router.get("/students")
 def students(user=Depends(roles("advisor","super_admin")),db=Depends(get_db)):
-    query=select(User).where(User.role=="student")
+    query=select(User).where(User.role=="student",User.status!="deleted")
     if user.role=="advisor":
         query=query.where(User.id.in_(select(AdvisorAssignment.student_id).where(
             AdvisorAssignment.advisor_id==user.id,AdvisorAssignment.active.is_(True),AdvisorAssignment.approval_status=="approved")))
