@@ -15,6 +15,7 @@ import './styles/settings-photo.css'
 import './styles/bale.css'
 import './styles/loading-overlay.css'
 import './styles/readability.css'
+import './styles/auth-modern.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } })
 

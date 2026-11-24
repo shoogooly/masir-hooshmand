@@ -1,0 +1,49 @@
+/* Modern authentication surfaces aligned with the Mahyaad workspaces. */
+.login-page,.registration-page{direction:rtl;isolation:isolate;position:relative;overflow:hidden;background:
+  radial-gradient(circle at 14% 12%,#7654dd55 0,transparent 30%),
+  radial-gradient(circle at 86% 88%,#19a9a633 0,transparent 27%),
+  linear-gradient(145deg,#0c1235,#17174b 55%,#202064);color:#17152b}
+.login-page::before,.registration-page::before{content:"";position:absolute;z-index:-1;inset:0;opacity:.22;background-image:radial-gradient(#fff 1px,transparent 1px);background-size:30px 30px;mask-image:linear-gradient(120deg,#000,transparent 68%)}
+
+.login-page{grid-template-columns:minmax(330px,.88fr) minmax(480px,1.12fr);padding:clamp(18px,3vw,44px);gap:clamp(18px,3vw,42px)}
+.login-visual{order:2;min-height:calc(100vh - clamp(36px,6vw,88px));padding:clamp(42px,6vw,90px);overflow:hidden;border:1px solid #ffffff1f;border-radius:30px;background:
+  radial-gradient(circle at 28% 24%,#b9dfff35,transparent 24%),
+  linear-gradient(145deg,#7654edcc,#3d2ca5cc 52%,#176d7bcc);box-shadow:0 28px 80px #06091f66}
+.login-visual::after{opacity:.55;background-image:linear-gradient(135deg,#ffffff0d 25%,transparent 25%),linear-gradient(315deg,#ffffff0d 25%,transparent 25%);background-size:46px 46px;mask-image:linear-gradient(#000,transparent)}
+.login-visual>div{max-width:520px}.login-visual h1{margin:26px 0 10px;font-size:clamp(38px,4.8vw,66px);letter-spacing:-2px}.login-visual p{max-width:420px;font-size:15px}.login-visual .back-link{top:28px;right:30px;padding:9px 14px;border:1px solid #ffffff25;border-radius:13px;background:#ffffff12;backdrop-filter:blur(12px)}
+.floating-shield{width:84px;height:84px;border-radius:25px;background:linear-gradient(145deg,#ffffff32,#ffffff0f);box-shadow:0 18px 40px #16105255;animation:auth-float 5s ease-in-out infinite}
+
+.login-card{order:1;align-self:center;width:min(470px,100%);padding:clamp(25px,4vw,44px);border:1px solid #ffffffb8;border-radius:28px;background:#fffffff4;box-shadow:0 30px 85px #05071f65;backdrop-filter:blur(18px)}
+.login-card>.brand{width:max-content;padding:8px 13px;border-radius:13px;background:#f3efff}.login-heading{margin:32px 0 20px}.login-heading h2{font-size:27px}.login-heading p{line-height:1.9}
+.login-mode-tabs{padding:5px;border:1px solid #e6e1f4;border-radius:15px;background:#f3f1f8}
+.login-mode-tabs button{min-height:44px;border:0;border-radius:11px;background:transparent;transition:.2s ease}
+.login-mode-tabs button.active{background:#fff;color:#603bd0;box-shadow:0 5px 18px #3d28751a}
+.login-card .field,.account-form .field{height:54px;border:1px solid #ded9eb;border-radius:14px;background:#faf9fd;transition:border-color .2s,box-shadow .2s,background-color .2s}
+.login-card .field:focus-within,.account-form .field:focus-within{border-color:#7854e6;background:#fff;box-shadow:0 0 0 4px #7752e514}
+.login-card .btn-primary,.account-form .btn-primary{min-height:52px;border-radius:14px;background:linear-gradient(135deg,#7955e9,#5631c8);box-shadow:0 13px 28px #5732c33d}
+.staff-login-note{border:1px solid #f0dca8;background:#fff9e8}.login-register-link{font-size:13px;color:#716b80}.login-register-link a{color:#6440cf}
+
+.registration-page{min-height:100vh;padding-bottom:50px}
+.registration-page>header{position:relative;z-index:2;height:82px;padding:0 max(4vw,28px);border-bottom:1px solid #ffffff1a;background:#0c12357a;color:#fff;backdrop-filter:blur(18px)}
+.registration-page>header .brand small{color:#d2ceeb}.registration-page>header>a:last-child{padding:9px 13px;border:1px solid #ffffff25;border-radius:12px;color:#fff;background:#ffffff0d}
+.registration-page main{position:relative;z-index:1;display:grid;grid-template-columns:minmax(280px,.78fr) minmax(430px,1.22fr);align-items:center;gap:clamp(28px,5vw,75px);width:min(1120px,92vw);margin:clamp(35px,6vh,70px) auto 30px}
+.registration-intro{position:sticky;top:110px;margin:0;text-align:right;color:#fff}.registration-intro>span{color:#e8e1ff;background:#ffffff18;border:1px solid #ffffff25;backdrop-filter:blur(10px)}
+.registration-intro h1{font-size:clamp(32px,4vw,48px);line-height:1.7;letter-spacing:-1.5px}.registration-intro>div{justify-content:flex-start;margin-top:28px;padding:6px;border:1px solid #ffffff1f;border-radius:16px;background:#ffffff10}
+.registration-intro button{flex:1;justify-content:center;border:0;color:#e4def7;background:transparent;transition:.2s ease}.registration-intro button.active{color:#4d2bb7;background:#fff;box-shadow:0 10px 25px #080b2440}
+.registration-form.account-form{width:100%;max-width:580px;margin:0;padding:clamp(24px,4vw,42px);border:1px solid #ffffffc2;border-radius:28px;background:#fffffff5;box-shadow:0 30px 85px #05071f70;backdrop-filter:blur(18px)}
+.account-form>.form-title{align-items:center;margin-bottom:25px;padding-bottom:20px;border-bottom:1px solid #eeeaf5}.account-form>.form-title>svg{width:42px;height:42px;padding:10px;border-radius:13px;color:#6540d0;background:#eee8ff}.account-form>.form-title h2{font-size:23px}.account-form>label{margin:13px 0;font-size:13px}.registration-field-hint{font-weight:400;color:#878092!important}.account-form .field{padding:0 13px}.account-form .field input{height:100%;font-size:15px}.account-form>.sms-send-button{min-height:44px;border-color:#ddd4f4;color:#5d3ac2;background:#f7f4ff}.sms-send-success{padding:8px 11px;border-radius:10px;background:#eefaf4}.password-toggle{width:36px;height:36px;border-radius:10px}.password-toggle:hover{background:#eee9f7}
+
+@media(max-width:900px){
+  .login-page{grid-template-columns:1fr;padding:16px}.login-visual{display:none}.login-card{min-height:calc(100vh - 32px);justify-content:center}
+  .registration-page main{grid-template-columns:1fr;width:min(620px,92vw)}.registration-intro{position:static;text-align:center}.registration-intro>div{justify-content:center}.registration-form.account-form{margin:auto}
+}
+@media(max-width:520px){
+  .login-card{width:100%;padding:24px 18px;border-radius:22px}.login-heading{margin-top:26px}.login-mode-tabs button{padding:9px 5px;font-size:12px}
+  .registration-page>header{height:70px;padding:0 16px}.registration-page main{margin-top:24px}.registration-intro h1{font-size:28px}.registration-intro>div{gap:4px}.registration-intro button{padding:10px 8px}.registration-form.account-form{padding:23px 17px;border-radius:22px}
+}
+@media(prefers-reduced-motion:no-preference){
+  .login-card,.registration-form.account-form{animation:auth-card-in .45s cubic-bezier(.2,.75,.3,1) both}.registration-intro{animation:auth-copy-in .5s .08s ease-out both}
+  @keyframes auth-card-in{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
+  @keyframes auth-copy-in{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
+  @keyframes auth-float{50%{transform:translateY(-8px) rotate(-3deg)}}
+}
