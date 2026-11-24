@@ -1,6 +1,7 @@
 import ExternalResultsPage from './ExternalResultsPage'
 import AcademicCalendarPage from './AcademicCalendarPage'
 import '../styles/advisor-enhancements.css'
+import '../styles/account-settings.css'
 import BooksPage, {type LibraryBook} from './BooksPage'
 import { advisorMessengerThread } from '../utils/chatRoutes'
 import {softTimelinePositions} from '../utils/softTimeline'

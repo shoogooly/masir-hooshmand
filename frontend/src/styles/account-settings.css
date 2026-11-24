@@ -1,0 +1,33 @@
+/* Shared account form for students and advisors. */
+body .workspace .content-page:has(>form.settings-form.expanded){max-width:1280px}
+body .workspace form.settings-form.expanded{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:start;gap:18px 16px;padding:24px;border:1px solid #e7e1f0;border-radius:20px;background:#fff;box-shadow:0 8px 32px #34214b06}
+body .workspace form.settings-form.expanded>label{display:flex;flex-direction:column;gap:7px;min-width:0;font-size:14px;font-weight:650;color:#51445f;line-height:1.6}
+body .workspace form.settings-form.expanded :is(input:not([type=file]):not([type=checkbox]),select,textarea){box-sizing:border-box;width:100%;min-width:0;height:40px;min-height:40px;padding:8px 11px;border:1px solid #ded6e9;border-radius:10px;background:#fcfbfe;color:#282031;font:inherit;font-size:15px;font-weight:500;line-height:1.5;outline:none;transition:border-color .15s,box-shadow .15s}
+body .workspace form.settings-form.expanded :is(input,select,textarea):focus{border-color:#9464db;box-shadow:0 0 0 3px #9464db16;background:white}
+body .workspace form.settings-form.expanded input:disabled{background:#f2f0f5;color:#807589}
+body .workspace form.settings-form.expanded :is(input[name=parent_phone],input[inputmode=numeric],input[name=birth_date]){direction:ltr;text-align:right}
+body .workspace form.settings-form.expanded textarea{height:66px;min-height:66px;resize:vertical}
+body .workspace form.settings-form.expanded>.full{grid-column:1/-1}
+body .workspace form.settings-form.expanded>label.full{grid-column:span 2}
+body .workspace form.settings-form.expanded>label:has(textarea[name=bio]){grid-column:1/-1}
+body .workspace form.settings-form.expanded label small{font-size:12px;font-weight:400;line-height:1.7;color:#82748e}
+body .workspace form.settings-form.expanded>.settings-photo{padding:14px 18px;background:linear-gradient(110deg,#fcfaff,#f6f2fc);border:1px solid #ebe3f5;gap:16px;margin-bottom:4px}
+body .workspace form.settings-form.expanded .settings-photo .profile-photo-preview{width:66px;height:76px;min-width:66px;border-radius:12px}
+body .workspace form.settings-form.expanded .settings-photo b{font-size:15px;color:#4b3568}
+body .workspace form.settings-form.expanded .settings-photo p,body .workspace form.settings-form.expanded .settings-photo small{font-size:12px;line-height:1.8}
+body .workspace form.settings-form.expanded .settings-photo .btn{padding:6px 12px;font-size:12px;min-height:32px;border:1px solid #dfd2ed;background:white;color:#7044b2}
+body .workspace form.settings-form.expanded .work-levels{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 16px;border:1px solid #ebe3f4;border-radius:12px;background:#fbf9fe}
+body .workspace form.settings-form.expanded .work-levels>span{font-size:14px;font-weight:700;color:#5a397b;margin-left:12px}
+body .workspace form.settings-form.expanded .work-levels label{display:flex;align-items:center;gap:8px;font-size:14px;margin:0}
+body .workspace form.settings-form.expanded input[type=checkbox]{width:17px;height:17px;accent-color:#7948c6}
+body .workspace form.settings-form.expanded>.btn{grid-column:1/-1;justify-self:end;min-height:40px;font-size:14px;padding:9px 22px;margin-top:4px}
+body .workspace form.settings-form.expanded .settings-averages.full{display:flex;flex-wrap:nowrap;gap:12px;padding:12px 14px;margin-top:6px;overflow-x:auto;border-radius:12px;background:#faf8fd;border:1px solid #e9e0f3}
+body .workspace form.settings-form.expanded .settings-averages label{flex:0 0 98px;min-width:0;display:grid;gap:6px;font-size:13px;font-weight:600;color:#675374}
+body .workspace form.settings-form.expanded .settings-averages input{height:34px;min-height:34px;text-align:center;padding:5px 8px;font-size:14px;background:#fff}
+body .workspace form.settings-form.expanded .school-settings{margin-top:0;padding:16px;border-radius:14px;background:#faf8fd;border:1px solid #e9e0f3}
+body .workspace form.settings-form.expanded .school-settings h3{font-size:16px;margin:0 0 12px;color:#5c3c7b}
+body .workspace form.settings-form.expanded .school-settings section{padding:8px 10px;gap:8px;border:1px solid #ece6f3;border-radius:10px;background:white}
+body .workspace form.settings-form.expanded .school-settings :is(input,textarea){font-size:13px;height:36px;min-height:36px;padding:7px 9px}
+@media(max-width:1100px){body .workspace form.settings-form.expanded{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:850px){body .workspace form.settings-form.expanded{grid-template-columns:repeat(2,minmax(0,1fr));padding:18px;gap:16px 12px}}
+@media(max-width:500px){body .workspace form.settings-form.expanded{padding:14px;gap:14px 10px;border-radius:15px}body .workspace form.settings-form.expanded>label{font-size:13px}body .workspace form.settings-form.expanded :is(input:not([type=file]):not([type=checkbox]),select,textarea){font-size:14px}body .workspace form.settings-form.expanded .settings-photo{flex-direction:row;align-items:flex-start;padding:12px;gap:12px}body .workspace form.settings-form.expanded .work-levels{align-items:flex-start;flex-direction:column}body .workspace form.settings-form.expanded .work-levels label{flex-wrap:wrap}body .workspace form.settings-form.expanded .settings-photo p{font-size:11px}}
