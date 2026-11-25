@@ -20,6 +20,7 @@ from app.api.accounts_ext import finalize_student_registration
 from app.api.onboarding_flow import ensure_editable, reset_student_reviews, request_advisor, latest_order, paid_registration, approved_assignment, advance_student
 from app.schemas import AccountRegistration, ActivityUpdate, AdvisorAssign, AdvisorOnboardingProfile, AdvisorReferralCreate, AdvisorRegistration, AdvisorReview, AnswerUpdate, AssignmentDecision, ExamCreate, ExpertAdvisorUpdate, FreeSubscriptionCreate, InsightReview, MessageCreate, OrderCreate, OTPRequest, OTPVerify, PasswordLogin, PasswordReset, PaymentCallback, PaymentStart, PlanCreate, ProfileUpdate, QuestionCreate, SCHOOL_DAYS, SchoolScheduleUpdate, StaffAccessUpdate, StaffCreate, StaffOTPVerify, StudentOnboardingProfile, StudentOnboardingSelection, StudentRegistration, SubscriptionPlanUpdate, TermsAccept, TermsUpdate, UserStatusUpdate
 from app.services import ai_provider, audit, otp_provider, payment_provider
+from app.schemas import RenewalBillingUpdate
 from app.integration_service import create_zarinpal, get as integration_get, send_otp, verify_otp as verify_sms_otp, verify_zarinpal, zarinpal_ready
 from app.staff_access import ACCESS_AREAS, access_matrix, expert_advisor_ids, expert_can_view_advisor, expert_can_view_student, require_access, save_access_matrix, save_expert_advisors
 
@@ -45,7 +46,10 @@ def issue_session(response: Response, user: User, db: Session):
 
 
 def user_dict(user: User):
-    return {"id": user.id, "phone": user.phone, "full_name": user.full_name, "role": user.role, "status": user.status, "onboarding_step": user.onboarding_step, "referred_by_advisor_id": user.referred_by_advisor_id, "profile_photo": json_value(user.profile_photo_json, None), "pending_profile_photo": json_value(user.pending_profile_photo_json, None), "profile_photo_pending": bool(user.pending_profile_photo_json)}
+    data = {"id": user.id, "phone": user.phone, "full_name": user.full_name, "role": user.role, "status": user.status, "onboarding_step": user.onboarding_step, "referred_by_advisor_id": user.referred_by_advisor_id, "profile_photo": json_value(user.profile_photo_json, None), "pending_profile_photo": json_value(user.pending_profile_photo_json, None), "profile_photo_pending": bool(user.pending_profile_photo_json)}
+    if user.role == "student":
+        data["renewal_billing_mode"] = user.effective_renewal_billing_mode
+    return data
 
 
 def admin_user_dict(user: User):
@@ -1004,6 +1008,23 @@ def advisor_student_report(student_id: str, user: User = Depends(roles("advisor"
     return ok({"student": user_dict(student), "profile": advisor_student_profile_dict(profile), **report_data(db, student_id)})
 
 
+@router.put("/advisors/students/{student_id}/renewal-billing")
+def update_renewal_billing(student_id: str, payload: RenewalBillingUpdate,
+                           user: User = Depends(roles("advisor")), db: Session = Depends(get_db)):
+    if not assignment_for(db, user.id, student_id):
+        raise HTTPException(403, "دانش‌آموز به شما تخصیص داده نشده است")
+    student = db.get(User, student_id)
+    if not student or student.role != "student" or student.status in {"deleted", "purging"}:
+        raise HTTPException(404, "دانش‌آموز یافت نشد")
+    before = student.effective_renewal_billing_mode
+    student.renewal_billing_mode = payload.mode
+    if before != payload.mode:
+        audit(db, user.id, "student.renewal_billing_updated", "user", student_id,
+              before={"mode": before}, after={"mode": payload.mode})
+    db.commit()
+    return ok({"mode": payload.mode})
+
+
 @router.put("/advisors/students/{student_id}/school-schedule")
 def update_student_school_schedule(student_id: str, payload: SchoolScheduleUpdate,
                                    user: User = Depends(roles("advisor", "super_admin")), db: Session = Depends(get_db)):
@@ -1317,7 +1338,10 @@ def create_order(payload: OrderCreate, user: User = Depends(current_account), db
         return ok({"order_id": duplicate.id, "status": duplicate.status, "signature": duplicate.provider_reference, "duplicate": True})
     plan = db.get(SubscriptionPlan, payload.plan_id)
     if not plan or not plan.active or plan.period == "referral_free": raise HTTPException(404, "پلن فعال نیست")
-    order = Order(user_id=user.id, plan_id=plan.id, amount=(plan.referral_price or plan.price) if user.referred_by_advisor_id else plan.price, idempotency_key=payload.idempotency_key)
+    amount = (plan.referral_price or plan.price) if user.effective_renewal_billing_mode == "site_only" else plan.price
+    if payload.expected_amount is not None and payload.expected_amount != amount:
+        raise HTTPException(409, "تعرفه تمدید تغییر کرده است. مبلغ جدید را بررسی کنید و دوباره تلاش کنید.")
+    order = Order(user_id=user.id, plan_id=plan.id, amount=amount, idempotency_key=payload.idempotency_key)
     db.add(order); db.flush()
     real_gateway = zarinpal_ready(db) or settings.env not in {"development", "test"}
     payment = create_zarinpal(db, order, user) if real_gateway else payment_provider.create(order.id, order.amount)

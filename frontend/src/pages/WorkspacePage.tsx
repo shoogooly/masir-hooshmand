@@ -34,11 +34,14 @@ import AdminBalePage from './AdminBalePage'
 import AdminIntegrationsPage from './AdminIntegrationsPage'
 import AdminMotivationalQuotesPage from './AdminMotivationalQuotesPage'
 import LoadingOverlay from '../components/LoadingOverlay'
+import AdvisorSearch from '../components/AdvisorSearch'
+import { normalizeAdvisorSearch } from '../utils/advisorSections'
 import { advisorMessengerThread } from '../utils/chatRoutes'
 import '../styles/advisor-dashboard.css'
 import '../styles/student-dashboard.css'
 import '../styles/campus.css'
 import '../styles/workspace-interiors.css'
+import '../styles/advisor-tools.css'
 
 type StudentData={user:User;profile:{grade:string;major:string;goal:string};progress:number;study_minutes:number;today_activity_count?:number;progress_history?:{date:string;total:number;completed:number;actual_minutes:number}[];activities:Activity[];exams:{id:string;title:string;duration_minutes:number}[];insights:Insight[]}
 type AdvisorProgressPoint={week_start:string;total:number;completed:number}
@@ -86,7 +89,7 @@ export default function WorkspacePage({user}:{user:User}){
     const path=location.pathname
     content=path.includes('/academic-calendar')?<AcademicCalendarPage mode="student" user={user}/>:path.includes('/external-results')?<ExternalResultsPage studentId={user.id}/>:path.includes('/books')?<BooksPage mode="student"/>:path.includes('/ai-chat')?<StudentHomeSubpage><StudentAIPage/></StudentHomeSubpage>:path.includes('/subscription')?<StudentSubscriptionPage/>:path.includes('/plan')?<StudentHomeSubpage><StudentPlanPage/></StudentHomeSubpage>:path.includes('/exams')?<StudentHomeSubpage><ExamsPage/></StudentHomeSubpage>:path.includes('/progress')?<ProgressPage/>:path.includes('/chat')?<UniversalChatPage user={user}/>:path.includes('/settings')?<SettingsPage user={user}/>:<StudentDashboard/>
   }else if(user.role==='advisor'){
-    const match=location.pathname.match(/\/students\/([^/]+)\/(report|plan|school-schedule|study-reports|exams|chat|evaluation|books|external-results|academic-calendar)/)
+    const match=location.pathname.match(/\/students\/([^/]+)\/(report|plan|school-schedule|study-reports|exams|chat|evaluation|books|external-results|academic-calendar|renewal-billing)\/?$/)
     content=location.pathname==='/app/advisor/group-exams'?<GroupExamsPage/>:location.pathname==='/app/advisor/articles'?<ArticlesManagementPage/>:location.pathname==='/app/advisor/ai'?<AdvisorHomeSubpage><AdvisorAIPage/></AdvisorHomeSubpage>:match?.[2]==='chat'?<Navigate to={advisorMessengerThread(match[1])} replace/>:match?<StudentFilePage user={user} studentId={match[1]} tab={match[2]}/>:location.pathname.includes('/add-student')?<AdvisorHomeSubpage><AdvisorReferralPage/></AdvisorHomeSubpage>:location.pathname.includes('/requests')?<AdvisorHomeSubpage><AdvisorRequestsPage/></AdvisorHomeSubpage>:location.pathname.includes('/students')||location.pathname.includes('/planner')?<AdvisorHomeSubpage><AdvisorStudentsPage/></AdvisorHomeSubpage>:location.pathname.includes('/messages')?<UniversalChatPage user={user}/>:location.pathname.includes('/settings')?<SettingsPage user={user}/>:<AdvisorDashboard/>
   }else if(staffRole){
     const path=location.pathname
@@ -112,7 +115,7 @@ export default function WorkspacePage({user}:{user:User}){
     {['finance','operations_admin','super_admin'].includes(user.role)&&<><button className={active(`${adminBase}/finance`)?'selected':''} onClick={()=>go(`${adminBase}/finance`)}><CreditCard/>تعرفه‌ها و اشتراک</button><button className={active(`${adminBase}/ledger`)?'selected':''} onClick={()=>go(`${adminBase}/ledger`)}><CreditCard/>واریزی‌ها و مانده اشتراک</button></>}
     {user.role==='super_admin'&&<button className={active(`${adminBase}/integrations`)?'selected':''} onClick={()=>go(`${adminBase}/integrations`)}><CreditCard/>پیامک و پرداخت</button>}{user.role==='super_admin'&&<button className={active(`${adminBase}/bale`)?'selected':''} onClick={()=>go(`${adminBase}/bale`)}><Bot/>بازوی بله</button>}
     <button className={active(`${base}/settings`)?'selected':''} onClick={()=>go(`${base}/settings`)}><Settings/>تنظیمات</button>
-  </nav><button className="sidebar-logout" onClick={logout}><LogOut/>خروج</button></aside><main className="app-main"><header className="app-header"><button className="app-menu" onClick={()=>setMobile(true)}><Menu/></button><div className="app-search"><Search/><input placeholder="جست‌وجو در مهیاد..."/></div><div className="app-user"><NotificationBell/><span className="avatar profile-avatar">{user.profile_photo?<img src={photoUrl(user.profile_photo)} alt="عکس پروفایل"/>:<UserRound/>}</span><p><b>{user.full_name}</b><small>{roleLabels[user.role]}</small></p></div></header>{content}</main><WorkspaceNavigationFeedback/></div>
+  </nav><button className="sidebar-logout" onClick={logout}><LogOut/>خروج</button></aside><main className="app-main"><header className="app-header"><button className="app-menu" onClick={()=>setMobile(true)}><Menu/></button>{user.role==='advisor'?<AdvisorSearch key={user.id}/>:<div className="app-search"><Search/><input placeholder="جست‌وجو در مهیاد..."/></div>}<div className="app-user"><NotificationBell/><span className="avatar profile-avatar">{user.profile_photo?<img src={photoUrl(user.profile_photo)} alt="عکس پروفایل"/>:<UserRound/>}</span><p><b>{user.full_name}</b><small>{roleLabels[user.role]}</small></p></div></header>{content}</main><WorkspaceNavigationFeedback/></div>
 }
 
 function WorkspaceNavigationFeedback(){
@@ -194,6 +197,7 @@ function AdvisorHomeSubpage({children}:{children:React.ReactNode}){
 }
 
 function AdvisorDashboard(){
+  const [studentSearch, setStudentSearch] = useState('')
   const {data,isLoading,error,refetch}=useQuery({
     queryKey:['advisor-dashboard'],queryFn:()=>api<AdvisorData>('/advisors/dashboard'),refetchInterval:60000,
   })
@@ -206,6 +210,8 @@ function AdvisorDashboard(){
   const students=[...data.students].sort((a,b)=>
     (a.plan_days_remaining??Infinity)-(b.plan_days_remaining??Infinity)||a.full_name.localeCompare(b.full_name,'fa'),
   )
+  const query = normalizeAdvisorSearch(studentSearch)
+  const matchingStudents = students.filter(student => normalizeAdvisorSearch(student.full_name).includes(query))
   const pendingRequests=alerts?.pending_advisor_requests??0
   const unreadAnalyses=alerts?.unread_ai_analyses??0
   const unread=alerts?.unread_by_sender??{}
@@ -231,11 +237,20 @@ function AdvisorDashboard(){
       <Metric icon={ClipboardCheck} label="برنامه این هفته" value={dashboardNumber.format(data.weekly_plans)} tone="green"/>
     </div>
     <section className="panel advisor-followup" aria-labelledby="advisor-followup-title">
-      <div className="panel-title"><h2 id="advisor-followup-title">صف پیگیری دانش‌آموزان</h2><Link to="/app/advisor/students">همه دانش‌آموزان <ChevronLeft aria-hidden="true"/></Link></div>
-      {students.length===0?<p>دانش‌آموزی در صف پیگیری نیست.</p>:<div className="advisor-table-scroll">
+      <div className="panel-title advisor-followup-heading">
+        <h2 id="advisor-followup-title">صف پیگیری دانش‌آموزان</h2>
+        <label className="advisor-followup-search">
+          <Search size={17} aria-hidden="true"/>
+          <input type="search" aria-label="جست‌وجوی نام دانش‌آموز در صف پیگیری"
+            placeholder="جست‌وجوی نام دانش‌آموز…" value={studentSearch}
+            onChange={event => setStudentSearch(event.target.value)}/>
+        </label>
+        <Link to="/app/advisor/students">همه دانش‌آموزان <ChevronLeft aria-hidden="true"/></Link>
+      </div>
+      {matchingStudents.length===0?<p role="status">{query ? 'دانش‌آموزی با این نام پیدا نشد.' : 'دانش‌آموزی در صف پیگیری نیست.'}</p>:<div className="advisor-table-scroll">
         <table>
           <thead><tr><th scope="col">دانش‌آموز</th><th scope="col" aria-sort="ascending">روزهای باقی‌مانده</th><th scope="col">پیشرفت</th><th scope="col">گزارش کار دیروز</th><th scope="col">پیام</th></tr></thead>
-          <tbody>{students.map(student=>{
+          <tbody>{matchingStudents.map(student=>{
             const profile='/app/advisor/students/'+student.id
             const remaining=student.plan_days_remaining
             const unreadCount=unread[student.id]??0

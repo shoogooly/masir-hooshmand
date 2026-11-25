@@ -40,7 +40,12 @@ class User(Base, TimeMixin):
     profile: Mapped[StudentProfile | None] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="StudentProfile.user_id")
     advisor_profile: Mapped[AdvisorProfile | None] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="AdvisorProfile.user_id")
     referred_by_advisor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    renewal_billing_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     terms_accepted_version: Mapped[int] = mapped_column(Integer, default=0)
+
+    @property
+    def effective_renewal_billing_mode(self) -> str:
+        return self.renewal_billing_mode or ("site_only" if self.referred_by_advisor_id else "full")
 
 
 class PasswordChallenge(Base):

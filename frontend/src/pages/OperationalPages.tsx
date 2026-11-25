@@ -11,6 +11,8 @@ import SchoolSchedulePage from './SchoolSchedulePage'
 import TimeFields from '../components/TimeFields'
 import StudyReportPlan from './StudyReportPlan'
 import AdvisorStudentPerformance from './AdvisorStudentPerformance'
+import AdvisorRenewalBilling from './AdvisorRenewalBilling'
+import { advisorStudentSections, normalizeAdvisorSearch } from '../utils/advisorSections'
 import StudentPlanPicker from './StudentPlanPicker'
 import AdvisorPlanArchive from './AdvisorPlanArchive'
 import AIPlanDesigner from './AIPlanDesigner'
@@ -20,7 +22,7 @@ import '../styles/planner-readable.css'
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowRight, ArrowUp, BookOpen, BrainCircuit, Camera, CheckCircle2, Clock3, Copy, ClipboardPaste, Download, MessageSquare, Plus, Save, Search, Send, Trash2, TrendingUp, UserRound } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import type { ExamListItem, Message, PlanActivity, PlanDay, Profile, ProfilePhoto, ReportData, User, WeeklyPlan } from '../types'
 import { photoUrl, prepareProfilePhoto } from '../utils/profilePhoto'
@@ -95,7 +97,26 @@ export function ExamsPage(){
 }
 
 type AdvisorStudent=User&{risk:string;progress:number;last_activity?:string;last_message?:string;last_message_at?:string}
-export function AdvisorStudentsPage(){const nav=useNavigate();const [search,setSearch]=useState('');const {data,isLoading,error}=useQuery({queryKey:['advisor-dashboard'],queryFn:()=>api<{students:AdvisorStudent[]}>('/advisors/dashboard')});const {data:alerts}=useQuery({queryKey:['notification-summary'],queryFn:()=>api<{expired_student_ids:string[]}>('/notifications/summary'),refetchInterval:15000});const rows=useMemo(()=>data?.students.filter(s=>s.full_name.includes(search))||[],[data,search]);if(isLoading)return <State/>;if(error)return <ErrorBox error={error}/>;return <div className="content-page"><PageHead title="دانش‌آموزان" subtitle="پرونده، عملکرد، برنامه و پیام‌های دانش‌آموزان شما"/><div className="list-search"><Search/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="جست‌وجوی نام دانش‌آموز..."/></div><div className="student-cards">{rows.map(s=><button key={s.id} onClick={()=>nav(`/app/advisor/students/${s.id}/report`)}><span className="avatar">{s.full_name[0]}</span><div><b>{s.full_name}{alerts?.expired_student_ids.includes(s.id)&&<i className="inline-alert-dot"/>}</b><small>{alerts?.expired_student_ids.includes(s.id)?'برنامه تمام شده؛ نیازمند برنامه جدید':s.last_activity||'بدون فعالیت اخیر'}</small><p>{s.last_message||'بدون پیام اخیر'}</p></div><em className={s.risk==='بالا'?'high':''}>{s.risk}</em><strong>{s.progress}٪</strong></button>)}</div></div>}
+export function AdvisorStudentsPage() {
+ const nav = useNavigate()
+ const [params] = useSearchParams()
+ const [search, setSearch] = useState('')
+ const section = advisorStudentSections.find(item => item.key === params.get('section'))
+ const {data,isLoading,error}=useQuery({queryKey:['advisor-dashboard'],queryFn:()=>api<{students:AdvisorStudent[]}>('/advisors/dashboard')})
+ const {data:alerts}=useQuery({queryKey:['notification-summary'],queryFn:()=>api<{expired_student_ids:string[]}>('/notifications/summary'),refetchInterval:15000})
+ const rows = data?.students?.filter(student => normalizeAdvisorSearch(student.full_name).includes(normalizeAdvisorSearch(search))) ?? []
+ if(isLoading)return <State/>
+ if(error)return <ErrorBox error={error}/>
+ return <div className="content-page">
+  <PageHead title="دانش‌آموزان" subtitle={section ? `برای باز کردن «${section.label}» یک دانش‌آموز انتخاب کنید.` : 'پرونده، عملکرد، برنامه و پیام‌های دانش‌آموزان شما'}/>
+  <div className="list-search"><Search/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="جست‌وجوی نام دانش‌آموز..." aria-label="جست‌وجوی نام دانش‌آموز"/></div>
+  <div className="student-cards">{rows.map(s=><button key={s.id} onClick={()=>nav(section?.key === 'chat' ? advisorMessengerThread(s.id) : `/app/advisor/students/${s.id}/${section?.key ?? 'report'}`)}>
+   <span className="avatar">{s.full_name[0]}</span><div><b>{s.full_name}{alerts?.expired_student_ids?.includes(s.id)&&<i className="inline-alert-dot"/>}</b><small>{alerts?.expired_student_ids?.includes(s.id)?'برنامه تمام شده؛ نیازمند برنامه جدید':s.last_activity||'بدون فعالیت اخیر'}</small><p>{s.last_message||'بدون پیام اخیر'}</p></div>
+   <em className={s.risk==='بالا'?'high':''}>{s.risk}</em><strong>{s.progress}٪</strong>
+  </button>)}</div>
+  {!rows.length&&<p className="empty-state">دانش‌آموزی پیدا نشد.</p>}
+ </div>
+}
 
 type DraftActivity={day:string;subject:string;title:string;start_time:string;end_time:string}
 function LegacyPlanBuilder({studentId}:{studentId:string}){const qc=useQueryClient();const [title,setTitle]=useState('برنامه هفتگی');const [week,setWeek]=useState('هفته جاری');const [items,setItems]=useState<DraftActivity[]>([{day:'شنبه',subject:'',title:'',start_time:'08:00',end_time:'09:00'}]);const {data}=useQuery({queryKey:['plans','advisor'],queryFn:()=>api<WeeklyPlan[]>('/plans')});const create=useMutation({mutationFn:async()=>{const plan=await api<{id:string}>('/plans',{method:'POST',body:JSON.stringify({student_id:studentId,title,week_label:week,activities:items})});await api(`/plans/${plan.id}/publish`,{method:'POST'});return plan},onSuccess:()=>qc.invalidateQueries({queryKey:['plans','advisor']})});const update=(i:number,key:keyof DraftActivity,value:string)=>setItems(all=>all.map((x,n)=>n===i?{...x,[key]:value}:x));return <div className="planner"><div className="planner-meta"><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="عنوان برنامه"/><input value={week} onChange={e=>setWeek(e.target.value)} placeholder="بازه هفته"/></div>{items.map((item,i)=><div className="planner-row" key={i}><select value={item.day} onChange={e=>update(i,'day',e.target.value)}>{days.map(d=><option key={d}>{d}</option>)}</select><input type="time" step="900" value={item.start_time} onChange={e=>update(i,'start_time',e.target.value)}/><input type="time" step="900" value={item.end_time} onChange={e=>update(i,'end_time',e.target.value)}/><input value={item.subject} onChange={e=>update(i,'subject',e.target.value)} placeholder="درس"/><input value={item.title} onChange={e=>update(i,'title',e.target.value)} placeholder="عنوان فعالیت"/><button onClick={()=>setItems(a=>a.filter((_,n)=>n!==i))}><Trash2/></button></div>)}<div className="planner-actions"><button className="small-secondary" onClick={()=>setItems(a=>[...a,{day:'شنبه',subject:'',title:'',start_time:'08:00',end_time:'09:00'}])}><Plus/> افزودن بازه</button><button className="btn btn-primary" disabled={create.isPending||items.some(x=>!x.subject||!x.title)} onClick={()=>create.mutate()}><Save/> ذخیره و انتشار</button></div>{create.error&&<ErrorBox error={create.error}/>}<h2>نسخه‌های قبلی</h2>{data?.filter(p=>p.student_id===studentId).map(p=><div className="version-row" key={p.id}><b>{p.title}</b><span>{p.week_label} · نسخه {p.version}</span><em>{p.status==='published'?'منتشرشده':'پیش‌نویس'}</em></div>)}</div>}
@@ -135,14 +156,14 @@ export function StudentFilePage({user,studentId,tab}:{user:User;studentId:string
  const {data,isLoading,error}=useQuery({queryKey:['student-file',studentId],queryFn:()=>api<ReportData&{student:User;profile?:AdvisorStudentProfile}>(`/advisors/students/${studentId}/report`)})
  if(isLoading)return <State/>
  if(error||!data)return <ErrorBox error={error}/>
- const tabs=[['report','گزارش عملکرد'],['plan','برنامه ساز'],['school-schedule','برنامه مدرسه'],['study-reports','گزارش کار'],['exams','آزمون‌ها'],['external-results','کارنامه آزمون‌های آزمایشی'],['academic-calendar','تقویم آموزشی'],['chat','گفت‌وگو'],['evaluation','ارزیابی مشاور از دانش‌آموز'],['books','کتاب‌ها']]
+ if (tab === 'study-reports') return <Navigate to={`/app/advisor/students/${studentId}/report`} replace/>
  return <div className="content-page">
   <header className="advisor-student-file-heading">
    <PageHead back={()=>nav('/app/advisor/overview')} backLabel="بازگشت به صفحه اصلی" title={data.student.full_name} subtitle="پرونده اختصاصی دانش‌آموز"/>
    <AdvisorStudentProfileSummary student={data.student} profile={data.profile}/>
   </header>
-  <div className="file-tabs">{tabs.map(([key,label])=><button key={key} className={tab===key?'active':''} onClick={()=>nav(key==='chat'?advisorMessengerThread(studentId):`/app/advisor/students/${studentId}/${key}`)}>{label}</button>)}</div>
-  {tab==='academic-calendar'?<AcademicCalendarPage mode="advisor" user={user} studentId={studentId}/>:tab==='external-results'?<ExternalResultsPage studentId={studentId}/>:tab==='school-schedule'?<SchoolSchedulePage studentId={studentId}/>:tab==='report'?<><AdvisorStudentPerformance key={studentId} studentId={studentId} studentName={data.student.full_name}/><details className="advisor-performance-totals"><summary>نمایش آمار کلی و نمودارهای پیشرفت</summary><ProgressPage studentId={studentId}/></details></>:tab==='plan'?<AdvisorPlanWorkspace key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name}/>:tab==='study-reports'?<AdvisorPlanArchive key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name} reports/>:tab==='books'?<BooksPage mode="advisor" studentId={studentId}/>:tab==='evaluation'?<AdvisorEvaluationPage key={studentId} studentId={studentId}/>:tab==='exams'?<AdvisorAssignedExamsPage studentId={studentId}/>:<ChatPanel counterpart={data.student} currentUser={user}/>}
+  <div className="file-tabs">{advisorStudentSections.map(({key,label})=><button key={key} className={tab===key?'active':''} onClick={()=>nav(key==='chat'?advisorMessengerThread(studentId):`/app/advisor/students/${studentId}/${key}`)}>{label}</button>)}</div>
+  {tab==='academic-calendar'?<AcademicCalendarPage mode="advisor" user={user} studentId={studentId}/>:tab==='external-results'?<ExternalResultsPage studentId={studentId}/>:tab==='school-schedule'?<SchoolSchedulePage studentId={studentId}/>:tab==='report'?<><AdvisorStudentPerformance key={studentId} studentId={studentId} studentName={data.student.full_name}/><details className="advisor-performance-totals"><summary>نمایش آمار کلی و نمودارهای پیشرفت</summary><ProgressPage studentId={studentId}/></details></>:tab==='plan'?<AdvisorPlanWorkspace key={studentId} studentId={studentId} studentName={data.student.full_name} advisorName={user.full_name}/>:tab==='renewal-billing'?<AdvisorRenewalBilling key={studentId} studentId={studentId} mode={data.student.renewal_billing_mode ?? (data.student.referred_by_advisor_id ? 'site_only' : 'full')}/>:tab==='books'?<BooksPage mode="advisor" studentId={studentId}/>:tab==='evaluation'?<AdvisorEvaluationPage key={studentId} studentId={studentId}/>:tab==='exams'?<AdvisorAssignedExamsPage studentId={studentId}/>:<ChatPanel counterpart={data.student} currentUser={user}/>}
  </div>
 }
 
@@ -253,7 +274,10 @@ function TimeSelect({value,onChange,min=0,max=1440,label,onComplete,hourInputRef
   return <TimeFields value={value} onChange={onChange} label={label} onComplete={onComplete} hourInputRef={hourInputRef}/>
 }
 
+const persianDescription = (text: string) => faDigits(normalizeClock(text))
+
 function FittedDescriptionLine({text,label,onChange,onEnter,onBackspace,register,onPaste}:{text:string;label?:string;onChange?:(value:string)=>void;onEnter?:()=>void;onBackspace?:()=>void;register?:(node:HTMLInputElement|null)=>void;onPaste?:(event:React.ClipboardEvent<HTMLInputElement>)=>void}){
+  const displayText = persianDescription(text)
   const element=useRef<HTMLElement|null>(null)
   useEffect(()=>{
     const node=element.current;if(!node)return
@@ -264,7 +288,7 @@ function FittedDescriptionLine({text,label,onChange,onEnter,onBackspace,register
       const probe=document.createElement('span')
       probe.style.cssText='position:absolute;visibility:hidden;white-space:nowrap;pointer-events:none'
       probe.style.fontFamily=style.fontFamily;probe.style.fontWeight=style.fontWeight;probe.style.fontSize=`${base}px`
-      probe.textContent=text||' '
+      probe.textContent=displayText||' '
       parent.appendChild(probe)
       const measured=probe.getBoundingClientRect().width
       probe.remove()
@@ -274,9 +298,19 @@ function FittedDescriptionLine({text,label,onChange,onEnter,onBackspace,register
     void document.fonts?.ready.then(fit)
     if(typeof ResizeObserver==='undefined')return
     const observer=new ResizeObserver(fit);observer.observe(node.parentElement!);return()=>observer.disconnect()
-  },[text])
+  },[displayText])
   const ref=(node:HTMLElement|null)=>{element.current=node;register?.(node as HTMLInputElement|null)}
-  return onChange?<input ref={ref} className="timeline-description-line" aria-label={label} value={text} onClick={event=>event.stopPropagation()} onChange={event=>onChange(event.target.value)} onPaste={onPaste} onKeyDown={event=>{event.stopPropagation();if(event.key==='Enter'){event.preventDefault();onEnter?.()}else if(event.key==='Backspace'&&event.currentTarget.selectionStart===0&&event.currentTarget.selectionEnd===0&&text===''){event.preventDefault();onBackspace?.()}}}/>:<span ref={ref} className="timeline-description-line" title={text}>{text||'\u00a0'}</span>
+  function change(event: React.ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget
+    const value = persianDescription(input.value)
+    if (input.value !== value) {
+      const { selectionStart, selectionEnd, selectionDirection } = input
+      input.value = value
+      input.setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? undefined)
+    }
+    onChange?.(value)
+  }
+  return onChange?<input ref={ref} className="timeline-description-line" aria-label={label} value={displayText} onClick={event=>event.stopPropagation()} onChange={change} onPaste={onPaste} onKeyDown={event=>{event.stopPropagation();if(event.key==='Enter'){event.preventDefault();onEnter?.()}else if(event.key==='Backspace'&&event.currentTarget.selectionStart===0&&event.currentTarget.selectionEnd===0&&text===''){event.preventDefault();onBackspace?.()}}}/>:<span ref={ref} className="timeline-description-line" title={displayText}>{displayText||'\u00a0'}</span>
 }
 
 function InlineDescriptionEditor({item,onChange,style}:{item:{id:string;title:string};onChange:(id:string,value:string)=>void;style?:CSSProperties}){
@@ -284,7 +318,7 @@ function InlineDescriptionEditor({item,onChange,style}:{item:{id:string;title:st
   const lines=value.split('\n').slice(0,3)
   const editors=useRef<Array<HTMLInputElement|null>>([])
   const pendingFocus=useRef<number|null>(null)
-  const normalize=(text:string)=>text.replace(/\r\n?/g,'\n').split('\n').slice(0,3).join('\n').slice(0,180)
+  const normalize=(text:string)=>persianDescription(text.replace(/\r\n?/g,'\n').split('\n').slice(0,3).join('\n').slice(0,180))
   const focusLine=(index:number)=>{const element=editors.current[index];element?.focus();element?.setSelectionRange(element.value.length,element.value.length)}
   useEffect(()=>{if(!document.activeElement?.closest('.range-popover'))focusLine(lines.length-1)},[])
   useEffect(()=>{if(pendingFocus.current===null)return;focusLine(pendingFocus.current);pendingFocus.current=null},[value])

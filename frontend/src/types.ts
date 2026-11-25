@@ -1,7 +1,8 @@
 export type Role = 'student' | 'advisor' | 'secretary' | 'expert' | 'content_editor' | 'reviewer' | 'exam_designer' | 'support' | 'finance' | 'operations_admin' | 'super_admin'
 
 export interface ProfilePhoto {content_type:'image/jpeg'|'image/png'|'image/webp';content_base64:string}
-export interface User { id: string; phone: string; full_name: string; role: Role; status: string; onboarding_step?: string; referred_by_advisor_id?:string; profile_photo?:ProfilePhoto|null; pending_profile_photo?:ProfilePhoto|null; profile_photo_pending?:boolean; subscription_expired?:boolean; server_time?:string; subscription?:{expires_at:string;status:string}|null }
+export type RenewalBillingMode = 'full' | 'site_only'
+export interface User { id: string; phone: string; full_name: string; role: Role; status: string; onboarding_step?: string; referred_by_advisor_id?:string; renewal_billing_mode?:RenewalBillingMode; profile_photo?:ProfilePhoto|null; pending_profile_photo?:ProfilePhoto|null; profile_photo_pending?:boolean; subscription_expired?:boolean; server_time?:string; subscription?:{expires_at:string;status:string}|null }
 export interface ApiResponse<T> { success: boolean; data: T; meta: Record<string, unknown>; error?: { message: string; code?: string; details?: Array<{loc?: Array<string|number>; msg?: string}> } }
 export interface Activity { id: string; day: string; day_label?: string; subject: string; title: string; planned_minutes: number; actual_minutes: number; status: string }
 export interface Insight { id: string; kind: string; title: string; evidence: string; recommendation: string; confidence: number; status: string }

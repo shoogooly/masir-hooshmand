@@ -448,6 +448,11 @@ class InsightReview(BaseModel):
 class OrderCreate(BaseModel):
     plan_id: str
     idempotency_key: str
+    expected_amount: int | None = Field(default=None, ge=0)
+
+
+class RenewalBillingUpdate(BaseModel):
+    mode: Literal["full", "site_only"]
 
 
 class PaymentCallback(BaseModel):

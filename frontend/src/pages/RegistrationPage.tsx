@@ -41,7 +41,7 @@ export default function RegistrationPage() {
     try { await register.mutateAsync(); navigate('/login', { replace: true }) }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'ساخت حساب ناموفق بود.') }
   }
-  return <div className="registration-page account-registration"><header><Brand /><Link to="/login"><ArrowRight /> ورود اعضا</Link></header><main>
+  return <div className="registration-page account-registration"><header><Brand /><Link to="/"><ArrowRight size={18} /> بازگشت به خانه</Link></header><main>
     <section className="registration-intro"><span>ساخت حساب مهیاد</span><h1>شروع مسیر، فقط با شماره موبایل</h1><p>پس از ساخت حساب و ورود، اطلاعات پرونده را قدم‌به‌قدم تکمیل می‌کنید و همیشه مرحله فعلی را می‌بینید.</p><div><button type="button" className={role === 'student' ? 'active' : ''} onClick={() => setRole('student')}><GraduationCap /> دانش‌آموز</button><button type="button" className={role === 'advisor' ? 'active' : ''} onClick={() => setRole('advisor')}><UserRound /> مشاور</button></div></section>
     <form className="registration-form account-form" noValidate onSubmit={submit}><div className="form-title"><ShieldCheck /><div><h2>ایجاد حساب {role === 'student' ? 'دانش‌آموز' : 'مشاور'}</h2><p>اطلاعات تکمیلی بعد از ورود دریافت می‌شود.</p></div></div>
       <label><span>شماره موبایل<RequiredMark/></span><small className="registration-field-hint">۱۱ رقم با شروع 09</small><div className="field"><Phone /><input value={phone} onChange={event => setPhone(event.target.value)} inputMode="tel" pattern="09[0-9]{9}" placeholder="09123456789" required /></div></label>

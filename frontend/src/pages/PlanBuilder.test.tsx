@@ -41,6 +41,14 @@ test('three description lines stay editable in the range and its actions stay be
  expect(container.querySelector('.range-inline-tools')).toBeNull()
 })
 
+test('range descriptions convert typed digits to Persian',()=>{
+ const {container}=setup()
+ fireEvent.click(screen.getAllByRole('button',{name:/افزودن بازه برای/})[0])
+ editDescription('فصل 2\nتمرین ٣ و ۴')
+ expect(descriptionText()).toBe('فصل ۲\nتمرین ۳ و ۴')
+ expect(container.querySelector('.timeline-block')?.getAttribute('aria-label')).toBe('ویرایش بازه فصل ۲\nتمرین ۳ و ۴')
+})
+
 test('typing after Enter fills the third line and a fourth line is rejected',()=>{
  setup()
  fireEvent.click(screen.getAllByRole('button',{name:/افزودن بازه برای/})[0])

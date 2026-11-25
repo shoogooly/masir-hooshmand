@@ -33,7 +33,11 @@
 .registration-form.account-form{width:100%;max-width:580px;margin:0;padding:clamp(24px,4vw,42px);border:1px solid #ffffffc2;border-radius:28px;background:#fffffff5;box-shadow:0 30px 85px #05071f70;backdrop-filter:blur(18px)}
 .account-form>.form-title{align-items:center;margin-bottom:25px;padding-bottom:20px;border-bottom:1px solid #eeeaf5}.account-form>.form-title>svg{width:42px;height:42px;padding:10px;border-radius:13px;color:#6540d0;background:#eee8ff}.account-form>.form-title h2{font-size:23px}.account-form>label{margin:13px 0;font-size:13px}.registration-field-hint{font-weight:400;color:#878092!important}.account-form .field{padding:0 13px}.account-form .field input{height:100%;font-size:15px}.account-form>.sms-send-button{min-height:44px;border-color:#ddd4f4;color:#5d3ac2;background:#f7f4ff}.sms-send-success{padding:8px 11px;border-radius:10px;background:#eefaf4}.password-toggle{width:36px;height:36px;border-radius:10px}.password-toggle:hover{background:#eee9f7}
 
+.login-mobile-home{display:none}
 @media(max-width:900px){
+  .login-card{position:relative}
+  .login-card .login-mobile-home{position:absolute;inset-block-start:16px;inset-inline-end:18px;display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 10px;border-radius:10px;background:#f3efff;color:#5533b1;font-size:.85rem;font-weight:700;white-space:nowrap}
+  .login-page .login-card{padding-block-start:72px}
   .login-page{grid-template-columns:1fr;padding:16px}.login-visual{display:none}.login-card{min-height:calc(100vh - 32px);justify-content:center}
   .registration-page main{grid-template-columns:1fr;width:min(620px,92vw)}.registration-intro{position:static;text-align:center}.registration-intro>div{justify-content:center}.registration-form.account-form{margin:auto}
 }
